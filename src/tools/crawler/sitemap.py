@@ -1,79 +1,165 @@
 """
-Sitemap fetching using Crawl4AI's AsyncUrlSeeder.
+Sitemap fetching and summarization for web_fetch.
 
-This module provides sitemap discovery and summarization for web_fetch,
-enabling the extraction LLM to suggest alternative URLs when content
-is not found on the current page.
+Discovers sitemap URLs via robots.txt and well-known paths, parses sitemap XML,
+and produces a grouped summary for LLM context injection.
+
+Uses httpx + stdlib xml.etree.ElementTree (no crawl4ai dependency).
 """
 
+import asyncio
 import logging
-import warnings
+import xml.etree.ElementTree as ET
 from typing import Optional
 from urllib.parse import urlparse
 from collections import defaultdict
 
+import httpx
+
 logger = logging.getLogger(__name__)
 
-# Suppress "Task was destroyed but it is pending" warnings from asyncio
-# This is a known issue with Crawl4AI's AsyncUrlSeeder internal task management
-# when operations are cancelled/timed out. The warning is harmless but noisy.
-warnings.filterwarnings(
-    "ignore",
-    message=".*Task was destroyed but it is pending.*",
-    category=RuntimeWarning,
+_SITEMAP_NS = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
+_USER_AGENT = (
+    "Mozilla/5.0 (compatible; SitemapFetcher/1.0; "
+    "+https://github.com/ginlix/langalpha)"
 )
-# Also suppress via asyncio logger (some versions log as ERROR instead of warning)
-logging.getLogger("asyncio").setLevel(logging.WARNING)
+
+
+async def _find_sitemap_url(client: httpx.AsyncClient, domain: str) -> list[str]:
+    """Discover sitemap URLs from robots.txt, falling back to well-known paths."""
+    sitemap_urls: list[str] = []
+
+    # Try robots.txt first
+    for scheme in ("https", "http"):
+        try:
+            r = await client.get(f"{scheme}://{domain}/robots.txt")
+            if 200 <= r.status_code < 300:
+                for line in r.text.splitlines():
+                    if line.lower().startswith("sitemap:"):
+                        url = line.split(":", 1)[1].strip()
+                        if url:
+                            sitemap_urls.append(url)
+                if sitemap_urls:
+                    return sitemap_urls
+        except httpx.HTTPError:
+            continue
+
+    # Fallback: try well-known paths
+    for scheme in ("https", "http"):
+        for path in ("/sitemap.xml", "/sitemap_index.xml"):
+            try:
+                r = await client.head(f"{scheme}://{domain}{path}")
+                if 200 <= r.status_code < 300:
+                    return [f"{scheme}://{domain}{path}"]
+            except httpx.HTTPError:
+                continue
+
+    return []
+
+
+async def _parse_sitemap(
+    client: httpx.AsyncClient,
+    url: str,
+    urls: list[str],
+    max_urls: int,
+    max_depth: int = 2,
+) -> None:
+    """
+    Fetch and parse a sitemap XML, collecting <loc> URLs.
+
+    Handles both regular sitemaps and sitemap indexes (recursive).
+    Stops collecting once max_urls is reached.
+    """
+    if len(urls) >= max_urls or max_depth <= 0:
+        return
+
+    try:
+        r = await client.get(url)
+        if r.status_code < 200 or r.status_code >= 300:
+            return
+    except httpx.HTTPError:
+        return
+
+    try:
+        root = ET.fromstring(r.content)
+    except ET.ParseError:
+        logger.debug(f"Failed to parse sitemap XML from {url}")
+        return
+
+    tag = root.tag.lower()
+
+    # Sitemap index — contains <sitemap><loc>...</loc></sitemap> entries
+    if "sitemapindex" in tag:
+        sub_urls = []
+        for sitemap_el in root.iter(f"{_SITEMAP_NS}sitemap"):
+            loc = sitemap_el.findtext(f"{_SITEMAP_NS}loc")
+            if loc:
+                sub_urls.append(loc.strip())
+        # Also try without namespace (some sitemaps omit it)
+        if not sub_urls:
+            for sitemap_el in root.iter("sitemap"):
+                loc = sitemap_el.findtext("loc")
+                if loc:
+                    sub_urls.append(loc.strip())
+
+        # Fetch sub-sitemaps sequentially to avoid orphaned tasks
+        for sub_url in sub_urls:
+            if len(urls) >= max_urls:
+                break
+            await _parse_sitemap(client, sub_url, urls, max_urls, max_depth - 1)
+    else:
+        # Regular sitemap — contains <url><loc>...</loc></url> entries
+        for url_el in root.iter(f"{_SITEMAP_NS}url"):
+            if len(urls) >= max_urls:
+                break
+            loc = url_el.findtext(f"{_SITEMAP_NS}loc")
+            if loc:
+                urls.append(loc.strip())
+        # Also try without namespace
+        if not urls:
+            for url_el in root.iter("url"):
+                if len(urls) >= max_urls:
+                    break
+                loc = url_el.findtext("loc")
+                if loc:
+                    urls.append(loc.strip())
 
 
 async def fetch_sitemap_urls(domain: str, max_urls: int = 100, timeout: float = 10.0) -> list[dict]:
     """
-    Fetch sitemap URLs using Crawl4AI's AsyncUrlSeeder.
+    Fetch sitemap URLs for a domain.
 
     Args:
         domain: Domain to fetch sitemap from (e.g., "example.com")
         max_urls: Maximum number of URLs to return
-        timeout: Timeout in seconds for sitemap fetch (default: 10s)
+        timeout: Timeout in seconds for the entire operation (default: 10s)
 
     Returns:
-        List of dicts with "url" and optional "title" keys.
+        List of dicts with "url" key.
         Returns empty list if sitemap unavailable or times out.
     """
-    import asyncio
-
     try:
-        from crawl4ai import AsyncUrlSeeder, SeedingConfig
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout, connect=5.0),
+            follow_redirects=True,
+            headers={"User-Agent": _USER_AGENT},
+        ) as client:
+            sitemap_urls = await _find_sitemap_url(client, domain)
+            if not sitemap_urls:
+                logger.debug(f"No sitemap found for {domain}")
+                return []
 
-        async def _fetch():
-            async with AsyncUrlSeeder() as seeder:
-                config = SeedingConfig(
-                    source="sitemap",
-                    extract_head=False,  # Skip head extraction (faster, avoids extra requests)
-                    max_urls=max_urls,
-                    live_check=False,    # Skip verification for speed
-                )
-                return await seeder.urls(domain, config)
+            urls: list[str] = []
+            for sitemap_url in sitemap_urls:
+                if len(urls) >= max_urls:
+                    break
+                await _parse_sitemap(client, sitemap_url, urls, max_urls)
 
-        # Run with timeout to avoid hanging on large sitemaps
-        # Use create_task + wait to allow graceful cleanup on timeout
-        task = asyncio.create_task(_fetch())
-        try:
-            urls = await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
             logger.debug(f"Fetched {len(urls)} URLs from sitemap for {domain}")
-            return urls
-        except asyncio.TimeoutError:
-            logger.debug(f"Sitemap fetch timed out for {domain} (>{timeout}s)")
-            # Cancel the task and give it a moment to clean up internal tasks
-            task.cancel()
-            try:
-                # Allow cancellation to propagate through internal tasks
-                await asyncio.wait_for(task, timeout=1.0)
-            except (asyncio.TimeoutError, asyncio.CancelledError):
-                pass
-            return []
+            return [{"url": u} for u in urls]
 
-    except ImportError:
-        logger.warning("AsyncUrlSeeder not available in crawl4ai")
+    except httpx.TimeoutException:
+        logger.debug(f"Sitemap fetch timed out for {domain} (>{timeout}s)")
         return []
     except Exception as e:
         logger.debug(f"Sitemap fetch failed for {domain}: {e}")
