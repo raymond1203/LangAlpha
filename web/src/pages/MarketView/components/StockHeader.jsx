@@ -2,6 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { Info } from 'lucide-react';
 import './StockHeader.css';
 
+const EXCHANGE_LABELS = { HK: 'HK', SS: 'SH', SZ: 'SZ', L: 'LON', T: 'TYO', TO: 'TSX', AX: 'ASX' };
+const FOREIGN_EXCHANGES = new Set(['HK', 'SS', 'SZ', 'L', 'T', 'TO', 'AX', 'DE', 'PA', 'MC']);
+
+function isUSSymbol(sym) {
+  if (!sym) return true;
+  const dotIdx = sym.lastIndexOf('.');
+  if (dotIdx === -1) return true;
+  const suffix = sym.slice(dotIdx + 1).toUpperCase();
+  return !FOREIGN_EXCHANGES.has(suffix);
+}
+
+function getDelayedLabel(sym) {
+  if (!sym) return 'Delayed';
+  const dotIdx = sym.lastIndexOf('.');
+  if (dotIdx === -1) return 'Delayed';
+  const suffix = sym.slice(dotIdx + 1).toUpperCase();
+  return EXCHANGE_LABELS[suffix] ? `${EXCHANGE_LABELS[suffix]} Delayed` : 'Delayed';
+}
+
 const StockHeader = ({ symbol, stockInfo, realTimePrice, chartMeta, displayOverride, onToggleOverview, wsStatus, quoteData }) => {
   const formatNumber = (num) => {
     if (num == null || (num !== 0 && !num)) return '—';
@@ -28,10 +47,11 @@ const StockHeader = ({ symbol, stockInfo, realTimePrice, chartMeta, displayOverr
   const changePct = realTimePrice?.changePercent != null ? realTimePrice.changePercent : null;
 
   const displayName = displayOverride?.name ?? stockInfo?.Name ?? `${symbol} Corp`;
-  const displayExchange = displayOverride?.exchange ?? stockInfo?.Exchange ?? 'NASDAQ';
+  const displayExchange = displayOverride?.exchange ?? stockInfo?.Exchange ?? '';
 
   // Live timestamp — updates every second when WS is connected
-  const isLive = wsStatus === 'connected';
+  const usSymbol = isUSSymbol(symbol);
+  const isLive = wsStatus === 'connected' && usSymbol;
   const [tickTime, setTickTime] = useState(null);
   useEffect(() => {
     if (realTimePrice?.timestamp) {
@@ -73,7 +93,7 @@ const StockHeader = ({ symbol, stockInfo, realTimePrice, chartMeta, displayOverr
             ) : (
               <>
                 <span className="data-source-dot data-source-dot--delayed" />
-                <span className="data-source-label">Delayed</span>
+                <span className="data-source-label">{getDelayedLabel(symbol)}</span>
               </>
             )}
           </div>

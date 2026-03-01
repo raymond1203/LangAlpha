@@ -56,6 +56,7 @@ const MarketChart = React.memo(forwardRef(({
   overlayData,
   stockMeta,
   liveTick,
+  wsStatus,
 }, ref) => {
   const { theme } = useTheme();
   const ct = getChartTheme(theme);
@@ -895,36 +896,6 @@ const MarketChart = React.memo(forwardRef(({
       try {
         const loadDays = INITIAL_LOAD_DAYS[interval];
 
-        // 1s interval: fetch last trading day's 1min data as initial snapshot,
-        // then WS liveTick will overlay real-time updates when market opens.
-        if (loadDays < 0) {
-          try {
-            const now = new Date();
-            const toStr = now.toISOString().split('T')[0];
-            const from = new Date(now);
-            from.setDate(from.getDate() - 5); // look back enough to find last trading day
-            const fromStr = from.toISOString().split('T')[0];
-
-            const fallback = await fetchStockData(symbol, '1min', fromStr, toStr, { signal: abortController.signal });
-            if (abortController.signal.aborted) return;
-
-            const data = fallback?.data || [];
-            if (data.length > 0) {
-              allDataRef.current = data;
-              oldestDateRef.current = data[0].time;
-              updateSeriesData(data);
-              if (chartRef.current) chartRef.current.timeScale().fitContent();
-              setLastUpdateTime(new Date());
-            }
-          } catch (err) {
-            if (!abortController.signal.aborted) {
-              console.warn('1s fallback fetch failed:', err);
-            }
-          }
-          setLoading(false);
-          return;
-        }
-
         let fromDate, toDate;
         if (loadDays > 0) {
           const maxMaPeriod = Math.max(...enabledMaPeriodsRef.current, 0);
@@ -980,10 +951,14 @@ const MarketChart = React.memo(forwardRef(({
           }
         } else {
           clearChartSeries();
-          const isIntraday = interval !== '1day';
-          const fallbackMsg = isIntraday
-            ? 'Intraday data not available — market may be closed. Try the 1D interval.'
-            : 'Stock data not found';
+          let fallbackMsg;
+          if (interval === '1s') {
+            fallbackMsg = '1s interval is not available — this interval requires a data source that supports per-second bars.';
+          } else if (interval !== '1day') {
+            fallbackMsg = 'Intraday data not available — market may be closed. Try the 1D interval.';
+          } else {
+            fallbackMsg = 'Stock data not found';
+          }
           setError(result?.error || fallbackMsg);
           if (typeof onStockMeta === 'function') onStockMeta(null);
         }
@@ -1005,6 +980,69 @@ const MarketChart = React.memo(forwardRef(({
       abortController.abort();
     };
   }, [symbol, interval, onStockMeta, updateSeriesData, handleScrollLoadMore]);
+
+  // --- REST polling fallback for 1s interval when WS is unavailable ---
+  useEffect(() => {
+    if (interval !== '1s' || chartMode !== 'custom') return;
+    if (wsStatus === 'connected') return; // WS is live — no polling needed
+
+    let timer = null;
+    let aborted = false;
+
+    const poll = async () => {
+      if (aborted) return;
+      try {
+        const now = new Date();
+        const toDate = now.toISOString().split('T')[0];
+
+        // Delta-based: fetch only from last known bar's date onward
+        const lastBar = allDataRef.current?.[allDataRef.current.length - 1];
+        const fromDate = lastBar
+          ? lastBar.date.split(' ')[0]
+          : (() => { const d = new Date(now); d.setDate(d.getDate() - 3); return d.toISOString().split('T')[0]; })();
+
+        const result = await fetchStockData(symbol, '1s', fromDate, toDate);
+        if (aborted) return;
+
+        const data = result?.data;
+        if (Array.isArray(data) && data.length > 0) {
+          if (lastBar) {
+            // Merge: append only genuinely new bars
+            const lastDate = allDataRef.current[allDataRef.current.length - 1].date;
+            const newBars = data.filter(b => b.date > lastDate);
+            const merged = [...allDataRef.current, ...newBars];
+            allDataRef.current = merged;
+            updateSeriesData(merged);
+          } else {
+            allDataRef.current = data;
+            updateSeriesData(data);
+          }
+
+          if (chartRef.current) {
+            const idealBars = AUTO_FIT_BARS['1s'];
+            if (idealBars && allDataRef.current.length > idealBars) {
+              chartRef.current.timeScale().setVisibleLogicalRange({
+                from: allDataRef.current.length - idealBars,
+                to: allDataRef.current.length,
+              });
+            }
+          }
+          setLastUpdateTime(new Date());
+          setError(null);
+        }
+      } catch (err) {
+        if (!aborted) console.debug('1s REST poll failed:', err);
+      }
+    };
+
+    // Start polling every 5 seconds
+    timer = setInterval(poll, 5000);
+
+    return () => {
+      aborted = true;
+      if (timer) clearInterval(timer);
+    };
+  }, [interval, wsStatus, symbol, chartMode, updateSeriesData]);
 
   // --- Effect 3: TimeScale options per interval ---
   useEffect(() => {
@@ -1080,16 +1118,20 @@ const MarketChart = React.memo(forwardRef(({
       <div className="chart-tools">
         <div className="chart-tools-left">
           <div className="interval-selector">
-            {INTERVALS.filter(({ key }) => PRIMARY_INTERVAL_KEYS.has(key)).map(({ key, label }) => (
+            {INTERVALS.filter(({ key }) => PRIMARY_INTERVAL_KEYS.has(key)).map(({ key, label }) => {
+              const wsUnavailable = key === '1s' && wsStatus === 'disabled';
+              return (
               <button
                 key={key}
                 type="button"
-                className={`interval-btn${interval === key ? ' interval-btn-active' : ''}`}
-                onClick={() => { onIntervalChange?.(key); setIntervalsOpen(false); setIndicatorsOpen(false); setToolsOpen(false); }}
+                className={`interval-btn${interval === key ? ' interval-btn-active' : ''}${wsUnavailable ? ' interval-btn-disabled' : ''}`}
+                onClick={() => { if (wsUnavailable) return; onIntervalChange?.(key); setIntervalsOpen(false); setIndicatorsOpen(false); setToolsOpen(false); }}
+                title={wsUnavailable ? '1s interval is not supported by the current data source' : undefined}
               >
                 {label}
               </button>
-            ))}
+              );
+            })}
             {/* "More" dropdown for secondary intervals */}
             <div className="toolbar-dropdown" ref={intervalsDropdownRef} style={{ display: 'inline-flex' }}>
               <button

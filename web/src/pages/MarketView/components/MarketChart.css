@@ -123,6 +123,7 @@
 .interval-btn:hover { color: var(--color-text-primary); background: var(--color-accent-soft); }
 .interval-btn-active { color: var(--color-text-on-accent); background: var(--color-accent-primary); }
 .interval-btn-active:hover { background: var(--color-accent-primary); opacity: 0.9; }
+.interval-btn-disabled { opacity: 0.4; cursor: not-allowed; }
 
 .chart-tools-right {
   display: flex;

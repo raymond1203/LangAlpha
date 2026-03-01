@@ -466,6 +466,7 @@ function MarketViewInner() {
               overlayData={overlayData}
               stockMeta={chartMeta}
               liveTick={wsPrices.get(selectedStock)?.barData || null}
+              wsStatus={wsStatus}
             />
           </div>
         </div>

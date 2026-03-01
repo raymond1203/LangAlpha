@@ -57,7 +57,6 @@ export async function searchStocks(query, limit = 50) {
     const params = new URLSearchParams();
     params.append('query', query.trim());
     params.append('limit', String(Math.min(Math.max(1, limit), 100)));
-    ['NASDAQ', 'NYSE', 'OTC'].forEach((ex) => params.append('exchange', ex)); // US exchanges only
     const { data } = await api.get('/api/v1/market-data/search/stocks', { params });
     return data || { query: query.trim(), results: [], count: 0 };
   } catch (e) {
@@ -243,7 +242,7 @@ export async function fetchStockInfo(symbol, { signal } = {}) {
       return {
         Symbol: symbolUpper,
         Name: `${symbolUpper} Corp`,
-        Exchange: 'NASDAQ',
+        Exchange: '',
         Price: 0,
         Open: 0,
         High: 0,
@@ -265,7 +264,7 @@ export async function fetchStockInfo(symbol, { signal } = {}) {
     return {
       Symbol: symbolUpper,
       Name: `${symbolUpper} Corp`,
-      Exchange: 'NASDAQ',
+      Exchange: '',
       Price: parseFloat(last?.close || 0),
       Open: parseFloat(first?.open || 0),
       High: parseFloat(Math.max(...points.map((p) => Number(p.high) || 0)) || 0),
@@ -285,7 +284,7 @@ export async function fetchStockInfo(symbol, { signal } = {}) {
     return {
       Symbol: symbolUpper,
       Name: `${symbolUpper} Corp`,
-      Exchange: 'NASDAQ',
+      Exchange: '',
       Price: 0,
       Open: 0,
       High: 0,
@@ -373,7 +372,7 @@ export async function fetchStockQuote(symbol, { signal } = {}) {
     const stockInfo = {
       Symbol: symbolUpper,
       Name: `${symbolUpper} Corp`,
-      Exchange: 'NASDAQ',
+      Exchange: '',
       Price: close,
       Open: open,
       High: high,

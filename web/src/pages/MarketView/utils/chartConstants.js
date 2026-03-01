@@ -74,16 +74,15 @@ export const INTERVALS = [
 // Intervals shown as direct buttons in the toolbar
 export const PRIMARY_INTERVAL_KEYS = new Set(['1s', '1min', '1day']);
 
-// Days of history per interval for initial load
-// '1s' = -1 means no REST fetch — chart is populated purely from WS live feed
+// Days of history per interval for initial load (0 = full history)
 export const INITIAL_LOAD_DAYS = {
-  '1s': -1, '1min': 7, '5min': 30, '15min': 60, '30min': 120,
-  '1hour': 180, '4hour': 365, '1day': 0,  // 0 = full history
+  '1s': 1, '1min': 7, '5min': 30, '15min': 60, '30min': 120,
+  '1hour': 180, '4hour': 365, '1day': 0,
 };
 
 // Days to prepend on scroll-left per interval
 export const SCROLL_CHUNK_DAYS = {
-  '1s': 0, '1min': 5, '5min': 20, '15min': 30, '30min': 60,
+  '1s': 1, '1min': 5, '5min': 20, '15min': 30, '30min': 60,
   '1hour': 120, '4hour': 180, '1day': 365,
 };
 
