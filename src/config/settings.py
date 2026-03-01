@@ -220,6 +220,14 @@ LOCAL_DEV_USER_ID: str = os.getenv("AUTH_USER_ID", "local-dev-user")
 # Quota enforcement service (ginlix-auth)
 AUTH_SERVICE_URL: str = os.getenv("AUTH_SERVICE_URL", "")
 
+# ginlix-data (real-time market data proxy)
+GINLIX_DATA_URL: str = os.getenv("GINLIX_DATA_URL", "")  # http://localhost:8005
+GINLIX_DATA_WS_URL: str = os.getenv("GINLIX_DATA_WS_URL", "") or (
+    GINLIX_DATA_URL.replace("http://", "ws://").replace("https://", "wss://")
+    if GINLIX_DATA_URL else ""
+)
+GINLIX_DATA_ENABLED: bool = bool(GINLIX_DATA_URL)
+
 # =============================================================================
 # Feature Flags
 # =============================================================================
@@ -456,6 +464,29 @@ def get_redis_ttl_metadata_summary(default: int = 600) -> int:
 def is_cache_invalidate_on_write_enabled() -> bool:
     """Check if cache invalidation on write is enabled."""
     return bool(get_nested_config('redis.cache_invalidate_on_write', True))
+
+
+# Fallback TTLs matching config.yaml defaults (interval_seconds × 1.5)
+_DEFAULT_OHLCV_TTLS: Dict[str, int] = {
+    "1s": 5,
+    "1min": 90,
+    "5min": 360,
+    "15min": 1080,
+    "30min": 2100,
+    "1hour": 4200,
+    "4hour": 16200,
+    "1day": 86400,
+}
+
+
+def get_ohlcv_ttl(interval: str) -> int:
+    """Get the Redis TTL for a given OHLCV interval.
+
+    Reads from ``redis.ttl.ohlcv.<interval>`` in config.yaml, falling back
+    to hardcoded defaults that mirror the canonical config values.
+    """
+    fallback = _DEFAULT_OHLCV_TTLS.get(interval, 90)
+    return int(get_nested_config(f"redis.ttl.ohlcv.{interval}", fallback))
 
 
 

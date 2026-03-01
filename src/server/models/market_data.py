@@ -5,7 +5,6 @@ This module provides request and response models for FMP intraday data proxy end
 """
 
 from typing import Optional, List, Dict, Any, Literal
-from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -40,6 +39,9 @@ class CacheMetadata(BaseModel):
     cache_key: Optional[str] = Field(None, description="Cache key used")
     ttl_remaining: Optional[int] = Field(None, description="Remaining TTL in seconds")
     refreshed_in_background: bool = Field(False, description="Whether a background refresh was triggered")
+    watermark: Optional[str] = Field(None, description="Date field of last cached bar (delta-refresh boundary)")
+    complete: Optional[bool] = Field(None, description="True when all bars are immutable (market closed / historical)")
+    market_phase: Optional[str] = Field(None, description="Current market phase: pre, open, post, or closed")
 
 
 class IntradayResponse(BaseModel):

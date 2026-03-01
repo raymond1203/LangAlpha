@@ -9,6 +9,8 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
+from src.server.utils.api import CurrentUserId
+
 from src.server.models.market_data import (
     IntradayDataPoint,
     IntradayResponse,
@@ -26,13 +28,11 @@ from src.server.models.market_data import (
     STOCK_INTERVALS,
     INDEX_INTERVALS,
 )
-from src.server.services.intraday_cache_service import (
+from src.server.services.cache.intraday_cache_service import (
     IntradayCacheService,
-    IntradayCacheKeyBuilder,
 )
-from src.server.services.daily_cache_service import (
+from src.server.services.cache.daily_cache_service import (
     DailyCacheService,
-    DailyCacheKeyBuilder,
 )
 from src.data_client.fmp.fmp_client import FMPClient
 
@@ -72,6 +72,7 @@ def _convert_data_points(raw_data: list) -> list[IntradayDataPoint]:
 )
 async def get_stock_intraday(
     symbol: str,
+    user_id: CurrentUserId,
     interval: str = Query("1min", description="Data interval (1min, 5min, 15min, 30min, 1hour, 4hour)"),
     from_date: Optional[str] = Query(None, alias="from", description="Start date (YYYY-MM-DD)"),
     to_date: Optional[str] = Query(None, alias="to", description="End date (YYYY-MM-DD)"),
@@ -91,12 +92,12 @@ async def get_stock_intraday(
             interval=interval,
             from_date=from_date,
             to_date=to_date,
+            user_id=user_id,
         )
 
         if result.error:
             raise HTTPException(status_code=500, detail=result.error)
 
-        cache_key = IntradayCacheKeyBuilder.stock_key(symbol, interval, from_date, to_date)
         data_points = _convert_data_points(result.data)
 
         return IntradayResponse(
@@ -106,9 +107,12 @@ async def get_stock_intraday(
             count=len(data_points),
             cache=CacheMetadata(
                 cached=result.cached,
-                cache_key=cache_key,
+                cache_key=result.cache_key,
                 ttl_remaining=result.ttl_remaining,
                 refreshed_in_background=result.background_refresh_triggered,
+                watermark=result.watermark,
+                complete=result.complete,
+                market_phase=result.market_phase,
             ),
         )
 
@@ -132,6 +136,7 @@ async def get_stock_intraday(
 )
 async def get_stock_daily(
     symbol: str,
+    user_id: CurrentUserId,
     from_date: Optional[str] = Query(None, alias="from", description="Start date (YYYY-MM-DD)"),
     to_date: Optional[str] = Query(None, alias="to", description="End date (YYYY-MM-DD)"),
 ) -> DailyResponse:
@@ -142,12 +147,12 @@ async def get_stock_daily(
             symbol=symbol,
             from_date=from_date,
             to_date=to_date,
+            user_id=user_id,
         )
 
         if result.error:
             raise HTTPException(status_code=500, detail=result.error)
 
-        cache_key = DailyCacheKeyBuilder.stock_key(symbol, from_date, to_date)
         data_points = _convert_data_points(result.data)
 
         return DailyResponse(
@@ -156,9 +161,12 @@ async def get_stock_daily(
             count=len(data_points),
             cache=CacheMetadata(
                 cached=result.cached,
-                cache_key=cache_key,
+                cache_key=result.cache_key,
                 ttl_remaining=result.ttl_remaining,
                 refreshed_in_background=result.background_refresh_triggered,
+                watermark=result.watermark,
+                complete=result.complete,
+                market_phase=result.market_phase,
             ),
         )
 
@@ -182,6 +190,7 @@ async def get_stock_daily(
 )
 async def get_batch_stocks_intraday(
     request: BatchIntradayRequest,
+    user_id: CurrentUserId,
 ) -> BatchIntradayResponse:
     """Get intraday data for multiple stocks."""
     # Validate interval
@@ -198,6 +207,7 @@ async def get_batch_stocks_intraday(
             interval=request.interval,
             from_date=request.from_date,
             to_date=request.to_date,
+            user_id=user_id,
         )
 
         # Convert raw data to IntradayDataPoint models
@@ -233,6 +243,7 @@ async def get_batch_stocks_intraday(
 )
 async def get_index_intraday(
     symbol: str,
+    user_id: CurrentUserId,
     interval: str = Query("1min", description="Data interval (1min, 5min, 1hour)"),
     from_date: Optional[str] = Query(None, alias="from", description="Start date (YYYY-MM-DD)"),
     to_date: Optional[str] = Query(None, alias="to", description="End date (YYYY-MM-DD)"),
@@ -252,12 +263,12 @@ async def get_index_intraday(
             interval=interval,
             from_date=from_date,
             to_date=to_date,
+            user_id=user_id,
         )
 
         if result.error:
             raise HTTPException(status_code=500, detail=result.error)
 
-        cache_key = IntradayCacheKeyBuilder.index_key(symbol, interval, from_date, to_date)
         data_points = _convert_data_points(result.data)
 
         return IntradayResponse(
@@ -267,9 +278,12 @@ async def get_index_intraday(
             count=len(data_points),
             cache=CacheMetadata(
                 cached=result.cached,
-                cache_key=cache_key,
+                cache_key=result.cache_key,
                 ttl_remaining=result.ttl_remaining,
                 refreshed_in_background=result.background_refresh_triggered,
+                watermark=result.watermark,
+                complete=result.complete,
+                market_phase=result.market_phase,
             ),
         )
 
@@ -293,6 +307,7 @@ async def get_index_intraday(
 )
 async def get_batch_indexes_intraday(
     request: BatchIntradayRequest,
+    user_id: CurrentUserId,
 ) -> BatchIntradayResponse:
     """Get intraday data for multiple indexes."""
     # Validate interval
@@ -309,6 +324,7 @@ async def get_batch_indexes_intraday(
             interval=request.interval,
             from_date=request.from_date,
             to_date=request.to_date,
+            user_id=user_id,
         )
 
         # Convert raw data to IntradayDataPoint models

@@ -398,6 +398,14 @@ from src.server.app.oauth import router as oauth_router
 from src.server.app.public import router as public_router
 from src.server.app.skills import router as skills_router
 
+# Conditionally import ginlix-data WS proxy (only when GINLIX_DATA_WS_URL is set)
+from src.config.settings import GINLIX_DATA_ENABLED
+if GINLIX_DATA_ENABLED:
+    from src.server.app.market_data_ws import router as market_data_ws_router
+    logger.info("ginlix-data WS proxy enabled")
+else:
+    logger.info("ginlix-data WS proxy disabled (GINLIX_DATA_URL not set)")
+
 # Include all routers
 app.include_router(threads_router)  # /api/v1/threads/* - Thread CRUD, messages, control
 app.include_router(sessions_router)  # /api/v1/sessions - Active session stats
@@ -431,3 +439,6 @@ app.include_router(
 )  # /api/v1/public/* - Public shared thread access (no auth)
 app.include_router(skills_router)  # /api/v1/skills - Available agent skills
 app.include_router(health_router)  # /health - Health check
+
+if GINLIX_DATA_ENABLED:
+    app.include_router(market_data_ws_router)  # /ws/v1/market-data/* - Real-time WS proxy

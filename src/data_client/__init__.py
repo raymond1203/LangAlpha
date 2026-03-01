@@ -14,15 +14,55 @@ MCP convention:
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 import importlib
-from typing import Any, Optional
+from typing import Any
 
 from .fmp import FMPClient
+from .base import PriceDataProvider
 
 
 MCP_SERVER_NAME = "price_data"
+
+# ---------------------------------------------------------------------------
+# Price data provider factory
+# ---------------------------------------------------------------------------
+
+_price_provider: PriceDataProvider | None = None
+_price_provider_lock = asyncio.Lock()
+
+
+async def get_price_provider() -> PriceDataProvider:
+    """Return the active :class:`PriceDataProvider` singleton.
+
+    When ``GINLIX_DATA_ENABLED`` is true, returns a
+    :class:`GinlixDataPriceProvider` backed by the ginlix-data REST API.
+    Otherwise falls back to :class:`FMPPriceProvider`.
+    """
+    global _price_provider
+    if _price_provider is not None:
+        return _price_provider
+
+    async with _price_provider_lock:
+        if _price_provider is not None:
+            return _price_provider
+
+        from src.config.settings import GINLIX_DATA_ENABLED
+
+        if GINLIX_DATA_ENABLED:
+            from .ginlix_data import get_ginlix_data_client
+            from .ginlix_data.price_adapter import GinlixDataPriceProvider
+
+            client = await get_ginlix_data_client()
+            _price_provider = GinlixDataPriceProvider(client)
+        else:
+            from .fmp.price_adapter import FMPPriceProvider
+
+            _price_provider = FMPPriceProvider()
+
+        return _price_provider
 
 
 class FinancialDataBackendError(RuntimeError):
