@@ -40,7 +40,7 @@ class GinlixDataSource:
     # with a from/to that falls within the window are served from cache.
     # Per-interval limit overrides for get_aggregates (default=5000).
     _LIMIT_BY_INTERVAL: dict[str, int] = {
-        "1s": 25000,  # full trading day ~23,400 bars
+        "1s": 50000,  # ginlix-data max; covers ~14h of 1s bars
     }
     _DEFAULT_LIMIT = 5000
 
