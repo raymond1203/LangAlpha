@@ -170,7 +170,7 @@ setup_tables() {
     # Run checkpoint tables setup
     if [ -f "$SCRIPT_DIR/setup_checkpoint_tables.py" ]; then
         log_info "Running setup_checkpoint_tables.py..."
-        python "$SCRIPT_DIR/setup_checkpoint_tables.py"
+        uv run python "$SCRIPT_DIR/setup_checkpoint_tables.py"
     else
         log_warn "setup_checkpoint_tables.py not found, skipping..."
     fi
@@ -178,7 +178,7 @@ setup_tables() {
     # Run unified table setup (all application tables)
     if [ -f "$SCRIPT_DIR/setup_tables.py" ]; then
         log_info "Running setup_tables.py..."
-        python "$SCRIPT_DIR/setup_tables.py"
+        uv run python "$SCRIPT_DIR/setup_tables.py"
     else
         log_warn "setup_tables.py not found, skipping..."
     fi
@@ -186,7 +186,7 @@ setup_tables() {
     # Run store table setup (LangGraph Store for cross-turn metadata)
     if [ -f "$SCRIPT_DIR/setup_store_table.py" ]; then
         log_info "Running setup_store_table.py..."
-        python "$SCRIPT_DIR/setup_store_table.py"
+        uv run python "$SCRIPT_DIR/setup_store_table.py"
     else
         log_warn "setup_store_table.py not found, skipping..."
     fi

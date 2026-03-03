@@ -211,7 +211,9 @@ async def setup_tables_async():
                             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                             last_activity_at TIMESTAMPTZ,
                             stopped_at TIMESTAMPTZ,
-                            config JSONB DEFAULT '{}'::jsonb
+                            config JSONB DEFAULT '{}'::jsonb,
+                            is_pinned BOOLEAN NOT NULL DEFAULT FALSE,
+                            sort_order INTEGER NOT NULL DEFAULT 0
                         );
                     """)
                     await cur.execute("""

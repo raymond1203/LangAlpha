@@ -142,6 +142,16 @@
     "provider": "gemini",
     "visible": true
   },
+  "gemini-2.5-pro": {
+    "model_id": "gemini-2.5-pro",
+    "provider": "gemini",
+    "visible": true
+  },
+  "gemini-2.5-flash": {
+    "model_id": "gemini-2.5-flash",
+    "provider": "gemini",
+    "visible": true
+  },
   "gpt-oss-120b": {
     "model_id": "gpt-oss-120b",
     "provider": "vllm",
@@ -193,7 +203,9 @@
       "use_previous_response_id": false
     },
     "extra_body": {
-      "thinking": {"type": "enabled"}
+      "thinking": {
+        "type": "enabled"
+      }
     }
   },
   "doubao-seed-2.0-lite": {
@@ -204,7 +216,9 @@
       "use_previous_response_id": false
     },
     "extra_body": {
-      "thinking": {"type": "enabled"}
+      "thinking": {
+        "type": "enabled"
+      }
     }
   },
   "doubao-seed-2.0-mini": {
@@ -215,7 +229,9 @@
       "use_previous_response_id": false
     },
     "extra_body": {
-      "thinking": {"type": "enabled"}
+      "thinking": {
+        "type": "enabled"
+      }
     }
   },
   "doubao-seed-2.0-code": {
@@ -226,7 +242,9 @@
       "use_previous_response_id": false
     },
     "extra_body": {
-      "thinking": {"type": "enabled"}
+      "thinking": {
+        "type": "enabled"
+      }
     }
   },
   "doubao-seed-2.0-pro-anthropic": {
@@ -370,13 +388,15 @@
         "effort": "medium",
         "summary": "auto"
       },
-      "include": ["reasoning.encrypted_content"],
+      "include": [
+        "reasoning.encrypted_content"
+      ],
       "store": false,
       "model_kwargs": {
         "instructions": "You are a helpful AI assistant."
       }
     }
-},
+  },
   "gpt-5.2-oauth": {
     "model_id": "gpt-5.2",
     "provider": "codex-oauth",
@@ -386,13 +406,15 @@
         "effort": "medium",
         "summary": "auto"
       },
-      "include": ["reasoning.encrypted_content"],
+      "include": [
+        "reasoning.encrypted_content"
+      ],
       "store": false,
       "model_kwargs": {
         "instructions": "You are a helpful AI assistant."
       }
     }
-},
+  },
   "gpt-5.3-codex-oauth": {
     "model_id": "gpt-5.3-codex",
     "provider": "codex-oauth",
@@ -402,13 +424,15 @@
         "effort": "medium",
         "summary": "auto"
       },
-      "include": ["reasoning.encrypted_content"],
+      "include": [
+        "reasoning.encrypted_content"
+      ],
       "store": false,
       "model_kwargs": {
         "instructions": "You are a helpful AI assistant."
       }
     }
-},
+  },
   "gpt-5.1-codex-max-oauth": {
     "model_id": "gpt-5.1-codex-max",
     "provider": "codex-oauth",
@@ -418,13 +442,15 @@
         "effort": "medium",
         "summary": "auto"
       },
-      "include": ["reasoning.encrypted_content"],
+      "include": [
+        "reasoning.encrypted_content"
+      ],
       "store": false,
       "model_kwargs": {
         "instructions": "You are a helpful AI assistant."
       }
     }
-},
+  },
   "gpt-5.3-codex-spark-oauth": {
     "model_id": "gpt-5.3-codex-spark",
     "provider": "codex-oauth",
@@ -434,11 +460,13 @@
         "effort": "medium",
         "summary": "auto"
       },
-      "include": ["reasoning.encrypted_content"],
+      "include": [
+        "reasoning.encrypted_content"
+      ],
       "store": false,
       "model_kwargs": {
         "instructions": "You are a helpful AI assistant."
       }
     }
-}
+  }
 }
