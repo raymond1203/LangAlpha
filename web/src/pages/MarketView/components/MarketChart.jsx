@@ -52,6 +52,7 @@ const MarketChart = React.memo(forwardRef(({
   onIntervalChange,
   onCapture,
   onStockMeta,
+  onLatestBar,
   quoteData,
   earningsData,
   overlayData,
@@ -144,6 +145,9 @@ const MarketChart = React.memo(forwardRef(({
   const rsiDataMapRef = useRef(new Map());        // time→rsiValue for O(1) crosshair lookup
   const isSyncingTimeScaleRef = useRef(false);    // Guard for bidirectional time-scale sync
 
+  // Track when the last WS live tick was applied (for REST polling fallback)
+  const lastLiveTickTimeRef = useRef(0);
+
   // Refs for scroll-based loading
   const allDataRef = useRef([]);
   const oldestDateRef = useRef(null);
@@ -169,6 +173,9 @@ const MarketChart = React.memo(forwardRef(({
 
     const { time, open, high, low, close, volume } = liveTick;
     if (!time || close == null) return;
+
+    // Track when WS last delivered a usable tick (used by REST polling fallback)
+    lastLiveTickTimeRef.current = Date.now();
 
     // Clear the "waiting for live data" hint once first tick arrives
     if (interval === '1s' && error) setError(null);
@@ -943,6 +950,10 @@ const MarketChart = React.memo(forwardRef(({
           setLastUpdateTime(new Date());
           setError(null);
 
+          // Report latest bar to parent so header can show fresh price
+          if (typeof onLatestBar === 'function') {
+            onLatestBar(data[data.length - 1]);
+          }
 
           // Subscribe to visible range changes for scroll-based loading (debounced)
           if (chartRef.current) {
@@ -1003,16 +1014,17 @@ const MarketChart = React.memo(forwardRef(({
     };
   }, [symbol, interval, onStockMeta, updateSeriesData, handleScrollLoadMore]);
 
-  // --- REST polling fallback for 1s interval when WS is unavailable ---
+  // --- REST polling fallback for 1s interval (safety net when WS not delivering) ---
   useEffect(() => {
     if (interval !== '1s' || chartMode !== 'custom') return;
-    if (wsStatus === 'connected') return; // WS is live — no polling needed
 
     let timer = null;
     let aborted = false;
 
     const poll = async () => {
       if (aborted) return;
+      // Skip this iteration if WS delivered a live tick within the last 5s
+      if (lastLiveTickTimeRef.current > Date.now() - 5000) return;
       try {
         const now = new Date();
         const toDate = now.toISOString().split('T')[0];
@@ -1053,6 +1065,12 @@ const MarketChart = React.memo(forwardRef(({
           }
           setLastUpdateTime(new Date());
           setError(null);
+
+          // Report latest bar to parent so header stays in sync
+          const latest = allDataRef.current[allDataRef.current.length - 1];
+          if (latest && typeof onLatestBar === 'function') {
+            onLatestBar(latest);
+          }
         }
       } catch (err) {
         if (!aborted) console.debug('1s REST poll failed:', err);
@@ -1066,7 +1084,7 @@ const MarketChart = React.memo(forwardRef(({
       aborted = true;
       if (timer) clearInterval(timer);
     };
-  }, [interval, wsStatus, symbol, chartMode, updateSeriesData]);
+  }, [interval, symbol, chartMode, updateSeriesData]);
 
   // --- Effect 3: TimeScale options per interval ---
   useEffect(() => {

@@ -183,6 +183,8 @@ async def ws_market_data_proxy(websocket: WebSocket, market: str, interval: str 
             close_timeout=5,
         ) as backend_ws:
 
+            _msg_count = 0
+
             async def client_to_backend():
                 """Forward messages from the frontend client to ginlix-data."""
                 try:
@@ -198,8 +200,12 @@ async def ws_market_data_proxy(websocket: WebSocket, market: str, interval: str 
 
             async def backend_to_client():
                 """Forward messages from ginlix-data to the frontend client."""
+                nonlocal _msg_count
                 try:
                     async for msg in backend_ws:
+                        _msg_count += 1
+                        if _msg_count <= 5 or _msg_count % 50 == 0:
+                            logger.debug("backend→client (#%d): %s", _msg_count, msg[:300] if isinstance(msg, str) else str(msg)[:300])
                         await websocket.send_text(msg)
 
                         # Fire-and-forget cache update for cacheable intervals

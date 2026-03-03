@@ -55,6 +55,7 @@ export default function useMarketDataWS() {
     if (staleTimerRef.current) clearTimeout(staleTimerRef.current);
     staleTimerRef.current = setTimeout(() => {
       // No message received in STALE_TIMEOUT_MS — connection likely dead
+      console.warn('[WS] stale timer fired — no message in', STALE_TIMEOUT_MS, 'ms');
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.close(4000, 'Stale connection');
       }
@@ -96,10 +97,14 @@ export default function useMarketDataWS() {
       timestamp = d.timestamp ?? d.s ?? d.e ?? Date.now();
     } else {
       // Unrecognised message (status, keepalive, etc.) — ignore
+      // Unrecognised — silently drop
       return;
     }
 
-    if (!symbol || close == null) return;
+    if (!symbol || close == null) {
+      console.warn('[WS] aggregate missing symbol/close:', { symbol, close });
+      return;
+    }
 
     // Session OHLCV tracking
     const barDate = new Date(timestamp).toISOString().slice(0, 10);
@@ -169,6 +174,7 @@ export default function useMarketDataWS() {
     // On first attempt, probe via HTTP to avoid noisy browser console errors
     if (backoffRef.current === INITIAL_BACKOFF_MS) {
       const available = await checkEndpointAvailable();
+      console.info('[WS] preflight check:', available ? 'available' : 'NOT available');
       if (!mountedRef.current) return;
       if (!available) {
         disabledRef.current = true;
@@ -195,6 +201,7 @@ export default function useMarketDataWS() {
 
     ws.onopen = () => {
       if (!mountedRef.current) { ws.close(); return; }
+      console.info('[WS] connected to', url.replace(/token=[^&]+/, 'token=***'));
       setConnectionStatus('connected');
       backoffRef.current = INITIAL_BACKOFF_MS;
       resetStaleTimer();
@@ -205,13 +212,17 @@ export default function useMarketDataWS() {
           action: 'subscribe',
           symbols: [...subscribedRef.current.keys()],
         });
+        console.info('[WS] re-subscribing on open:', msg);
         ws.send(msg);
+      } else {
+        console.info('[WS] no symbols to re-subscribe on open');
       }
     };
 
     ws.onmessage = processMessage;
 
     ws.onclose = (event) => {
+      console.info('[WS] closed: code=%d reason=%s', event.code, event.reason);
       if (staleTimerRef.current) clearTimeout(staleTimerRef.current);
       wsRef.current = null;
 
@@ -284,7 +295,11 @@ export default function useMarketDataWS() {
     });
 
     if (newSymbols.length > 0 && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ action: 'subscribe', symbols: newSymbols }));
+      const msg = JSON.stringify({ action: 'subscribe', symbols: newSymbols });
+      console.info('[WS] subscribe sent:', msg);
+      wsRef.current.send(msg);
+    } else if (newSymbols.length > 0) {
+      console.warn('[WS] subscribe deferred (ws not open), symbols:', newSymbols, 'readyState:', wsRef.current?.readyState);
     }
   }, []);
 

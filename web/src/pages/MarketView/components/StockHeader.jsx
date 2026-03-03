@@ -13,7 +13,7 @@ function getDelayedLabel(sym) {
   return EXCHANGE_LABELS[suffix] ? `${EXCHANGE_LABELS[suffix]} Delayed` : 'Delayed';
 }
 
-const StockHeader = ({ symbol, stockInfo, realTimePrice, chartMeta, displayOverride, onToggleOverview, wsStatus, ginlixDataEnabled = true, quoteData }) => {
+const StockHeader = ({ symbol, stockInfo, realTimePrice, chartMeta, displayOverride, onToggleOverview, wsStatus, wsHasData = false, ginlixDataEnabled = true, quoteData }) => {
   const formatNumber = (num) => {
     if (num == null || (num !== 0 && !num)) return '—';
     if (num >= 1e12) return (num / 1e12).toFixed(2) + 'T';
@@ -23,10 +23,12 @@ const StockHeader = ({ symbol, stockInfo, realTimePrice, chartMeta, displayOverr
     return Number(num).toFixed(2);
   };
 
-  const price = realTimePrice?.price ?? stockInfo?.Price ?? 0;
+  const price = realTimePrice?.price ?? stockInfo?.Price ?? null;
   const change = realTimePrice?.change ?? 0;
   const changePercent = realTimePrice?.changePercent ?? '0.00%';
-  const isPositive = change >= 0;
+  const isPositive = change > 0;
+  const isNegative = change < 0;
+  const priceColorClass = isPositive ? 'positive' : isNegative ? 'negative' : '';
 
   const open = realTimePrice?.open ?? stockInfo?.Open ?? null;
   const high = realTimePrice?.high ?? stockInfo?.High ?? null;
@@ -41,9 +43,9 @@ const StockHeader = ({ symbol, stockInfo, realTimePrice, chartMeta, displayOverr
   const displayName = displayOverride?.name ?? stockInfo?.Name ?? `${symbol} Corp`;
   const displayExchange = displayOverride?.exchange ?? stockInfo?.Exchange ?? '';
 
-  // Live timestamp — updates every second when WS is connected
+  // Live = WS connected AND actually delivering aggregate data for this symbol
   const usSymbol = isUSEquity(symbol);
-  const isLive = wsStatus === 'connected' && usSymbol;
+  const isLive = wsStatus === 'connected' && usSymbol && wsHasData;
   const [tickTime, setTickTime] = useState(null);
   useEffect(() => {
     if (realTimePrice?.timestamp) {
@@ -79,7 +81,7 @@ const StockHeader = ({ symbol, stockInfo, realTimePrice, chartMeta, displayOverr
               )}
               <span className="data-source-tooltip">
                 <span>Source: {ginlixDataEnabled ? 'Ginlix Data' : 'FMP'}</span>
-                <span>WebSocket: {wsStatus === 'connected' ? 'Connected' : wsStatus === 'disabled' ? 'Not available' : wsStatus === 'reconnecting' ? 'Reconnecting' : 'Disconnected'}</span>
+                <span>WebSocket: {wsStatus === 'connected' ? (wsHasData ? 'Connected (live data)' : 'Connected (no data)') : wsStatus === 'disabled' ? 'Not available' : wsStatus === 'reconnecting' ? 'Reconnecting' : 'Disconnected'}</span>
               </span>
             </span>
           </div>
@@ -89,8 +91,8 @@ const StockHeader = ({ symbol, stockInfo, realTimePrice, chartMeta, displayOverr
           </button>
         </div>
         <div className="stock-price-section">
-          <div className="stock-price">{price.toFixed(2)}</div>
-          <div className={`stock-change ${isPositive ? 'positive' : 'negative'}`}>
+          <div className={`stock-price ${priceColorClass}`}>{price != null ? price.toFixed(2) : '—'}</div>
+          <div className={`stock-change ${priceColorClass}`}>
             {isPositive ? '+' : ''}{change.toFixed(2)} {isPositive ? '+' : ''}{changePercent}
           </div>
         </div>

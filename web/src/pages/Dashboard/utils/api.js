@@ -272,18 +272,21 @@ export async function getStockPrices(symbols) {
         return { symbol: sym, price: 0, change: 0, changePercent: 0, isPositive: true };
       }
 
-      // Backend returns data with most recent first (like indices endpoint)
-      // Most recent data point is the first one (pts[0])
-      // Oldest data point is the last one (pts[pts.length - 1])
-      const mostRecent = pts[0];
-      const oldest = pts[pts.length - 1];
+      // Sort ascending by date for consistent processing
+      const sorted = [...pts].sort((a, b) => new Date(a.date) - new Date(b.date));
 
-      // Use most recent close price as the current price
-      const close = Number(mostRecent?.close ?? 0);
-      // Calculate change from oldest open to most recent close
-      const open = Number(oldest?.open ?? 0);
-      const change = close - open;
-      const pct = open ? (change / open) * 100 : 0;
+      // Isolate the latest trading day
+      const latestDate = sorted[sorted.length - 1].date.split(' ')[0];
+      const todayPoints = sorted.filter(p => p.date.startsWith(latestDate));
+      const close = Number(todayPoints[todayPoints.length - 1]?.close ?? 0);
+
+      // Change vs previous day's close (consistent with header's fetchStockQuote)
+      const prevDayPoints = sorted.filter(p => !p.date.startsWith(latestDate));
+      const previousClose = prevDayPoints.length > 0
+        ? Number(prevDayPoints[prevDayPoints.length - 1]?.close ?? 0)
+        : Number(todayPoints[0]?.open ?? 0);
+      const change = close - previousClose;
+      const pct = previousClose ? (change / previousClose) * 100 : 0;
 
       return {
         symbol: sym,

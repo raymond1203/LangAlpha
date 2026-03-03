@@ -109,6 +109,8 @@ function MarketViewInner() {
       const symbol = symbolParam.trim().toUpperCase();
       if (symbol && symbol !== selectedStock) {
         setSelectedStock(symbol);
+        setRealTimePrice(null);
+        setStockInfo(null);
         setSelectedStockDisplay(null);
         setChartMeta(null);
       }
@@ -124,6 +126,8 @@ function MarketViewInner() {
 
   const handleStockSearch = useCallback((symbol, searchResult) => {
     setSelectedStock(symbol);
+    setRealTimePrice(null);
+    setStockInfo(null);
     setSelectedStockDisplay(
       searchResult
         ? {
@@ -143,11 +147,10 @@ function MarketViewInner() {
     return () => wsUnsubscribe([selectedStock]);
   }, [selectedStock, wsSubscribe, wsUnsubscribe]);
 
-  // Wire WS price → realTimePrice state
-  useEffect(() => {
-    const wsPrice = wsPrices.get(selectedStock);
-    if (wsPrice) setRealTimePrice(wsPrice);
-  }, [wsPrices, selectedStock]);
+  // Display price: prefer WS live data over REST. Only use realTimePrice if it
+  // belongs to the current symbol (prevents stale data flash when switching tickers).
+  const realTimePriceMatch = realTimePrice?.symbol === selectedStock ? realTimePrice : null;
+  const displayPrice = wsPrices.get(selectedStock) || realTimePriceMatch;
 
   // Consolidated fetch: stockInfo + realTimePrice from a single API call
   // with AbortController and Page Visibility API.
@@ -306,12 +309,12 @@ function MarketViewInner() {
       if (overviewData.quote.yearLow != null) parts.push(`52-week low: ${overviewData.quote.yearLow}`);
     }
 
-    if (realTimePrice) {
-      parts.push(`Real-time price: $${realTimePrice.price} (${realTimePrice.change >= 0 ? '+' : ''}${realTimePrice.change} / ${realTimePrice.changePercent})`);
+    if (displayPrice) {
+      parts.push(`Real-time price: $${displayPrice.price} (${displayPrice.change >= 0 ? '+' : ''}${displayPrice.change} / ${displayPrice.changePercent})`);
     }
 
     setChartImageDesc(parts.join('\n'));
-  }, [selectedStock, selectedInterval, stockInfo, selectedStockDisplay, overviewData, realTimePrice]);
+  }, [selectedStock, selectedInterval, stockInfo, selectedStockDisplay, overviewData, displayPrice]);
 
   const handleSendMessage = useCallback(async (message, planMode, attachments = []) => {
     // Build additional_context from chart image + file attachments
@@ -406,6 +409,33 @@ function MarketViewInner() {
     setChartMeta(meta);
   }, []);
 
+  // Update header price from chart's latest bar (bridges REST polling data to header).
+  // Uses a ref for stockInfo to keep the callback identity stable (avoids MarketChart re-renders).
+  const stockInfoRef = useRef(stockInfo);
+  useEffect(() => { stockInfoRef.current = stockInfo; }, [stockInfo]);
+
+  const handleLatestBar = useCallback((bar) => {
+    if (!bar?.close) return;
+    setRealTimePrice((prev) => {
+      if (!prev) return prev;
+      // Derive previous day's close from the initial fetchStockQuote result
+      // (prev.price - prev.change = previousClose) to stay consistent with the header.
+      const previousClose = (prev.price ?? 0) - (prev.change ?? 0);
+      const change = bar.close - previousClose;
+      const changePct = previousClose
+        ? ((change / previousClose) * 100).toFixed(2) + '%'
+        : '0.00%';
+      return {
+        ...prev,
+        price: Math.round(bar.close * 100) / 100,
+        close: bar.close,
+        change: Math.round(change * 100) / 100,
+        changePercent: changePct,
+        timestamp: bar.time * 1000,
+      };
+    });
+  }, []);
+
   const handleDragStart = useCallback((e) => {
     e.preventDefault();
     isDragging.current = true;
@@ -445,11 +475,12 @@ function MarketViewInner() {
           <StockHeader
             symbol={selectedStock}
             stockInfo={stockInfo}
-            realTimePrice={realTimePrice}
+            realTimePrice={displayPrice}
             chartMeta={chartMeta}
             displayOverride={selectedStockDisplay}
             onToggleOverview={() => setShowOverview(v => !v)}
             wsStatus={wsStatus}
+            wsHasData={!!wsPrices.get(selectedStock)}
             ginlixDataEnabled={ginlixDataEnabled}
             quoteData={overviewData?.quote || null}
           />
@@ -470,6 +501,7 @@ function MarketViewInner() {
               onIntervalChange={handleIntervalChange}
               onCapture={handleCaptureChart}
               onStockMeta={handleStockMeta}
+              onLatestBar={handleLatestBar}
               quoteData={overviewData?.quote || null}
               earningsData={overviewData?.earningsSurprises || null}
               overlayData={overlayData}

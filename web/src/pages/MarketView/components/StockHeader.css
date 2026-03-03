@@ -44,8 +44,15 @@
 .stock-price {
   font-size: 28px;
   font-weight: 600;
-  color: var(--color-profit);
   margin-bottom: 4px;
+}
+
+.stock-price.positive {
+  color: var(--color-profit);
+}
+
+.stock-price.negative {
+  color: var(--color-loss);
 }
 
 .stock-change {

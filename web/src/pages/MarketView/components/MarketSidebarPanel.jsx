@@ -17,15 +17,22 @@ function MarketSidebarPanel({ activeSymbol, onSymbolClick }) {
   const portfolio = usePortfolioData();
   const { prices: wsPrices, connectionStatus: wsStatus, subscribe: wsSubscribe, unsubscribe: wsUnsubscribe } = useMarketDataWSContext();
 
-  // Subscribe all sidebar symbols to WS feed
-  useEffect(() => {
-    const symbols = [...new Set([
+  // Stable symbol string — only changes when the actual set of symbols changes,
+  // not when the rows array reference is replaced by a polling fetch.
+  const sidebarSymbolsKey = useMemo(() => {
+    const all = [...new Set([
       ...watchlist.rows.map((r) => r.symbol),
       ...portfolio.rows.map((r) => r.symbol),
-    ])].filter(Boolean);
+    ])].filter(Boolean).sort();
+    return all.join(',');
+  }, [watchlist.rows, portfolio.rows]);
+
+  // Subscribe all sidebar symbols to WS feed
+  useEffect(() => {
+    const symbols = sidebarSymbolsKey ? sidebarSymbolsKey.split(',') : [];
     if (symbols.length) wsSubscribe(symbols);
     return () => { if (symbols.length) wsUnsubscribe(symbols); };
-  }, [watchlist.rows, portfolio.rows, wsSubscribe, wsUnsubscribe]);
+  }, [sidebarSymbolsKey, wsSubscribe, wsUnsubscribe]);
 
   const [deleteConfirm, setDeleteConfirm] = useState({
     open: false,
@@ -186,7 +193,7 @@ function MarketSidebarPanel({ activeSymbol, onSymbolClick }) {
       <div className="market-sidebar-section-header">
         <span className="market-sidebar-section-title">
           {isWatchlist ? 'WATCHLIST' : 'PORTFOLIO'}
-          {wsStatus === 'connected' && <span className="market-sidebar-live-dot" title="Live prices" />}
+          {wsStatus === 'connected' && wsPrices.size > 0 && <span className="market-sidebar-live-dot" title="Live prices" />}
         </span>
         <button
           className="market-sidebar-add-btn"
