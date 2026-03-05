@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 CLAUDE_PROVIDER = "claude-oauth"
 CLAUDE_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 CLAUDE_AUTHORIZE_URL = "https://claude.ai/oauth/authorize"
-CLAUDE_TOKEN_URL = "https://console.anthropic.com/v1/oauth/token"
+CLAUDE_TOKEN_URL = "https://api.anthropic.com/v1/oauth/token"
 CLAUDE_REDIRECT_URI = "https://console.anthropic.com/oauth/code/callback"
 CLAUDE_SCOPES = "org:create_api_key user:profile user:inference"
 
@@ -167,6 +167,10 @@ async def exchange_code(
                 "code_verifier": code_verifier,
             },
         )
+        if resp.status_code >= 400:
+            logger.error(
+                f"[claude_oauth] Token exchange failed: status={resp.status_code} body={resp.text}"
+            )
         resp.raise_for_status()
         data = resp.json()
         return {
