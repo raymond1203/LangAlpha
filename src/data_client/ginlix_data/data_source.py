@@ -127,6 +127,7 @@ class GinlixDataSource:
             user_id=user_id,
         )
         bars = [self._normalize(r) for r in raw]
+        bars.sort(key=lambda b: b.get("time", 0))  # ensure ascending for cache watermark/merge
         first_t = bars[0].get("time") if bars else None
         last_t = bars[-1].get("time") if bars else None
         logger.info(

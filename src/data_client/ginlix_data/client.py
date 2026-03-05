@@ -78,7 +78,7 @@ class GinlixDataClient:
             all_results.extend(results)
 
             cursor = body.get("next_cursor")
-            if not cursor or len(results) < limit:
+            if not cursor or not results:
                 break
 
             logger.info(
