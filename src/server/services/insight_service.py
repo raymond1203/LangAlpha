@@ -1,11 +1,11 @@
 """InsightService — Schedule-based US market news gathering via Tavily Research API.
 
 Schedule (all times Eastern / America/New_York):
-  - 9:00 AM  pre_market    — Overnight + pre-market news (8 PM yesterday → 9 AM)
+  - 4:00 AM  pre_market    — Overnight + pre-market news (8 PM yesterday → 4 AM)
   - 10–20    market_update  — Hourly news summaries (weekdays only)
   - 8:30 PM  post_market   — End-of-day recap
 
-Weekends: pre_market (9 AM) and post_market (8:30 PM) only — no hourly updates.
+Weekends: pre_market (4 AM) and post_market (8:30 PM) only — no hourly updates.
 """
 
 import asyncio
@@ -153,7 +153,7 @@ class InsightService:
         self._model = "mini"
         self._tz = ET
         # Schedule times (overridden by config)
-        self._pre_market = datetime.strptime("09:00", "%H:%M").time()
+        self._pre_market = datetime.strptime("04:00", "%H:%M").time()
         self._post_market = datetime.strptime("20:30", "%H:%M").time()
         self._update_start = datetime.strptime("10:00", "%H:%M").time()
         self._update_end = datetime.strptime("20:00", "%H:%M").time()
@@ -171,7 +171,7 @@ class InsightService:
         schedule = config.get("schedule", {})
         if schedule:
             self._pre_market = datetime.strptime(
-                schedule.get("pre_market", "09:00"), "%H:%M"
+                schedule.get("pre_market", "04:00"), "%H:%M"
             ).time()
             self._post_market = datetime.strptime(
                 schedule.get("post_market", "20:30"), "%H:%M"

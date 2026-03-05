@@ -122,6 +122,9 @@ async def get_todays_market_insights(
     """Get all completed insights for today (America/New_York).
 
     Returns card columns only, ordered newest first.
+    If no insights exist for today, falls back to the most recent insight
+    from yesterday so there is never a gap between post-market close and
+    the next day's first insight.
     """
     et = ZoneInfo("America/New_York")
     today = datetime.now(et).date()
@@ -132,19 +135,18 @@ async def get_todays_market_insights(
         today + timedelta(days=1), datetime.min.time(), tzinfo=et
     ).astimezone(timezone.utc)
 
+    user_cond = "user_id IS NULL" if user_id is None else "user_id = %s"
+
     async with get_db_connection() as conn:
         async with conn.cursor(row_factory=dict_row) as cur:
             conditions = [
                 "status = 'completed'",
                 "created_at >= %s",
                 "created_at < %s",
+                user_cond,
             ]
             params: list = [day_start, day_end]
-
-            if user_id is None:
-                conditions.append("user_id IS NULL")
-            else:
-                conditions.append("user_id = %s")
+            if user_id is not None:
                 params.append(user_id)
 
             where = " AND ".join(conditions)
@@ -158,7 +160,38 @@ async def get_todays_market_insights(
                 params,
             )
             rows = await cur.fetchall()
-            return [dict(r) for r in rows]
+
+            if rows:
+                return [dict(r) for r in rows]
+
+            # No insights today yet — fall back to yesterday's most recent
+            yesterday_start = datetime.combine(
+                today - timedelta(days=1), datetime.min.time(), tzinfo=et
+            ).astimezone(timezone.utc)
+
+            fallback_conditions = [
+                "status = 'completed'",
+                "created_at >= %s",
+                "created_at < %s",
+                user_cond,
+            ]
+            fallback_params: list = [yesterday_start, day_start]
+            if user_id is not None:
+                fallback_params.append(user_id)
+
+            fallback_where = " AND ".join(fallback_conditions)
+            await cur.execute(
+                f"""
+                SELECT {CARD_COLUMNS}
+                FROM market_insights
+                WHERE {fallback_where}
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                fallback_params,
+            )
+            fallback_row = await cur.fetchone()
+            return [dict(fallback_row)] if fallback_row else []
 
 
 async def get_latest_completed_at(
