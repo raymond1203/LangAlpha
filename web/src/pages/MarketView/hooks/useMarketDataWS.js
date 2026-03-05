@@ -37,6 +37,7 @@ const HIDDEN_CLOSE_DELAY_MS = 60000; // close 60s after page hidden
 export default function useMarketDataWS() {
   const [prices, setPrices] = useState(() => new Map());
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
+  const [dataLevel, setDataLevel] = useState(null); // 'second' | 'minute' | null
   const [ginlixDataEnabled, setGinlixDataEnabled] = useState(true); // assume enabled until preflight says otherwise
 
   const wsRef = useRef(null);
@@ -215,6 +216,9 @@ export default function useMarketDataWS() {
       if (!mountedRef.current) { ws.close(); return; }
       console.info('[WS] connected to', url.replace(/token=[^&]+/, 'token=***'));
       setConnectionStatus('connected');
+      // Derive data level from the WS URL interval param
+      const wsInterval = new URL(base, location.origin).searchParams.get('interval') || 'second';
+      setDataLevel(wsInterval === 'second' ? 'second' : 'minute');
       backoffRef.current = INITIAL_BACKOFF_MS;
       resetStaleTimer();
 
@@ -282,6 +286,7 @@ export default function useMarketDataWS() {
 
   const disconnect = useCallback(() => {
     intentionalCloseRef.current = true;
+    setDataLevel(null);
     if (reconnectTimerRef.current) {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
@@ -380,5 +385,5 @@ export default function useMarketDataWS() {
     if (symbol && price != null) dayOpenRef.current.set(symbol.toUpperCase(), price);
   }, []);
 
-  return { prices, connectionStatus, ginlixDataEnabled, subscribe, unsubscribe, setPreviousClose, setDayOpen };
+  return { prices, connectionStatus, dataLevel, ginlixDataEnabled, subscribe, unsubscribe, setPreviousClose, setDayOpen };
 }

@@ -68,9 +68,10 @@ export class ExtendedHoursBgPrimitive {
                 if (x1 === null) x1 = 0;
                 if (x2 === null) x2 = mediaSize.width;
 
-                // Small padding to cover full bar widths at region edges
-                const left = Math.max(0, x1 - 1);
-                const right = Math.min(mediaSize.width, x2 + 1);
+                // Pad by half a bar so the background covers full bar width at edges
+                const halfBar = (timeScale.options?.().barSpacing ?? 6) / 2;
+                const left = Math.max(0, x1 - halfBar);
+                const right = Math.min(mediaSize.width, x2 + halfBar);
                 if (right > left) {
                   ctx.fillStyle = colors[type] || colors.post;
                   ctx.fillRect(left, 0, right - left, mediaSize.height);

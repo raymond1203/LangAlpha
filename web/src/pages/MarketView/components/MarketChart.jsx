@@ -8,7 +8,7 @@ import {
   getChartTheme,
   INTERVALS, PRIMARY_INTERVAL_KEYS, INITIAL_LOAD_DAYS, SCROLL_CHUNK_DAYS,
   SCROLL_LOAD_THRESHOLD, RANGE_CHANGE_DEBOUNCE_MS,
-  MA_CONFIGS, DEFAULT_ENABLED_MA, RSI_PERIODS, BARS_PER_DAY, AUTO_FIT_BARS,
+  MA_CONFIGS, DEFAULT_ENABLED_MA, RSI_PERIODS, BARS_PER_DAY, AUTO_FIT_BARS, TARGET_BAR_SPACING,
   OVERLAY_COLORS, OVERLAY_LABELS,
   EXTENDED_HOURS_INTERVALS, getExtendedHoursType, computeExtendedHoursRegions,
   supports1sInterval,
@@ -129,6 +129,8 @@ const MarketChart = React.memo(forwardRef(({
   useEffect(() => { enabledMaPeriodsRef.current = enabledMaPeriods; }, [enabledMaPeriods]);
   useEffect(() => { rsiPeriodRef.current = rsiPeriod; }, [rsiPeriod]);
   useEffect(() => { intervalRef.current = interval; }, [interval]);
+  const symbolRef = useRef(symbol);
+  useEffect(() => { symbolRef.current = symbol; }, [symbol]);
 
   // Persist user preferences to localStorage
   useEffect(() => { savePref('maPeriods', enabledMaPeriods); }, [enabledMaPeriods]);
@@ -206,7 +208,9 @@ const MarketChart = React.memo(forwardRef(({
             try {
               const fromDate = new Date(lastDataTime * 1000).toISOString().split('T')[0];
               const toDate = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-              const result = await fetchStockData(symbol, interval, fromDate, toDate);
+              const sym = symbol;
+              const result = await fetchStockData(sym, interval, fromDate, toDate);
+              if (symbolRef.current !== sym) return; // symbol changed, discard stale data
               const fillData = result?.data;
               if (Array.isArray(fillData) && fillData.length > 0) {
                 // Merge: insert bars that fill the gap (between old last bar and current last bar)
@@ -304,6 +308,11 @@ const MarketChart = React.memo(forwardRef(({
       data.push({ time: barTime, open: barOpen, high: barHigh, low: barLow, close: barClose, volume: barVolume });
     }
 
+    // Keep extended-hours background in sync with live bars
+    if (ext && extHoursBgRef.current) {
+      extHoursBgRef.current.setRegions(computeExtendedHoursRegions(data));
+    }
+
     // Incremental RSI update
     if (rsiSmoothingRef.current && rsiSeriesRef.current) {
       if (isSameBar) {
@@ -374,23 +383,32 @@ const MarketChart = React.memo(forwardRef(({
       });
     },
     captureChartAsDataUrl: async () => {
-      // Capture the Light chart (main + RSI) for LLM context.
-      // Temporarily reveal the hidden wrapper so html2canvas can render it.
-      const container = chartContainerRef.current?.parentElement; // .charts-container
-      if (!container) return null;
-      return revealForCapture(async () => {
-        try {
-          const canvas = await html2canvas(container, {
-            backgroundColor: ct.bg,
-            scale: 1,
-            logging: false,
-          });
-          return canvas.toDataURL('image/jpeg', 0.85);
-        } catch (err) {
-          console.error('Chart capture failed:', err);
-          return null;
-        }
-      });
+      // Capture main chart (+ RSI if visible) using native takeScreenshot.
+      // html2canvas can't read lightweight-charts canvas pixels, so we
+      // stitch the native screenshots together on an offscreen canvas.
+      try {
+        const mainCanvas = chartRef.current?.takeScreenshot();
+        const rsiCanvas = rsiChartRef.current?.takeScreenshot();
+        if (!mainCanvas) return null;
+
+        const mainW = mainCanvas.width, mainH = mainCanvas.height;
+        const rsiW = rsiCanvas?.width || 0, rsiH = rsiCanvas?.height || 0;
+        const totalH = mainH + (rsiCanvas ? rsiH : 0);
+
+        const offscreen = document.createElement('canvas');
+        offscreen.width = Math.max(mainW, rsiW);
+        offscreen.height = totalH;
+        const ctx = offscreen.getContext('2d');
+        ctx.fillStyle = ct.bg;
+        ctx.fillRect(0, 0, offscreen.width, offscreen.height);
+        ctx.drawImage(mainCanvas, 0, 0);
+        if (rsiCanvas) ctx.drawImage(rsiCanvas, 0, mainH);
+
+        return offscreen.toDataURL('image/jpeg', 0.85);
+      } catch (err) {
+        console.error('Chart capture failed:', err);
+        return null;
+      }
     },
     getChartMetadata: () => {
       const data = allDataRef.current;
@@ -535,14 +553,16 @@ const MarketChart = React.memo(forwardRef(({
   // --- Fetch older bars before current oldest and merge into series ---
   const fetchAndPrepend = async (days) => {
     if (!oldestDateRef.current) return;
+    const sym = symbol;
     const oldest = new Date(oldestDateRef.current * 1000);
     const toDate = new Date(oldest);
     toDate.setDate(toDate.getDate() - 1);
     const fromDate = new Date(toDate);
     fromDate.setDate(fromDate.getDate() - days);
 
-    const result = await fetchStockData(symbol, interval,
+    const result = await fetchStockData(sym, interval,
       fromDate.toISOString().split('T')[0], toDate.toISOString().split('T')[0]);
+    if (symbolRef.current !== sym) return; // symbol changed, discard stale data
     const newData = result?.data;
     if (newData && Array.isArray(newData) && newData.length > 0) {
       mergePrependedData(newData);
@@ -996,6 +1016,12 @@ const MarketChart = React.memo(forwardRef(({
       setRsiValue(null);
     };
 
+    // Immediately clear stale data so the price scale resets for the new symbol
+    clearChartSeries();
+    if (chartRef.current) {
+      chartRef.current.applyOptions({ watermark: { text: symbol } });
+    }
+
     const loadData = async () => {
       setLoading(true);
       setError(null);
@@ -1028,16 +1054,10 @@ const MarketChart = React.memo(forwardRef(({
 
           updateSeriesData(data);
 
+          // Apply default view: auto-fit barSpacing + latest bar centered
+          applyDefaultView();
           if (chartRef.current) {
-            const ts = chartRef.current.timeScale();
-            const idealBars = AUTO_FIT_BARS[interval];
-            if (idealBars && interval !== '1day' && data.length > idealBars) {
-              // For intraday intervals, show only the most recent N bars so that
-              // overnight/weekend gaps don't dominate the view at wider zoom.
-              ts.setVisibleLogicalRange({ from: data.length - idealBars, to: data.length });
-            } else {
-              ts.fitContent();
-            }
+            chartRef.current.priceScale('right').applyOptions({ autoScale: true });
           }
           setLastUpdateTime(new Date());
           setError(null);
@@ -1185,52 +1205,44 @@ const MarketChart = React.memo(forwardRef(({
     }
   }, [enabledMaPeriods, rsiPeriod, updateSeriesData]);
 
+  // --- Default view: auto-fit barSpacing + latest bar centered ---
+  const applyDefaultView = useCallback(() => {
+    if (!chartRef.current) return;
+    const ts = chartRef.current.timeScale();
+    const target = TARGET_BAR_SPACING[intervalRef.current] || 8;
+    ts.applyOptions({ barSpacing: target });
+    const dataLen = allDataRef.current.length;
+    if (dataLen === 0) { ts.scrollToRealTime(); return; }
+    const chartWidth = chartRef.current.options().width || chartContainerRef.current?.clientWidth || 800;
+    const halfBars = Math.floor(chartWidth / target / 2);
+    ts.setVisibleLogicalRange({
+      from: dataLen - halfBars,
+      to: dataLen + halfBars,
+    });
+  }, []);
+
   // --- Tool button handlers ---
   const handleZoomIn = useCallback(() => {
     if (!chartRef.current) return;
     const ts = chartRef.current.timeScale();
-    const range = ts.getVisibleLogicalRange();
-    if (!range) return;
-    const center = (range.from + range.to) / 2;
-    const halfSpan = (range.to - range.from) / 4; // halve the range
-    ts.setVisibleLogicalRange({ from: center - halfSpan, to: center + halfSpan });
+    const current = ts.options().barSpacing;
+    ts.applyOptions({ barSpacing: Math.min(current * 1.5, 50) });
   }, []);
 
   const handleZoomOut = useCallback(() => {
     if (!chartRef.current) return;
     const ts = chartRef.current.timeScale();
-    const range = ts.getVisibleLogicalRange();
-    if (!range) return;
-    const center = (range.from + range.to) / 2;
-    const halfSpan = (range.to - range.from); // double the range
-    ts.setVisibleLogicalRange({ from: center - halfSpan, to: center + halfSpan });
+    const current = ts.options().barSpacing;
+    ts.applyOptions({ barSpacing: Math.max(current / 1.5, 1) });
   }, []);
 
-  const handleScrollToRealTime = useCallback(() => {
-    if (!chartRef.current) return;
-    const ts = chartRef.current.timeScale();
-    const dataLen = allDataRef.current.length;
-    if (dataLen === 0) { ts.scrollToRealTime(); return; }
-    // Show ideal bar count anchored to the latest bar
-    const idealBars = AUTO_FIT_BARS[intervalRef.current] || 180;
-    const barsToShow = Math.min(idealBars, dataLen);
-    ts.setVisibleLogicalRange({ from: dataLen - barsToShow, to: dataLen });
-  }, []);
+  const handleScrollToRealTime = useCallback(() => applyDefaultView(), [applyDefaultView]);
 
   const handleAutoNormalize = useCallback(() => {
     if (!chartRef.current) return;
     const ts = chartRef.current.timeScale();
-    const dataLen = allDataRef.current.length;
-    if (dataLen === 0) return;
-    const idealBars = AUTO_FIT_BARS[intervalRef.current] || 180;
-    const half = Math.min(idealBars, dataLen) / 2;
-    // Center on the midpoint of the currently visible range
-    const range = ts.getVisibleLogicalRange();
-    const center = range ? (range.from + range.to) / 2 : dataLen - half;
-    // Clamp so we don't scroll past data boundaries
-    const from = Math.max(0, center - half);
-    const to = Math.min(dataLen, from + half * 2);
-    ts.setVisibleLogicalRange({ from, to });
+    // Reset zoom to comfortable bar size, keeping current scroll position
+    ts.applyOptions({ barSpacing: TARGET_BAR_SPACING[intervalRef.current] || 8 });
   }, []);
 
   const handleFitAll = useCallback(() => {

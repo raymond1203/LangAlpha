@@ -14,7 +14,7 @@ function getDelayedLabel(sym) {
   return EXCHANGE_LABELS[suffix] ? `${EXCHANGE_LABELS[suffix]} Delayed` : 'Delayed';
 }
 
-const StockHeader = ({ symbol, stockInfo, realTimePrice, chartMeta, displayOverride, onToggleOverview, wsStatus, wsHasData = false, ginlixDataEnabled = true, quoteData, marketStatus, snapshot }) => {
+const StockHeader = ({ symbol, stockInfo, realTimePrice, chartMeta, displayOverride, onToggleOverview, wsStatus, wsHasData = false, wsDataLevel = null, ginlixDataEnabled = true, quoteData, marketStatus, snapshot }) => {
   const formatNumber = (num) => {
     if (num == null || (num !== 0 && !num)) return '—';
     if (num >= 1e12) return (num / 1e12).toFixed(2) + 'T';
@@ -86,7 +86,7 @@ const StockHeader = ({ symbol, stockInfo, realTimePrice, chartMeta, displayOverr
               )}
               <span className="data-source-tooltip">
                 <span>Source: {ginlixDataEnabled ? 'Ginlix Data' : 'FMP'}</span>
-                <span>WebSocket: {wsStatus === 'connected' ? (wsHasData ? 'Connected (live data)' : 'Connected (no data)') : wsStatus === 'disabled' ? 'Not available' : wsStatus === 'reconnecting' ? 'Reconnecting' : 'Disconnected'}</span>
+                <span>WebSocket: {wsStatus === 'connected' ? (wsHasData ? `Connected (${wsDataLevel === 'second' ? 'second' : 'minute'}-level)` : 'Connected (no data)') : wsStatus === 'disabled' ? 'Not available' : wsStatus === 'reconnecting' ? 'Reconnecting' : 'Disconnected'}</span>
               </span>
             </span>
           </div>

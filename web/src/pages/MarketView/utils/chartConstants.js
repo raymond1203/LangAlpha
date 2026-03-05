@@ -82,7 +82,7 @@ export const INITIAL_LOAD_DAYS = {
 
 // Days to prepend on scroll-left per interval
 export const SCROLL_CHUNK_DAYS = {
-  '1s': 1, '1min': 5, '5min': 20, '15min': 30, '30min': 60,
+  '1s': 0, '1min': 5, '5min': 20, '15min': 30, '30min': 60,
   '1hour': 120, '4hour': 180, '1day': 365,
 };
 
@@ -109,10 +109,23 @@ export const BARS_PER_DAY = {
   '1hour': 16, '4hour': 4, '1day': 1,
 };
 
-// Ideal visible bar count per interval for "auto normalize"
+// Ideal visible bar count per interval (legacy, used by scroll-load heuristics)
 export const AUTO_FIT_BARS = {
   '1s': 300, '1min': 390, '5min': 390, '15min': 200,
   '30min': 200, '1hour': 180, '4hour': 180, '1day': 180,
+};
+
+// Target bar spacing (pixels) per interval for readable candlestick charts.
+// Container width determines how many bars are visible at this spacing.
+export const TARGET_BAR_SPACING = {
+  '1s': 5,     // Dense: overview of rapid ticks
+  '1min': 8,   // Sweet spot for intraday monitoring
+  '5min': 8,
+  '15min': 9,
+  '30min': 9,
+  '1hour': 10,
+  '4hour': 10,
+  '1day': 7,   // Tighter for longer history overview
 };
 
 // --- Overlay constants ---

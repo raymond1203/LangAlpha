@@ -34,7 +34,7 @@ function MarketViewInner() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
-  const { prices: wsPrices, connectionStatus: wsStatus, ginlixDataEnabled, subscribe: wsSubscribe, unsubscribe: wsUnsubscribe, setPreviousClose, setDayOpen } = useMarketDataWSContext();
+  const { prices: wsPrices, connectionStatus: wsStatus, dataLevel: wsDataLevel, ginlixDataEnabled, subscribe: wsSubscribe, unsubscribe: wsUnsubscribe, setPreviousClose, setDayOpen } = useMarketDataWSContext();
   const [selectedStock, setSelectedStock] = useState(() => loadPref('symbol', 'GOOGL'));
   const [selectedStockDisplay, setSelectedStockDisplay] = useState(null);
   const [stockInfo, setStockInfo] = useState(null);
@@ -499,6 +499,7 @@ function MarketViewInner() {
             onToggleOverview={() => setShowOverview(v => !v)}
             wsStatus={wsStatus}
             wsHasData={!!wsPrices.get(selectedStock)}
+            wsDataLevel={wsDataLevel}
             ginlixDataEnabled={ginlixDataEnabled}
             quoteData={overviewData?.quote || null}
             marketStatus={marketStatus}
