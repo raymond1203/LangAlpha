@@ -163,7 +163,10 @@
     "claudePastePrompt": "在 claude.ai 授权后，请将页面显示的授权码粘贴到下方：",
     "claudePasteError": "授权码交换失败，请重试。",
     "claudeConnectFailed": "启动 Claude OAuth 失败",
-    "claudeOpenAgain": "重新打开授权页面"
+    "claudeOpenAgain": "重新打开授权页面",
+    "starredModels": "快速切换模型",
+    "starredModelsDesc": "标星的模型会显示在聊天输入框中方便快速切换",
+    "addModels": "添加"
   },
   "dashboard": {
     "title": "LangAlpha",

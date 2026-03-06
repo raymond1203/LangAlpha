@@ -163,7 +163,10 @@
     "claudePastePrompt": "After authorizing on claude.ai, paste the code shown on the page below:",
     "claudePasteError": "Failed to exchange code. Please try again.",
     "claudeConnectFailed": "Failed to initiate Claude OAuth",
-    "claudeOpenAgain": "Open authorize page again"
+    "claudeOpenAgain": "Open authorize page again",
+    "starredModels": "Quick-access models",
+    "starredModelsDesc": "Starred models appear in the chat input for quick switching",
+    "addModels": "Add"
   },
   "dashboard": {
     "title": "LangAlpha",

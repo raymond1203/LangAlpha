@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, User, LogOut, Eye, EyeOff, Trash2, HelpCircle, MessageSquareText, Sun, Moon, Monitor, Link2, Unlink, ExternalLink, Shield, ClipboardCopy, Plus, Pencil } from 'lucide-react';
+import { X, User, LogOut, Eye, EyeOff, Trash2, HelpCircle, MessageSquareText, Sun, Moon, Monitor, Link2, Unlink, ExternalLink, Shield, ClipboardCopy, Plus, Pencil, ChevronDown, Search, Pin } from 'lucide-react';
 import { Input } from '../../../components/ui/input';
 import { Select } from '../../../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../../components/ui/dialog';
@@ -36,6 +36,7 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
   const [availableModels, setAvailableModels] = useState({});
   const [preferredModel, setPreferredModel] = useState('');
   const [preferredFlashModel, setPreferredFlashModel] = useState('');
+  const [starredModels, setStarredModels] = useState([]);
   const [byokEnabled, setByokEnabled] = useState(false);
   const [byokProviders, setByokProviders] = useState([]);
   const [keyInputs, setKeyInputs] = useState({});
@@ -50,6 +51,8 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
   const [addProviderError, setAddProviderError] = useState(null);
   const [modelTabError, setModelTabError] = useState(null);
   const [modelSaveSuccess, setModelSaveSuccess] = useState(false);
+  const [showModelPicker, setShowModelPicker] = useState(false);
+  const [modelPickerSearch, setModelPickerSearch] = useState('');
 
   // Custom Models state
   const [customModels, setCustomModels] = useState([]);
@@ -203,6 +206,7 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
       setBaseUrlInputs(initialBaseUrls);
       setPreferredModel(prefsRes?.other_preference?.preferred_model || '');
       setPreferredFlashModel(prefsRes?.other_preference?.preferred_flash_model || '');
+      setStarredModels(prefsRes?.other_preference?.starred_models || []);
       setCustomModels(prefsRes?.other_preference?.custom_models || []);
       setCodexOAuthStatus(codexStatus || { connected: false });
       setClaudeOAuthStatus(claudeStatus || { connected: false });
@@ -228,6 +232,7 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
         other_preference: {
           preferred_model: preferredModel || null,
           preferred_flash_model: preferredFlashModel || null,
+          starred_models: starredModels.length > 0 ? starredModels : null,
           custom_models: customModels.length > 0 ? customModels : null,
           custom_providers: customProvidersList.length > 0 ? customProvidersList : null,
         },
@@ -255,6 +260,7 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
       }
 
       setModelSaveSuccess(true);
+      refreshUser();
       setTimeout(() => setModelSaveSuccess(false), 3000);
     } catch {
       setModelTabError(t('settings.failedToSaveSettings'));
@@ -1009,50 +1015,166 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
                 <div className="space-y-6">
                   {/* Section 1: Model Preferences */}
                   <div>
-                    {[
-                      { label: t('settings.defaultModel'), desc: t('settings.defaultModelDesc'), value: preferredModel, setter: setPreferredModel },
-                      { label: t('settings.flashModel'), desc: t('settings.flashModelDesc'), value: preferredFlashModel, setter: setPreferredFlashModel },
-                    ].map(({ label, desc, value, setter }) => (
-                      <div key={label} className="mb-4">
-                        <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-text-primary)' }}>{label}</label>
-                        <p className="text-xs mb-2" style={{ color: 'var(--color-text-tertiary)' }}>{desc}</p>
-                        <Select
-                          value={value}
-                          onChange={(e) => setter(e.target.value)}
-                          disabled={isSubmitting}
+                    {/* Default + Flash selectors — side by side */}
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        { label: t('settings.defaultModel'), desc: t('settings.defaultModelDesc'), value: preferredModel, setter: setPreferredModel },
+                        { label: t('settings.flashModel'), desc: t('settings.flashModelDesc'), value: preferredFlashModel, setter: setPreferredFlashModel },
+                      ].map(({ label, desc, value, setter }) => (
+                        <div key={label}>
+                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>{label}</label>
+                          <Select
+                            value={value}
+                            onChange={(e) => setter(e.target.value)}
+                            disabled={isSubmitting}
+                          >
+                            <option value="">{t('settings.systemDefault')}</option>
+                            {Object.entries(availableModels).map(([provider, providerData]) => {
+                              const models = Array.isArray(providerData) ? providerData : providerData?.models || [];
+                              const displayName = providerData?.display_name || provider.charAt(0).toUpperCase() + provider.slice(1);
+                              return (
+                              <optgroup key={provider} label={displayName}>
+                                {models.map((m) => (
+                                  <option key={m} value={m}>{m}</option>
+                                ))}
+                              </optgroup>
+                              );
+                            })}
+                            {byokProviders.filter(p => p.is_custom && p.has_key).length > 0 && (
+                              <optgroup label={t('settings.byokProviders', 'BYOK Providers')}>
+                                {byokProviders.filter(p => p.is_custom && p.has_key).map((prov) => (
+                                  <option key={`byok-${prov.provider}`} value={prov.provider}>
+                                    {prov.display_name || prov.provider} ({prov.parent_provider})
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                            {customModels.length > 0 && (
+                              <optgroup label={t('settings.customModels')}>
+                                {customModels.map((cm) => (
+                                  <option key={`custom-${cm.name}`} value={cm.name}>{cm.name}</option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </Select>
+                          <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-tertiary)' }}>{desc}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Quick-access models — compact strip */}
+                    <div style={{ marginTop: '16px' }}>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+                        {t('settings.starredModels')}
+                      </label>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {starredModels.map((key) => (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => setStarredModels(prev => prev.filter(k => k !== key))}
+                            className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-md text-xs transition-colors group"
+                            style={{
+                              border: '1px solid var(--color-accent-primary)',
+                              background: 'var(--color-accent-soft)',
+                              color: 'var(--color-accent-light)',
+                            }}
+                            title={key}
+                          >
+                            <span>{key}</span>
+                            <X className="h-3 w-3 opacity-40 group-hover:opacity-100 transition-opacity" />
+                          </button>
+                        ))}
+                        {starredModels.length === 0 && (
+                          <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
+                            {t('settings.starredModelsDesc')}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => { setShowModelPicker(v => !v); setModelPickerSearch(''); }}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs transition-colors"
+                          style={{
+                            border: '1px dashed var(--color-border-muted)',
+                            background: showModelPicker ? 'var(--color-accent-soft)' : 'transparent',
+                            color: showModelPicker ? 'var(--color-accent-light)' : 'var(--color-text-tertiary)',
+                          }}
                         >
-                          <option value="">{t('settings.systemDefault')}</option>
+                          <Plus className="h-3 w-3" />
+                          <span>{t('settings.addModels', 'Add')}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Collapsible model picker — hidden by default */}
+                    {showModelPicker && (
+                      <div
+                        className="mt-3 rounded-lg overflow-hidden"
+                        style={{ border: '1px solid var(--color-border-muted)', background: 'var(--color-bg-card)' }}
+                      >
+                        {/* Search */}
+                        <div className="px-3 pt-3 pb-2">
+                          <div className="relative">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5" style={{ color: 'var(--color-text-tertiary)' }} />
+                            <input
+                              type="text"
+                              value={modelPickerSearch}
+                              onChange={(e) => setModelPickerSearch(e.target.value)}
+                              placeholder={t('common.search')}
+                              className="w-full rounded-md pl-8 pr-3 py-1.5 text-xs"
+                              style={{
+                                backgroundColor: 'var(--color-bg-elevated)',
+                                border: '1px solid var(--color-border-muted)',
+                                color: 'var(--color-text-primary)',
+                              }}
+                              autoFocus
+                            />
+                          </div>
+                        </div>
+                        {/* Provider groups */}
+                        <div className="px-1 pb-1 max-h-[280px] overflow-y-auto">
                           {Object.entries(availableModels).map(([provider, providerData]) => {
                             const models = Array.isArray(providerData) ? providerData : providerData?.models || [];
+                            const query = modelPickerSearch.toLowerCase();
+                            const filtered = query
+                              ? models.filter(m => (typeof m === 'string' ? m : m.name || m.key || '').toLowerCase().includes(query))
+                              : models;
+                            if (filtered.length === 0) return null;
                             const displayName = providerData?.display_name || provider.charAt(0).toUpperCase() + provider.slice(1);
                             return (
-                            <optgroup key={provider} label={displayName}>
-                              {models.map((m) => (
-                                <option key={m} value={m}>{m}</option>
-                              ))}
-                            </optgroup>
+                              <div key={provider} className="mb-1">
+                                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-tertiary)' }}>
+                                  {displayName}
+                                </div>
+                                {filtered.map((m) => {
+                                  const key = typeof m === 'string' ? m : (m.key || m.name || m);
+                                  const isStarred = starredModels.includes(key);
+                                  return (
+                                    <button
+                                      key={key}
+                                      type="button"
+                                      onClick={() => setStarredModels(prev =>
+                                        prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+                                      )}
+                                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md text-xs transition-colors"
+                                      style={{
+                                        color: isStarred ? 'var(--color-accent-light)' : 'var(--color-text-primary)',
+                                        backgroundColor: isStarred ? 'var(--color-accent-soft)' : 'transparent',
+                                      }}
+                                      onMouseEnter={(e) => { if (!isStarred) e.currentTarget.style.backgroundColor = 'var(--color-bg-elevated)'; }}
+                                      onMouseLeave={(e) => { if (!isStarred) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                                    >
+                                      <span>{typeof m === 'string' ? m : (m.name || key)}</span>
+                                      <Pin className="h-3 w-3 flex-shrink-0" style={{ color: isStarred ? 'var(--color-accent-primary)' : 'var(--color-text-tertiary)', opacity: isStarred ? 1 : 0.4 }} />
+                                    </button>
+                                  );
+                                })}
+                              </div>
                             );
                           })}
-                          {byokProviders.filter(p => p.is_custom && p.has_key).length > 0 && (
-                            <optgroup label={t('settings.byokProviders', 'BYOK Providers')}>
-                              {byokProviders.filter(p => p.is_custom && p.has_key).map((prov) => (
-                                <option key={`byok-${prov.provider}`} value={prov.provider}>
-                                  {prov.display_name || prov.provider} ({prov.parent_provider})
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                          {customModels.length > 0 && (
-                            <optgroup label={t('settings.customModels')}>
-                              {customModels.map((cm) => (
-                                <option key={`custom-${cm.name}`} value={cm.name}>{cm.name}</option>
-                              ))}
-                            </optgroup>
-                          )}
-                        </Select>
+                        </div>
                       </div>
-                    ))}
-
+                    )}
                   </div>
 
                   {/* Section 2: Connected Accounts */}
