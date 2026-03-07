@@ -488,12 +488,15 @@ function Markdown({ content, variant = 'panel', className = '', style }) {
     () => normalizeLatexDelimiters(escapeCurrencyDollars(fixMarkdownTables(stripFrontMatter(content)))),
     [content]
   );
+
+  const lineKey = useMemo(() => (processed.match(/\n/g) || []).length, [processed]);
+
   return (
     <div
       className={`${config.className} ${className}`.trim()}
       style={{ ...config.style, ...style }}
     >
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkCjkFriendly, remarkMath]} rehypePlugins={[[rehypeKatex, { strict: false }], rehypeRaw]} components={config.components}>
+      <ReactMarkdown key={lineKey} remarkPlugins={[remarkGfm, remarkCjkFriendly, remarkMath]} rehypePlugins={[[rehypeKatex, { strict: false }], rehypeRaw]} components={config.components}>
         {processed}
       </ReactMarkdown>
     </div>

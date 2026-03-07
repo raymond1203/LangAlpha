@@ -152,6 +152,40 @@
   border-color: var(--color-border-default);
 }
 
+/* === Suggestion bubbles above chat input === */
+.dashboard-suggestion-bubbles {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding-bottom: 12px;
+  pointer-events: none;
+}
+.dashboard-suggestion-bubbles.visible {
+  pointer-events: auto;
+}
+.dashboard-suggestion-bubble {
+  white-space: nowrap;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border-muted);
+  background: var(--color-bg-surface, var(--color-bg-card));
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.3s ease, transform 0.3s ease, background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+.dashboard-suggestion-bubbles.visible .dashboard-suggestion-bubble {
+  opacity: 1;
+  transform: translateY(0);
+}
+.dashboard-suggestion-bubble:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border-default);
+  color: var(--color-text-primary);
+}
+
 /* === Floating chat input === */
 .dashboard-floating-chat {
   background: var(--color-bg-elevated);

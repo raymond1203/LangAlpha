@@ -348,7 +348,8 @@ class IntradayCacheService:
             elapsed = time.time() - envelope.get("fetched_at", 0)
             ttl_remaining = max(0, int(stored_ttl - elapsed)) if stored_ttl else None
 
-            logger.debug(
+            log_fn = logger.info if interval == "1s" else logger.debug
+            log_fn(
                 "Cache HIT %s %s: %d bars, wm=%s, complete=%s, phase=%s, elapsed=%.1fs, ttl_rem=%s",
                 normalized, interval, len(bars), watermark, complete, phase, elapsed, ttl_remaining,
             )

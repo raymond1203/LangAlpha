@@ -4,16 +4,6 @@
     "provider": "openai",
     "parameters": {
       "reasoning": {
-        "effort": "minimal",
-        "summary": "auto"
-      }
-    }
-  },
-  "gpt-5-mini-medium": {
-    "model_id": "gpt-5-mini",
-    "provider": "openai",
-    "parameters": {
-      "reasoning": {
         "effort": "medium",
         "summary": "auto"
       }
@@ -24,27 +14,7 @@
     "provider": "openai",
     "parameters": {
       "reasoning": {
-        "effort": "minimal",
-        "summary": "auto"
-      }
-    }
-  },
-  "gpt-5-nano-medium": {
-    "model_id": "gpt-5-nano",
-    "provider": "openai",
-    "parameters": {
-      "reasoning": {
         "effort": "medium",
-        "summary": "auto"
-      }
-    }
-  },
-  "gpt-5.1-codex-mini-low": {
-    "model_id": "gpt-5.1-codex-mini",
-    "provider": "openai",
-    "parameters": {
-      "reasoning": {
-        "effort": "low",
         "summary": "auto"
       }
     }
@@ -64,7 +34,7 @@
     "provider": "openai",
     "parameters": {
       "reasoning": {
-        "effort": "minimal",
+        "effort": "medium",
         "summary": "auto"
       }
     }
@@ -74,13 +44,13 @@
     "provider": "openai",
     "parameters": {
       "reasoning": {
-        "effort": "low",
+        "effort": "medium",
         "summary": "auto"
       }
     }
   },
-  "gpt-5.2-medium": {
-    "model_id": "gpt-5.2-2025-12-11",
+  "gpt-5.4": {
+    "model_id": "gpt-5.4",
     "provider": "openai",
     "parameters": {
       "reasoning": {
@@ -487,6 +457,22 @@
 },
   "gpt-5.3-codex-spark-oauth": {
     "model_id": "gpt-5.3-codex-spark",
+    "provider": "codex-oauth",
+    "visible": true,
+    "parameters": {
+      "reasoning": {
+        "effort": "medium",
+        "summary": "auto"
+      },
+      "include": ["reasoning.encrypted_content"],
+      "store": false,
+      "model_kwargs": {
+        "instructions": "You are a helpful AI assistant."
+      }
+    }
+},
+  "gpt-5.4-oauth": {
+    "model_id": "gpt-5.4",
     "provider": "codex-oauth",
     "visible": true,
     "parameters": {

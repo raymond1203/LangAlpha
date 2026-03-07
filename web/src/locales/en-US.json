@@ -163,7 +163,10 @@
     "claudePastePrompt": "After authorizing on claude.ai, paste the code shown on the page below:",
     "claudePasteError": "Failed to exchange code. Please try again.",
     "claudeConnectFailed": "Failed to initiate Claude OAuth",
-    "claudeOpenAgain": "Open authorize page again"
+    "claudeOpenAgain": "Open authorize page again",
+    "starredModels": "Quick-access models",
+    "starredModelsDesc": "Starred models appear in the chat input for quick switching",
+    "addModels": "Add"
   },
   "dashboard": {
     "title": "LangAlpha",
@@ -305,7 +308,17 @@
     "offloadedArgsNotification": "Tool arguments offloaded · {{count}} tools",
     "offloadedReadsNotification": "Stale read results offloaded · {{count}} reads",
     "offloadedNotification": "Context offloaded · {{args}} tool args, {{reads}} reads",
-    "compactionError": "Context compaction failed"
+    "compactionError": "Context compaction failed",
+    "modelSelector": {
+      "manageModels": "Manage models",
+      "moreModels": "More models",
+      "configureModels": "Configure models →",
+      "reasoningEffort": "Reasoning",
+      "effortLow": "L",
+      "effortMedium": "M",
+      "effortHigh": "H",
+      "incompatibleSdk": "Cannot switch to this model in the current session (different provider)"
+    }
   },
   "context": {
     "addToContext": "Add to context",
@@ -426,6 +439,13 @@
     "periodChange": "Period Change",
     "avgVolume": "Avg Volume",
     "volatility": "Volatility",
+    "shareStructure": "Share Structure",
+    "sharesOutstanding": "Shares Out",
+    "float": "Float",
+    "shortInterest": "Short Interest",
+    "shortPctFloat": "SI % of Float",
+    "daysToCover": "Days to Cover",
+    "shortVolRatio": "Short Vol Ratio",
     "nResults": "{{count}} result",
     "nResults_other": "{{count}} results",
     "nRatings": "{{count}} ratings",

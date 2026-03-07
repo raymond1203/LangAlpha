@@ -163,7 +163,10 @@
     "claudePastePrompt": "在 claude.ai 授权后，请将页面显示的授权码粘贴到下方：",
     "claudePasteError": "授权码交换失败，请重试。",
     "claudeConnectFailed": "启动 Claude OAuth 失败",
-    "claudeOpenAgain": "重新打开授权页面"
+    "claudeOpenAgain": "重新打开授权页面",
+    "starredModels": "快速切换模型",
+    "starredModelsDesc": "标星的模型会显示在聊天输入框中方便快速切换",
+    "addModels": "添加"
   },
   "dashboard": {
     "title": "LangAlpha",
@@ -305,7 +308,17 @@
     "offloadedArgsNotification": "工具参数已转存 · {{count}} 个工具",
     "offloadedReadsNotification": "过期读取结果已转存 · {{count}} 个读取",
     "offloadedNotification": "上下文已转存 · {{args}} 个工具参数, {{reads}} 个读取",
-    "compactionError": "上下文压缩失败"
+    "compactionError": "上下文压缩失败",
+    "modelSelector": {
+      "manageModels": "管理模型",
+      "moreModels": "更多模型",
+      "configureModels": "配置模型 →",
+      "reasoningEffort": "推理",
+      "effortLow": "低",
+      "effortMedium": "中",
+      "effortHigh": "高",
+      "incompatibleSdk": "当前会话无法切换到此模型（提供商不同）"
+    }
   },
   "context": {
     "addToContext": "添加到上下文",
@@ -426,6 +439,13 @@
     "periodChange": "区间涨跌",
     "avgVolume": "平均成交量",
     "volatility": "波动率",
+    "shareStructure": "股本结构",
+    "sharesOutstanding": "总股本",
+    "float": "流通股",
+    "shortInterest": "做空量",
+    "shortPctFloat": "做空占流通比",
+    "daysToCover": "空头回补天数",
+    "shortVolRatio": "做空成交占比",
     "nResults": "{{count}} 个结果",
     "nRatings": "{{count}} 个评级",
     "nMoreStocks": "还有 {{count}} 只",

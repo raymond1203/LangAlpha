@@ -1,0 +1,14 @@
+.settings-page {
+  height: 100%;
+  overflow-y: auto;
+  padding: 24px 24px 48px;
+}
+
+.settings-container {
+  max-width: 672px;
+  margin: 0 auto;
+}
+
+.settings-content {
+  min-height: 0;
+}

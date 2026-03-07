@@ -1,27 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, User, LogOut, Eye, EyeOff, Trash2, HelpCircle, MessageSquareText, Sun, Moon, Monitor, Link2, Unlink, ExternalLink, Shield, ClipboardCopy, Plus, Pencil, ChevronDown, Search, Pin } from 'lucide-react';
-import { Input } from '../../../components/ui/input';
-import { Select } from '../../../components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../../components/ui/dialog';
-import { updateCurrentUser, getCurrentUser, updatePreferences, getPreferences, clearPreferences, uploadAvatar, getAvailableModels, getUserApiKeys, updateUserApiKeys, deleteUserApiKey, initiateCodexDevice, pollCodexDevice, getCodexOAuthStatus, disconnectCodexOAuth, initiateClaudeOAuth, submitClaudeCallback, getClaudeOAuthStatus, disconnectClaudeOAuth } from '../utils/api';
-import { useAuth } from '../../../contexts/AuthContext';
-import { useTheme } from '../../../contexts/ThemeContext';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { updateCurrentUser, getCurrentUser, updatePreferences, getPreferences, clearPreferences, uploadAvatar, getAvailableModels, getUserApiKeys, updateUserApiKeys, deleteUserApiKey, initiateCodexDevice, pollCodexDevice, getCodexOAuthStatus, disconnectCodexOAuth, initiateClaudeOAuth, submitClaudeCallback, getClaudeOAuthStatus, disconnectClaudeOAuth } from '@/pages/Dashboard/utils/api';
+import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useTranslation } from 'react-i18next';
-import ConfirmDialog from './ConfirmDialog';
+import { useToast } from '@/components/ui/use-toast';
+import { getFlashWorkspace } from '@/pages/ChatAgent/utils/api';
+import ConfirmDialog from '@/pages/Dashboard/components/ConfirmDialog';
+import './Settings.css';
 
-/**
- * UserConfigPanel Component
- *
- * Modal panel for logged-in users: User info (email read-only), preferences, and logout button.
- *
- * @param {boolean} isOpen - Whether the panel is open
- * @param {Function} onClose - Callback to close the panel
- */
-function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboarding, initialTab }) {
+function Settings() {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { toast } = useToast();
   const { user: authUser, logout, refreshUser } = useAuth();
   const { theme, preference, setTheme: setThemePref } = useTheme();
   const { t, i18n } = useTranslation();
-  const [activeTab, setActiveTab] = useState(initialTab || 'userInfo');
+
+  const tabParam = searchParams.get('tab') || 'userInfo';
+  const [activeTab, setActiveTab] = useState(tabParam);
   const [avatarUrl, setAvatarUrl] = useState(null);
   const fileInputRef = useRef(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
@@ -53,6 +54,13 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
   const [modelSaveSuccess, setModelSaveSuccess] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [modelPickerSearch, setModelPickerSearch] = useState('');
+
+  // Other models state
+  const [summarizationModel, setSummarizationModel] = useState('');
+  const [fetchModel, setFetchModel] = useState('');
+  const [fallbackModels, setFallbackModels] = useState([]);
+  const [showOtherModels, setShowOtherModels] = useState(false);
+  const [systemDefaults, setSystemDefaults] = useState({});
 
   // Custom Models state
   const [customModels, setCustomModels] = useState([]);
@@ -125,43 +133,43 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
     { value: 'zh-CN', label: '中文（简体）' },
   ];
 
-  // Sync initialTab when panel opens
-  useEffect(() => {
-    if (isOpen && initialTab) {
-      setActiveTab(initialTab);
-    }
-  }, [isOpen, initialTab]);
+  // Sync tab with URL search params
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setSearchParams({ tab }, { replace: true });
+  };
 
+  // Sync from URL on mount / back-forward navigation
   useEffect(() => {
-    if (isOpen) {
-      setIsLoading(true);
-      Promise.all([loadUserData(), loadPreferencesData()])
-        .finally(() => setIsLoading(false));
+    const urlTab = searchParams.get('tab');
+    if (urlTab && urlTab !== activeTab) {
+      setActiveTab(urlTab);
     }
-  }, [isOpen]);
+  }, [searchParams]);
+
+  // Load user data and preferences on mount
+  useEffect(() => {
+    setIsLoading(true);
+    Promise.all([loadUserData(), loadPreferencesData()])
+      .finally(() => setIsLoading(false));
+  }, []);
 
   // Load model tab data lazily when tab is selected
   useEffect(() => {
-    if (isOpen && activeTab === 'model') {
+    if (activeTab === 'model') {
       loadModelTabData();
     }
-  }, [isOpen, activeTab]);
+  }, [activeTab]);
 
-  // Cleanup device code polling on unmount or panel close
+  // Cleanup device code polling on unmount
   useEffect(() => {
-    if (!isOpen && codexPollRef.current) {
-      clearInterval(codexPollRef.current);
-      codexPollRef.current = null;
-      setIsPollingCodex(false);
-      setCodexDeviceCode(null);
-    }
     return () => {
       if (codexPollRef.current) {
         clearInterval(codexPollRef.current);
         codexPollRef.current = null;
       }
     };
-  }, [isOpen]);
+  }, []);
 
   const loadUserData = async () => {
     try {
@@ -197,6 +205,8 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
         getClaudeOAuthStatus(),
       ]);
       setAvailableModels(modelsRes?.models || {});
+      const defaults = modelsRes?.system_defaults || {};
+      setSystemDefaults(defaults);
       setByokEnabled(keysRes?.byok_enabled || false);
       setByokProviders(keysRes?.providers || []);
       const initialBaseUrls = {};
@@ -208,6 +218,9 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
       setPreferredFlashModel(prefsRes?.other_preference?.preferred_flash_model || '');
       setStarredModels(prefsRes?.other_preference?.starred_models || []);
       setCustomModels(prefsRes?.other_preference?.custom_models || []);
+      setSummarizationModel(prefsRes?.other_preference?.summarization_model || '');
+      setFetchModel(prefsRes?.other_preference?.fetch_model || '');
+      setFallbackModels(prefsRes?.other_preference?.fallback_models || defaults.fallback_models || []);
       setCodexOAuthStatus(codexStatus || { connected: false });
       setClaudeOAuthStatus(claudeStatus || { connected: false });
     } catch {
@@ -235,6 +248,9 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
           starred_models: starredModels.length > 0 ? starredModels : null,
           custom_models: customModels.length > 0 ? customModels : null,
           custom_providers: customProvidersList.length > 0 ? customProvidersList : null,
+          summarization_model: summarizationModel || null,
+          fetch_model: fetchModel || null,
+          fallback_models: fallbackModels.length > 0 ? fallbackModels : null,
         },
       });
 
@@ -593,20 +609,49 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
     }
   };
 
-  const handleModifyPreferences = () => {
-    onClose();
-    if (onModifyPreferences) onModifyPreferences();
+  const handleModifyPreferences = async () => {
+    try {
+      const flashWs = await getFlashWorkspace();
+      navigate(`/chat/${flashWs.workspace_id}/__default__`, {
+        state: {
+          isModifyingPreferences: true,
+          agentMode: 'flash',
+          workspaceStatus: 'flash',
+        },
+      });
+    } catch (error) {
+      console.error('Error navigating to modify preferences:', error);
+      toast({
+        variant: 'destructive',
+        title: t('common.error'),
+        description: t('dashboard.failedPrefUpdate'),
+      });
+    }
   };
 
-  const handleStartOnboarding = () => {
-    onClose();
-    if (onStartOnboarding) onStartOnboarding();
+  const handleStartOnboarding = async () => {
+    try {
+      const flashWs = await getFlashWorkspace();
+      navigate(`/chat/${flashWs.workspace_id}/__default__`, {
+        state: {
+          isOnboarding: true,
+          agentMode: 'flash',
+          workspaceStatus: 'flash',
+        },
+      });
+    } catch (error) {
+      console.error('Error setting up onboarding:', error);
+      toast({
+        variant: 'destructive',
+        title: t('common.error'),
+        description: t('dashboard.failedOnboarding'),
+      });
+    }
   };
 
   const handleLogoutConfirm = () => {
     logout();
     setShowLogoutConfirm(false);
-    onClose();
   };
 
   const handleResetConfirm = async () => {
@@ -631,81 +676,47 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
     }
   };
 
-  const handleClose = () => {
-    setError(null);
-    setSaveSuccess(false);
-    onClose();
-  };
-
-  if (!isOpen) return null;
-
   return (
-    <>
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center"
-        style={{ backgroundColor: 'var(--color-bg-overlay-strong)' }}
-        onClick={handleClose}
-      >
-        <div
-          className="relative w-full max-w-2xl rounded-lg p-4 sm:p-6"
-          style={{
-            backgroundColor: 'var(--color-bg-elevated)',
-            border: '1px solid var(--color-border-muted)',
-            height: 'min(80vh, 800px)',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            onClick={handleClose}
-            className="absolute top-4 right-4 p-1 rounded-full transition-colors"
-            style={{ color: 'var(--color-text-primary)', backgroundColor: 'transparent' }}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-border-muted)'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-          >
-            <X className="h-5 w-5" />
-          </button>
+    <div className="settings-page">
+      <div className="settings-container">
+        <h2 className="text-xl font-semibold mb-6" style={{ color: 'var(--color-text-primary)' }}>{t('settings.title')}</h2>
+            <div className="flex gap-2 mb-6 border-b" style={{ borderColor: 'var(--color-border-muted)' }}>
+              <button
+                type="button"
+                onClick={() => handleTabChange('userInfo')}
+                className="px-4 py-2 text-sm font-medium"
+                style={{
+                  color: activeTab === 'userInfo' ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
+                  borderBottom: activeTab === 'userInfo' ? '2px solid var(--color-accent-primary)' : '2px solid transparent',
+                }}
+              >
+                {t('settings.userInfo')}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTabChange('preferences')}
+                className="px-4 py-2 text-sm font-medium"
+                style={{
+                  color: activeTab === 'preferences' ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
+                  borderBottom: activeTab === 'preferences' ? '2px solid var(--color-accent-primary)' : '2px solid transparent',
+                }}
+              >
+                {t('settings.preferences')}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTabChange('model')}
+                className="px-4 py-2 text-sm font-medium"
+                style={{
+                  color: activeTab === 'model' ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
+                  borderBottom: activeTab === 'model' ? '2px solid var(--color-accent-primary)' : '2px solid transparent',
+                }}
+              >
+                {t('settings.model')}
+              </button>
+            </div>
 
-          <h2 className="text-xl font-semibold mb-6" style={{ color: 'var(--color-text-primary)' }}>{t('settings.title')}</h2>
-              <div className="flex gap-2 mb-6 border-b" style={{ borderColor: 'var(--color-border-muted)' }}>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('userInfo')}
-                  className="px-4 py-2 text-sm font-medium"
-                  style={{
-                    color: activeTab === 'userInfo' ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
-                    borderBottom: activeTab === 'userInfo' ? '2px solid var(--color-accent-primary)' : '2px solid transparent',
-                  }}
-                >
-                  {t('settings.userInfo')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('preferences')}
-                  className="px-4 py-2 text-sm font-medium"
-                  style={{
-                    color: activeTab === 'preferences' ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
-                    borderBottom: activeTab === 'preferences' ? '2px solid var(--color-accent-primary)' : '2px solid transparent',
-                  }}
-                >
-                  {t('settings.preferences')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('model')}
-                  className="px-4 py-2 text-sm font-medium"
-                  style={{
-                    color: activeTab === 'model' ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
-                    borderBottom: activeTab === 'model' ? '2px solid var(--color-accent-primary)' : '2px solid transparent',
-                  }}
-                >
-                  {t('settings.model')}
-                </button>
-              </div>
-
-              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+            <div className="settings-content">
               {isLoading && (
                 <div className="flex items-center justify-center py-8">
                   <p className="text-sm" style={{ color: 'var(--color-text-primary)', opacity: 0.7 }}>{t('common.loading')}</p>
@@ -867,14 +878,6 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
                       {saveSuccess && (
                         <span className="text-xs" style={{ color: 'var(--color-success)' }}>{t('common.saved')}</span>
                       )}
-                      <button type="button" onClick={handleClose} disabled={isSubmitting}
-                        className="px-4 py-2 rounded-md text-sm font-medium transition-colors"
-                        style={{ color: 'var(--color-text-primary)', backgroundColor: 'transparent' }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-border-muted)'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        {t('common.close')}
-                      </button>
                       <button type="submit" disabled={isSubmitting}
                         className="px-4 py-2 rounded-md text-sm font-medium"
                         style={{
@@ -891,7 +894,7 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
 
               {!isLoading && activeTab === 'preferences' && (
                 <div className="space-y-5">
-                  {authUser?.onboarding_completed !== true && onStartOnboarding && (
+                  {authUser?.onboarding_completed !== true && (
                     <div
                       className="rounded-lg px-4 py-4 flex items-center justify-between gap-3"
                       style={{
@@ -987,14 +990,6 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
                       <Trash2 className="h-4 w-4" /> {t('settings.resetPreferences')}
                     </button>
                     <div className="flex items-center gap-3">
-                      <button type="button" onClick={handleClose}
-                        className="px-4 py-2 rounded-md text-sm font-medium transition-colors"
-                        style={{ color: 'var(--color-text-primary)', backgroundColor: 'transparent' }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-border-muted)'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        {t('common.close')}
-                      </button>
                       <button
                         type="button"
                         onClick={handleModifyPreferences}
@@ -1018,9 +1013,11 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
                     {/* Default + Flash selectors — side by side */}
                     <div className="grid grid-cols-2 gap-3">
                       {[
-                        { label: t('settings.defaultModel'), desc: t('settings.defaultModelDesc'), value: preferredModel, setter: setPreferredModel },
-                        { label: t('settings.flashModel'), desc: t('settings.flashModelDesc'), value: preferredFlashModel, setter: setPreferredFlashModel },
-                      ].map(({ label, desc, value, setter }) => (
+                        { label: t('settings.defaultModel'), desc: t('settings.defaultModelDesc'), value: preferredModel, setter: setPreferredModel, defaultKey: 'default_model' },
+                        { label: t('settings.flashModel'), desc: t('settings.flashModelDesc'), value: preferredFlashModel, setter: setPreferredFlashModel, defaultKey: 'flash_model' },
+                      ].map(({ label, desc, value, setter, defaultKey }) => {
+                        const sysDefault = systemDefaults[defaultKey] || '';
+                        return (
                         <div key={label}>
                           <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>{label}</label>
                           <Select
@@ -1028,7 +1025,9 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
                             onChange={(e) => setter(e.target.value)}
                             disabled={isSubmitting}
                           >
-                            <option value="">{t('settings.systemDefault')}</option>
+                            <option value="">
+                              {sysDefault ? `${t('settings.systemDefault')} (${sysDefault})` : t('settings.systemDefault')}
+                            </option>
                             {Object.entries(availableModels).map(([provider, providerData]) => {
                               const models = Array.isArray(providerData) ? providerData : providerData?.models || [];
                               const displayName = providerData?.display_name || provider.charAt(0).toUpperCase() + provider.slice(1);
@@ -1059,7 +1058,8 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
                           </Select>
                           <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-tertiary)' }}>{desc}</p>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
 
                     {/* Quick-access models — compact strip */}
@@ -1172,6 +1172,126 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
                               </div>
                             );
                           })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Other Models — collapsible */}
+                  <div style={{ borderTop: '1px solid var(--color-border-muted)', paddingTop: '16px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowOtherModels(v => !v)}
+                      className="w-full flex items-center justify-between text-sm font-medium"
+                      style={{ color: 'var(--color-text-primary)' }}
+                    >
+                      <span>{t('settings.otherModels', 'Other Models')}</span>
+                      <ChevronDown
+                        className="h-4 w-4 transition-transform"
+                        style={{
+                          color: 'var(--color-text-tertiary)',
+                          transform: showOtherModels ? 'rotate(180deg)' : 'rotate(0deg)',
+                        }}
+                      />
+                    </button>
+                    <p className="text-xs mt-0.5 mb-2" style={{ color: 'var(--color-text-tertiary)' }}>
+                      {t('settings.otherModelsDesc', 'Configure models used for background tasks.')}
+                    </p>
+
+                    {showOtherModels && (
+                      <div className="space-y-4 mt-3">
+                        {/* Summarization + Fetch — side by side */}
+                        <div className="grid grid-cols-2 gap-3">
+                          {[
+                            { label: t('settings.summarizationModel', 'Summarization'), desc: t('settings.summarizationModelDesc', 'Model for conversation summarization'), value: summarizationModel, setter: setSummarizationModel, defaultKey: 'summarization_model' },
+                            { label: t('settings.fetchModel', 'Fetch'), desc: t('settings.fetchModelDesc', 'Model for web content extraction'), value: fetchModel, setter: setFetchModel, defaultKey: 'fetch_model' },
+                          ].map(({ label, desc, value, setter, defaultKey }) => {
+                            const sysDefault = systemDefaults[defaultKey] || '';
+                            return (
+                              <div key={label}>
+                                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>{label}</label>
+                                <Select
+                                  value={value}
+                                  onChange={(e) => setter(e.target.value)}
+                                  disabled={isSubmitting}
+                                >
+                                  <option value="">
+                                    {sysDefault ? `${t('settings.systemDefault')} (${sysDefault})` : t('settings.systemDefault')}
+                                  </option>
+                                  {Object.entries(availableModels).map(([provider, providerData]) => {
+                                    const models = Array.isArray(providerData) ? providerData : providerData?.models || [];
+                                    const displayName = providerData?.display_name || provider.charAt(0).toUpperCase() + provider.slice(1);
+                                    return (
+                                      <optgroup key={provider} label={displayName}>
+                                        {models.map((m) => (
+                                          <option key={m} value={m}>{m}</option>
+                                        ))}
+                                      </optgroup>
+                                    );
+                                  })}
+                                </Select>
+                                <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-tertiary)' }}>{desc}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Fallback models */}
+                        <div>
+                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                            {t('settings.fallbackModels', 'Fallback Models')}
+                          </label>
+                          <p className="text-[11px] mb-1.5" style={{ color: 'var(--color-text-tertiary)' }}>
+                            {t('settings.fallbackModelsDesc', 'Models to try when the primary model is unavailable, in order of priority.')}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {fallbackModels.map((key, idx) => {
+                              const isDefault = (systemDefaults.fallback_models || []).includes(key);
+                              return (
+                                <button
+                                  key={`${key}-${idx}`}
+                                  type="button"
+                                  onClick={() => setFallbackModels(prev => prev.filter((_, i) => i !== idx))}
+                                  className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-md text-xs transition-colors group"
+                                  style={{
+                                    border: `1px solid ${isDefault ? 'var(--color-accent-primary)' : 'var(--color-border-muted)'}`,
+                                    background: isDefault ? 'var(--color-accent-soft)' : 'var(--color-bg-card)',
+                                    color: isDefault ? 'var(--color-accent-light)' : 'var(--color-text-secondary)',
+                                  }}
+                                  title={isDefault ? t('settings.systemDefault') : t('common.remove', 'Remove')}
+                                >
+                                  <span>{key}</span>
+                                  {isDefault && <span style={{ color: 'var(--color-text-tertiary)', fontSize: '10px' }}>default</span>}
+                                  <X className="h-3 w-3 opacity-40 group-hover:opacity-100 transition-opacity" />
+                                </button>
+                              );
+                            })}
+                            <Select
+                              value=""
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val && !fallbackModels.includes(val)) {
+                                  setFallbackModels(prev => [...prev, val]);
+                                }
+                              }}
+                              disabled={isSubmitting}
+                              style={{ width: 'auto', minWidth: '140px', display: 'inline-flex' }}
+                              className="text-xs"
+                            >
+                              <option value="">{t('settings.addFallback', '+ Add fallback')}</option>
+                              {Object.entries(availableModels).map(([provider, providerData]) => {
+                                const models = Array.isArray(providerData) ? providerData : providerData?.models || [];
+                                const displayName = providerData?.display_name || provider.charAt(0).toUpperCase() + provider.slice(1);
+                                return (
+                                  <optgroup key={provider} label={displayName}>
+                                    {models.filter(m => !fallbackModels.includes(m)).map((m) => (
+                                      <option key={m} value={m}>{m}</option>
+                                    ))}
+                                  </optgroup>
+                                );
+                              })}
+                            </Select>
+                          </div>
                         </div>
                       </div>
                     )}
@@ -1907,14 +2027,6 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
                     {modelSaveSuccess && (
                       <span className="text-xs" style={{ color: 'var(--color-success)' }}>{t('common.saved')}</span>
                     )}
-                    <button type="button" onClick={handleClose}
-                      className="px-4 py-2 rounded-md text-sm font-medium transition-colors"
-                      style={{ color: 'var(--color-text-primary)', backgroundColor: 'transparent' }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--color-border-muted)'}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                    >
-                      {t('common.close')}
-                    </button>
                     <button
                       type="button"
                       onClick={handleModelTabSave}
@@ -1930,9 +2042,7 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
                   </div>
                 </div>
               )}
-              </div>
-        </div>
-      </div>
+            </div>
 
       <ConfirmDialog
         open={showLogoutConfirm}
@@ -2120,8 +2230,9 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
         </DialogContent>
       </Dialog>
 
-    </>
+      </div>
+    </div>
   );
 }
 
-export default UserConfigPanel;
+export default Settings;

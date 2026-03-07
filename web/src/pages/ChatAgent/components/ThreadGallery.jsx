@@ -427,7 +427,7 @@ function ThreadGallery({ workspaceId, onBack, onThreadSelect, cache }) {
    * @param {boolean} planMode - Plan mode flag
    * @param {Array} attachments - File attachments from ChatInput
    */
-  const handleSendMessage = async (message, planMode = false, attachments = [], slashCommands = []) => {
+  const handleSendMessage = async (message, planMode = false, attachments = [], slashCommands = [], { model, reasoningEffort } = {}) => {
     if ((!message.trim() && (!attachments || attachments.length === 0)) || isSendingMessage || !workspaceId) {
       return;
     }
@@ -465,6 +465,8 @@ function ThreadGallery({ workspaceId, onBack, onThreadSelect, cache }) {
           ...(isFlash ? { agentMode: 'flash' } : {}),
           ...(additionalContext ? { additionalContext } : {}),
           ...(attachmentMeta ? { attachmentMeta } : {}),
+          ...(model ? { model } : {}),
+          ...(reasoningEffort ? { reasoningEffort } : {}),
         },
       });
     } catch (error) {
@@ -604,12 +606,13 @@ function ThreadGallery({ workspaceId, onBack, onThreadSelect, cache }) {
             </div>
 
             {/* Chat Input */}
-            <div className="w-full enter-fade-up enter-fade-up-d2">
+            <div className="w-full enter-fade-up enter-fade-up-d2 relative z-20">
               <ChatInput
                 ref={chatInputRef}
                 onSend={handleSendMessage}
                 disabled={isSendingMessage || !workspaceId}
                 files={panelFiles}
+                dropdownDirection="down"
               />
             </div>
 

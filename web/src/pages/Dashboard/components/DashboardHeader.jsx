@@ -1,20 +1,14 @@
-import { Search, HelpCircle, User, Mail, ChevronDown } from 'lucide-react';
-import UserConfigPanel from './UserConfigPanel';
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Search, HelpCircle, Mail } from 'lucide-react';
+import AvatarDropdown from './AvatarDropdown';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getCurrentUser } from '../utils/api';
 import { searchStocks } from '@/lib/marketUtils';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../../contexts/AuthContext';
 import './DashboardHeader.css';
 
-const DashboardHeader = ({ onStockSearch, onModifyPreferences, onStartOnboarding }) => {
+const DashboardHeader = ({ onStockSearch }) => {
   const navigate = useNavigate();
-  const { isLoggedIn } = useAuth();
   const { t } = useTranslation();
-  const [isUserPanelOpen, setIsUserPanelOpen] = useState(false);
-  const [avatarUrl, setAvatarUrl] = useState(null);
-  const [displayName, setDisplayName] = useState('');
   const [showHelpPopover, setShowHelpPopover] = useState(false);
   const helpRef = useRef(null);
   const searchInputRef = useRef(null);
@@ -90,27 +84,6 @@ const DashboardHeader = ({ onStockSearch, onModifyPreferences, onStartOnboarding
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const refreshUser = useCallback(async () => {
-    try {
-      const data = await getCurrentUser();
-      const url = data?.user?.avatar_url;
-      const version = data?.user?.updated_at;
-      setAvatarUrl(url ? `${url}?v=${version}` : null);
-      setDisplayName(data?.user?.display_name || data?.user?.name || '');
-    } catch (err) {
-      console.error('Failed to fetch user:', err);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isLoggedIn) refreshUser();
-  }, [isLoggedIn, refreshUser]);
-
-  const handlePanelClose = () => {
-    setIsUserPanelOpen(false);
-    if (isLoggedIn) refreshUser();
-  };
 
   const handleSelectStock = (stock) => {
     if (stock?.symbol) {
@@ -288,37 +261,10 @@ const DashboardHeader = ({ onStockSearch, onModifyPreferences, onStartOnboarding
           {/* Divider */}
           <div className="h-8 w-[1px] mx-2" style={{ backgroundColor: 'var(--color-border-muted)' }} />
 
-          {/* User avatar + name */}
-          <button
-            className="flex items-center gap-2 text-sm font-medium transition-colors"
-            style={{ color: 'var(--color-text-secondary)' }}
-            onClick={() => setIsUserPanelOpen(true)}
-            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--color-text-primary)')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--color-text-secondary)')}
-          >
-            <div
-              className="h-8 w-8 rounded-full flex items-center justify-center overflow-hidden"
-              style={{ backgroundColor: 'var(--color-accent-soft)' }}
-            >
-              {avatarUrl ? (
-                <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" onError={() => setAvatarUrl(null)} />
-              ) : (
-                <User className="h-4 w-4" style={{ color: 'var(--color-accent-primary)' }} />
-              )}
-            </div>
-            {displayName && <span className="hidden sm:inline">{displayName}</span>}
-            <ChevronDown size={14} style={{ color: 'var(--color-text-secondary)' }} />
-          </button>
+          {/* User avatar + dropdown */}
+          <AvatarDropdown />
         </div>
       </div>
-
-      <UserConfigPanel
-        isOpen={isUserPanelOpen}
-        onClose={handlePanelClose}
-        onModifyPreferences={onModifyPreferences}
-        onStartOnboarding={onStartOnboarding}
-        initialTab={null}
-      />
     </>
   );
 };

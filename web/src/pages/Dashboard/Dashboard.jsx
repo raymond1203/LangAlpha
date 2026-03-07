@@ -77,7 +77,7 @@ function Dashboard() {
     <div className="dashboard-container min-h-screen">
       {/* Main content area */}
       <main className="flex-1 flex flex-col min-h-0 overflow-y-auto">
-        <DashboardHeader onModifyPreferences={navigateToModifyPreferences} onStartOnboarding={navigateToOnboarding} />
+        <DashboardHeader />
 
         <div className="mx-auto max-w-[1920px] w-full p-6 pb-32">
           {/* Market Overview heading */}

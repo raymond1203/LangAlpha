@@ -89,6 +89,17 @@ class ModelConfig:
             parent = provider
         return info.get("display_name", parent.title())
 
+    def get_model_metadata(self) -> dict[str, dict[str, str]]:
+        """Return {model_key: {sdk, provider}} for all visible models."""
+        result = {}
+        for model_name, model_info in self.llm_config.items():
+            if not model_info or not model_info.get("visible", False):
+                continue
+            provider = model_info.get("provider", "unknown")
+            sdk = self.get_provider_info(provider).get("sdk", "unknown")
+            result[model_name] = {"sdk": sdk, "provider": provider}
+        return result
+
 
 _UNSET = object()  # Sentinel to distinguish "no override" from "override to None"
 

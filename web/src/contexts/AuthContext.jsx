@@ -16,6 +16,7 @@ const baseURL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
 const _localDevValue = {
   userId: _LOCAL_DEV_USER_ID,
   user: { id: _LOCAL_DEV_USER_ID, name: 'Local User' },
+  preferences: null,
   isInitialized: true,
   isLoggedIn: true,
   loginWithEmail: () => Promise.resolve(),
@@ -38,6 +39,7 @@ export function AuthProvider({ children }) {
 function SupabaseAuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [localUser, setLocalUser] = useState(null);
+  const [preferences, setPreferences] = useState(null);
   const [isInitialized, setIsInitialized] = useState(false);
 
   /** Wire up the axios token getter immediately when we have a session. */
@@ -56,6 +58,7 @@ function SupabaseAuthProvider({ children }) {
       if (res.ok) {
         const data = await res.json();
         setLocalUser(data.user ?? data);
+        setPreferences(data.preferences ?? null);
       }
     } catch (err) {
       console.error('[auth] fetchUser failed:', err);
@@ -85,6 +88,7 @@ function SupabaseAuthProvider({ children }) {
       if (res.ok) {
         const data = await res.json();
         setLocalUser(data.user ?? data);
+        setPreferences(data.preferences ?? null);
       }
     } catch (err) {
       console.error('[auth] syncUser failed:', err);
@@ -154,6 +158,7 @@ function SupabaseAuthProvider({ children }) {
   const value = {
     userId: session?.user?.id ?? null,
     user: localUser,
+    preferences,
     isInitialized,
     isLoggedIn: !!session,
     loginWithEmail,

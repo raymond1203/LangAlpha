@@ -45,10 +45,18 @@ def apply_reasoning_effort(
         else:
             parameters["reasoning"] = {"effort": level}
 
-    # Anthropic: parameters.thinking.type / budget_tokens
+    # Anthropic adaptive: control via output_config.effort
+    elif "output_config" in parameters or (
+        "thinking" in parameters
+        and isinstance(parameters["thinking"], dict)
+        and parameters["thinking"].get("type") == "adaptive"
+    ):
+        parameters.setdefault("output_config", {})["effort"] = level
+
+    # Anthropic enabled: control via budget_tokens
     elif "thinking" in parameters:
-        if level == "low":
-            parameters["thinking"] = {"type": "adaptive"}
+        if isinstance(parameters["thinking"], dict):
+            parameters["thinking"]["budget_tokens"] = _ANTHROPIC_BUDGETS[level]
         else:
             parameters["thinking"] = {
                 "type": "enabled",

@@ -43,7 +43,7 @@ export function useChatInput() {
    * @param {boolean} planMode - Whether plan mode is enabled
    * @param {Array} attachments - File attachments from ChatInput
    */
-  const handleSend = async (message, planMode = false, attachments = []) => {
+  const handleSend = async (message, planMode = false, attachments = [], slashCommands = [], { model, reasoningEffort } = {}) => {
     const hasContent = message.trim() || (attachments && attachments.length > 0);
     if (!hasContent || isLoading) {
       return;
@@ -82,6 +82,8 @@ export function useChatInput() {
             workspaceStatus: 'flash',
             ...(additionalContext ? { additionalContext } : {}),
             ...(attachmentMeta ? { attachmentMeta } : {}),
+            ...(model ? { model } : {}),
+            ...(reasoningEffort ? { reasoningEffort } : {}),
           },
         });
       } else {
@@ -102,6 +104,8 @@ export function useChatInput() {
             planMode: planMode,
             ...(additionalContext ? { additionalContext } : {}),
             ...(attachmentMeta ? { attachmentMeta } : {}),
+            ...(model ? { model } : {}),
+            ...(reasoningEffort ? { reasoningEffort } : {}),
           },
         });
       }

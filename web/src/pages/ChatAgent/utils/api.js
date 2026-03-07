@@ -186,7 +186,9 @@ export async function sendChatMessageStream(
   locale = 'en-US',
   timezone = 'America/New_York',
   checkpointId = null,
-  forkFromTurn = null
+  forkFromTurn = null,
+  llmModel = null,
+  reasoningEffort = null
 ) {
   // For checkpoint replay (regenerate/retry), send empty messages
   const messages = checkpointId && !message
@@ -209,6 +211,8 @@ export async function sendChatMessageStream(
   if (forkFromTurn != null) {
     body.fork_from_turn = forkFromTurn;
   }
+  if (llmModel) body.llm_model = llmModel;
+  if (reasoningEffort) body.reasoning_effort = reasoningEffort;
   // Use /threads/{id}/messages for existing thread, /threads/messages for new
   const isNewThread = !threadId || threadId === '__default__';
   const url = isNewThread
@@ -543,6 +547,16 @@ export async function getSkills(mode = null) {
     .then(({ data }) => data.skills || [])
     .catch(() => { delete _skillsPromises[key]; return []; });
   return _skillsPromises[key];
+}
+
+// --- Model Metadata (eager prefetch at import time — resolved before ChatInput mounts) ---
+
+const _modelMetadataPromise = api.get('/api/v1/models')
+  .then(({ data }) => data.model_metadata || {})
+  .catch(() => ({}));
+
+export function getModelMetadata() {
+  return _modelMetadataPromise;
 }
 
 // --- File Upload ---

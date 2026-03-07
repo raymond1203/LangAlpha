@@ -224,6 +224,9 @@ export function useChatMessages(workspaceId, initialThreadId = null, updateTodoL
   const historyMessagesRef = useRef(new Set()); // Track message IDs from history
   const newMessagesStartIndexRef = useRef(0); // Index where new messages start
 
+  // Track all LLM models used in this thread (ordered, deduplicated)
+  const [threadModels, setThreadModels] = useState([]);
+
   // Track if streaming is in progress to prevent history loading during streaming
   const isStreamingRef = useRef(false);
 
@@ -306,6 +309,7 @@ export function useChatMessages(workspaceId, initialThreadId = null, updateTodoL
       // Preserve messages when transitioning from '__default__' to actual thread ID
       if (isThreadSwitch) {
         setMessages([]);
+        setThreadModels([]);
         // Reset refs
         contentOrderCounterRef.current = 0;
         currentReasoningIdRef.current = null;
@@ -461,6 +465,10 @@ export function useChatMessages(workspaceId, initialThreadId = null, updateTodoL
         // Handle user_message events from history
         // Note: event.content may be empty for HITL resume pairs (plan approval/rejection)
         if (eventType === 'user_message' && hasPairIndex) {
+          // Collect LLM models from query metadata (may differ across turns)
+          if (event.metadata?.llm_model) {
+            setThreadModels(prev => prev.includes(event.metadata.llm_model) ? prev : [...prev, event.metadata.llm_model]);
+          }
           // Resolve pending plan_approval interrupt from content (empty = approved, non-empty = rejected).
           {
             const idx = pendingHistoryInterrupts.findIndex((p) => p.type === 'plan_approval');
@@ -2692,7 +2700,7 @@ export function useChatMessages(workspaceId, initialThreadId = null, updateTodoL
    * @param {Array|null} additionalContext - Optional additional context for skill loading
    * @param {Array|null} attachmentMeta - Optional attachment metadata for user message display
    */
-  const handleSendMessage = async (message, planMode = false, additionalContext = null, attachmentMeta = null) => {
+  const handleSendMessage = async (message, planMode = false, additionalContext = null, attachmentMeta = null, { model, reasoningEffort } = {}) => {
     const hasContent = message.trim() || (additionalContext && additionalContext.length > 0);
     if (!workspaceId || !hasContent) {
       return;
@@ -2738,6 +2746,11 @@ export function useChatMessages(workspaceId, initialThreadId = null, updateTodoL
     // - the user might continue the conversation, and we want to keep the todo list card
     const isNewConversation = messages.length === 0 || threadId === '__default__';
     isNewConversationRef.current = isNewConversation;
+
+    // Track model used in this send
+    if (model) {
+      setThreadModels(prev => prev.includes(model) ? prev : [...prev, model]);
+    }
 
     // Add user message after history messages
     setMessages((prev) => {
@@ -2800,7 +2813,10 @@ export function useChatMessages(workspaceId, initialThreadId = null, updateTodoL
         planMode,
         processEvent,
         additionalContext,
-        agentMode
+        agentMode,
+        undefined, undefined, undefined, undefined,
+        model || null,
+        reasoningEffort || null
       );
 
       if (result?.disconnected) {
@@ -3426,6 +3442,7 @@ export function useChatMessages(workspaceId, initialThreadId = null, updateTodoL
   return {
     messages,
     threadId,
+    threadModels,
     isLoading,
     hasActiveSubagents,
     workspaceStarting,

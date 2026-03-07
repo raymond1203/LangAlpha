@@ -1,4 +1,4 @@
-import { ChartCandlestick, LayoutDashboard, MessageSquareText, Timer, UserCircle } from 'lucide-react';
+import { ChartCandlestick, LayoutDashboard, MessageSquareText, Timer, Settings } from 'lucide-react';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -14,8 +14,6 @@ function Sidebar() {
   const { t } = useTranslation();
   const { theme } = useTheme();
   const logo = theme === 'light' ? logoDark : logoLight;
-
-  const accountUrl = import.meta.env.VITE_ACCOUNT_URL || null;
 
   const menuItems = [
     {
@@ -84,17 +82,19 @@ function Sidebar() {
             </button>
           );
         })}
-        {accountUrl && (
-          <a
-            href={accountUrl}
-            className="sidebar-nav-item"
-            aria-label={t('sidebar.account', 'Account')}
-            title={t('sidebar.account', 'Account')}
-          >
-            <UserCircle className="sidebar-nav-icon" />
-          </a>
-        )}
       </nav>
+
+      {/* Settings — pinned to bottom */}
+      <div className="sidebar-bottom">
+        <button
+          className={`sidebar-nav-item ${location.pathname === '/settings' ? 'active' : ''}`}
+          onClick={() => navigate('/settings')}
+          aria-label={t('sidebar.settings', 'Settings')}
+          title={t('sidebar.settings', 'Settings')}
+        >
+          <Settings className="sidebar-nav-icon" />
+        </button>
+      </div>
     </aside>
   );
 }
