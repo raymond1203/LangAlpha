@@ -115,12 +115,16 @@ const StockHeader = ({ symbol, stockInfo, realTimePrice, chartMeta, displayOverr
                 {extendedType === 'pre' ? <Sunrise size={13} /> : <Sunset size={13} />}
                 {change >= 0 ? '+' : ''}{change.toFixed(2)} ({extendedChangePercent >= 0 ? '+' : ''}{extendedChangePercent.toFixed(2)}%)
               </div>
-              {/* Previous close — muted, labeled */}
-              {previousClose != null && (
+              {/* Regular session close — during after-hours show today's 4 PM close, during pre-market show prev close */}
+              {extendedType === 'post' && previousClose != null && snapshot?.regular_trading_change != null ? (
+                <div style={{ fontSize: 11, marginTop: 2, color: 'var(--color-text-tertiary, #8b8fa3)' }}>
+                  Close {(previousClose + snapshot.regular_trading_change).toFixed(2)}
+                </div>
+              ) : extendedType === 'pre' && previousClose != null ? (
                 <div style={{ fontSize: 11, marginTop: 2, color: 'var(--color-text-tertiary, #8b8fa3)' }}>
                   Close {previousClose.toFixed(2)}
                 </div>
-              )}
+              ) : null}
             </>
           ) : (
             <>

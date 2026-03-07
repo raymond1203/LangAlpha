@@ -255,6 +255,7 @@ class SnapshotData(BaseModel):
     low: Optional[float] = Field(None, description="Day low")
     volume: Optional[int] = Field(None, description="Day volume")
     market_status: Optional[str] = Field(None, description="Per-ticker market phase")
+    regular_trading_change: Optional[float] = Field(None, description="Regular session change (close - prev close)")
     early_trading_change_percent: Optional[float] = Field(None, description="Pre-market change %")
     late_trading_change_percent: Optional[float] = Field(None, description="After-hours change %")
 

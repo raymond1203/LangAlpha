@@ -50,6 +50,7 @@ const MarketChart = React.memo(forwardRef(({
   liveTick,
   wsStatus,
   ginlixDataEnabled = true,
+  snapshot,
 }, ref) => {
   const { theme } = useTheme();
   const ct = getChartTheme(theme);
@@ -68,6 +69,7 @@ const MarketChart = React.memo(forwardRef(({
   const extCloseLineRef = useRef(null);
   const currentExtTypeRef = useRef(null);
   const quoteDataRef = useRef(quoteData);
+  const snapshotRef = useRef(snapshot);
 
   const [loading, setLoading] = useState(true);
   const [scrollLoading, setScrollLoading] = useState(false);
@@ -135,6 +137,7 @@ const MarketChart = React.memo(forwardRef(({
   useEffect(() => { rsiPeriodRef.current = rsiPeriod; }, [rsiPeriod]);
   useEffect(() => { intervalRef.current = interval; }, [interval]);
   useEffect(() => { quoteDataRef.current = quoteData; }, [quoteData]);
+  useEffect(() => { snapshotRef.current = snapshot; }, [snapshot]);
   const symbolRef = useRef(symbol);
   useEffect(() => { symbolRef.current = symbol; }, [symbol]);
 
@@ -184,7 +187,7 @@ const MarketChart = React.memo(forwardRef(({
 
   // --- Price lines via hook ---
   const priceTargetsForAnnotations = overlayVisibility.priceTargets ? overlayData?.priceTargets : null;
-  useChartAnnotations(candlestickSeriesRef, stockMeta, quoteData, priceTargetsForAnnotations, annotationsVisible, symbol, currentExtTypeRef);
+  useChartAnnotations(candlestickSeriesRef, stockMeta, quoteData, priceTargetsForAnnotations, annotationsVisible, symbol);
 
   // --- Series markers via hook ---
   useChartOverlays(candlestickSeriesRef, chartDataForHooks, earningsData, overlayData, overlayVisibility, symbol);
@@ -484,20 +487,30 @@ const MarketChart = React.memo(forwardRef(({
       // Color the last-value price line amber/blue and label it "Pre"/"After"
       series.applyOptions({ priceLineColor: color, title: label });
 
-      // Add a dashed gray line at previous close, labeled "Close"
-      const prevClose = quoteDataRef.current?.previousClose;
-      if (prevClose != null) {
-        if (extCloseLineRef.current) {
-          try { series.removePriceLine(extCloseLineRef.current); } catch (_) { /* ok */ }
+      // After-hours: show today's regular session close (prev_close + regular_trading_change).
+      // Pre-market: skip — the "Prev Close" annotation already shows the same value.
+      if (extCloseLineRef.current) {
+        try { series.removePriceLine(extCloseLineRef.current); } catch (_) { /* ok */ }
+        extCloseLineRef.current = null;
+      }
+      if (extType === 'post') {
+        const snap = snapshotRef.current;
+        // Derive today's 4 PM close: previous_close (yesterday) + regular_trading_change
+        const prevClose = snap?.previous_close;
+        const regChange = snap?.regular_trading_change;
+        const closePrice = (prevClose != null && regChange != null)
+          ? prevClose + regChange
+          : null;
+        if (closePrice != null) {
+          extCloseLineRef.current = series.createPriceLine({
+            price: closePrice,
+            title: 'Close',
+            color: 'rgba(139,143,163,0.7)',
+            lineWidth: 1,
+            lineStyle: LineStyle.Dashed,
+            axisLabelVisible: true,
+          });
         }
-        extCloseLineRef.current = series.createPriceLine({
-          price: prevClose,
-          title: 'Close',
-          color: 'rgba(139,143,163,0.7)',
-          lineWidth: 1,
-          lineStyle: LineStyle.Dashed,
-          axisLabelVisible: true,
-        });
       }
     } else {
       // Regular hours — reset to defaults
@@ -509,15 +522,15 @@ const MarketChart = React.memo(forwardRef(({
     }
   }, []);
 
-  // Re-sync extended-hours close line when quoteData.previousClose changes
+  // Re-sync extended-hours close line when quoteData or snapshot changes
   useEffect(() => {
-    if (currentExtTypeRef.current && quoteDataRef.current?.previousClose != null) {
+    if (currentExtTypeRef.current) {
       // Force re-sync by temporarily clearing the cached type
       currentExtTypeRef.current = null;
       const data = allDataRef.current;
       if (data.length > 0) syncExtendedHoursLines(data[data.length - 1].time);
     }
-  }, [quoteData?.previousClose, syncExtendedHoursLines]);
+  }, [snapshot?.previous_close, snapshot?.regular_trading_change, syncExtendedHoursLines]);
 
   // --- Update series data helper (used by both initial load and scroll load) ---
   const updateSeriesData = useCallback((data) => {
