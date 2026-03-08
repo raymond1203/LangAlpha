@@ -43,8 +43,9 @@ export function useDashboardData() {
       const { indices: next } = await getIndices(INDEX_SYMBOLS);
       return next;
     },
-    // Using initialData provides standard fallback values instantly
-    initialData: () => INDEX_SYMBOLS.map((s) => fallbackIndex(normalizeIndexSymbol(s))),
+    // Using placeholderData provides standard fallback values instantly 
+    // without populating the cache as "fresh", thereby triggering an immediate background fetch
+    placeholderData: () => INDEX_SYMBOLS.map((s) => fallbackIndex(normalizeIndexSymbol(s))),
     refetchInterval: isMarketOpen ? 30000 : 60000,
     staleTime: 10000,
   });
