@@ -3,11 +3,13 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useUser } from '@/hooks/useUser';
 import ConfirmDialog from './ConfirmDialog';
 
 const AvatarDropdown = () => {
   const navigate = useNavigate();
-  const { isLoggedIn, logout, user } = useAuth();
+  const { isLoggedIn, logout } = useAuth();
+  const { user } = useUser();
   const { t } = useTranslation();
   const [showDropdown, setShowDropdown] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);

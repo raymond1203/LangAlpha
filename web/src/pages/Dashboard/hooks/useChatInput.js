@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../../components/ui/use-toast';
-import { getFlashWorkspace, getWorkspaces } from '../../ChatAgent/utils/api';
+import { getFlashWorkspace } from '../../ChatAgent/utils/api';
+import { useWorkspaces } from '../../../hooks/useWorkspaces';
 
 /**
  * Custom hook for handling chat input functionality
@@ -13,26 +14,20 @@ import { getFlashWorkspace, getWorkspaces } from '../../ChatAgent/utils/api';
 export function useChatInput() {
   const [mode, setMode] = useState('fast'); // 'fast' or 'deep'
   const [isLoading, setIsLoading] = useState(false);
-  const [workspaces, setWorkspaces] = useState([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Fetch workspaces on mount for the workspace selector
+  // Fetch workspaces for the workspace selector (shared cache with ChatAgent)
+  const { data: wsData } = useWorkspaces({ limit: 50, offset: 0 });
+  const workspaces = (wsData?.workspaces || []).filter((ws) => ws.status !== 'flash');
+
+  // Auto-select first workspace when data arrives
   useEffect(() => {
-    let cancelled = false;
-    getWorkspaces(50, 0)
-      .then((data) => {
-        if (cancelled) return;
-        const list = (data.workspaces || []).filter((ws) => ws.status !== 'flash');
-        setWorkspaces(list);
-        if (list.length > 0 && !selectedWorkspaceId) {
-          setSelectedWorkspaceId(list[0].workspace_id);
-        }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
+    if (workspaces.length > 0 && !selectedWorkspaceId) {
+      setSelectedWorkspaceId(workspaces[0].workspace_id);
+    }
+  }, [workspaces, selectedWorkspaceId]);
 
   /**
    * Handles sending a message and navigating to the ChatAgent workspace

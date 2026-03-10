@@ -17,7 +17,7 @@ import {
 } from './charts/InlineMarketCharts';
 import { InlineAutomationCard } from './charts/InlineAutomationCards';
 import { extractFilePaths, FileMentionCards } from './FileCard';
-import { useAuth } from '../../../contexts/AuthContext';
+import { useUser } from '@/hooks/useUser';
 import ReasoningMessageContent from './ReasoningMessageContent';
 import PlanApprovalCard from './PlanApprovalCard';
 import UserQuestionCard from './UserQuestionCard';
@@ -275,7 +275,7 @@ function MessageList({ messages, isLoading, isLoadingHistory, hideAvatar, compac
  * based on role (user/assistant) and state (streaming/error)
  */
 function MessageBubble({ message, isLoading, hideAvatar, compactToolCalls, isSubagentView, readOnly, allowFiles, onOpenSubagentTask, onOpenFile, onOpenDir, onToolCallDetailClick, onApprovePlan, onRejectPlan, onPlanDetailClick, onAnswerQuestion, onSkipQuestion, onApproveCreateWorkspace, onRejectCreateWorkspace, onApproveStartQuestion, onRejectStartQuestion, onEditMessage, onRegenerate, onRetry, onThumbUp, onThumbDown, getFeedbackForMessage, onReportWithAgent }) {
-  const { user } = useAuth();
+  const { user } = useUser();
   const { theme } = useTheme();
   const logo = theme === 'light' ? logoDark : logoLight;
   const avatarUrl = user?.avatar_url;

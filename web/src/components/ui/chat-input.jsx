@@ -7,7 +7,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { TokenUsageRing } from './token-usage-ring';
-import { useAuth } from '../../contexts/AuthContext';
+import { usePreferences } from '@/hooks/usePreferences';
 import { getSkills, getModelMetadata } from '../../pages/ChatAgent/utils/api';
 import './chat-input.css';
 
@@ -177,7 +177,7 @@ const ChatInput = forwardRef(function ChatInput({
   dropdownDirection = 'up',
 }, ref) {
   const { t } = useTranslation();
-  const { preferences } = useAuth();
+  const { preferences } = usePreferences();
   const starredModels = preferences?.other_preference?.starred_models || [];
   const preferredModel = preferences?.other_preference?.preferred_model || null;
   const [message, setMessage] = useState('');

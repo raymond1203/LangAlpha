@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Loader2, Folder, FileText, Zap } from 'lucide-react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../../lib/queryKeys';
+import { useWorkspace } from '../../../hooks/useWorkspace';
 import ThreadCard from './ThreadCard';
 import DeleteConfirmModal from './DeleteConfirmModal';
 import RenameThreadModal from './RenameThreadModal';
@@ -9,7 +12,7 @@ import ChatInput from '../../../components/ui/chat-input';
 import { attachmentsToImageContexts } from '../utils/fileUpload';
 import FilePanel, { SYSTEM_DIR_PREFIXES } from './FilePanel';
 import SandboxSettingsPanel from './SandboxSettingsPanel';
-import { getWorkspaceThreads, getWorkspace, deleteThread, updateThreadTitle } from '../utils/api';
+import { getWorkspaceThreads, deleteThread, updateThreadTitle } from '../utils/api';
 import { useWorkspaceFiles } from '../hooks/useWorkspaceFiles';
 import { removeStoredThreadId } from '../hooks/utils/threadStorage';
 import { saveChatSession } from '../hooks/utils/chatSessionRestore';
@@ -32,21 +35,31 @@ import { motion, AnimatePresence } from 'framer-motion';
  * @param {Function} onBack - Callback to navigate back to workspace gallery
  * @param {Function} onThreadSelect - Callback when a thread is selected (receives workspaceId and threadId)
  */
-function ThreadGallery({ workspaceId, onBack, onThreadSelect, cache }) {
+function ThreadGallery({ workspaceId, onBack, onThreadSelect }) {
   const { t } = useTranslation();
   const location = useLocation();
+  const queryClient = useQueryClient();
   const { theme } = useTheme();
   const iconComputer = theme === 'light' ? iconComputerDark : iconComputerLight;
   const [threads, setThreads] = useState([]);
-  const [workspaceName, setWorkspaceName] = useState(
-    location.state?.workspaceName || ''
-  );
-  const [workspaceStatus, setWorkspaceStatus] = useState(
-    location.state?.workspaceStatus || null
-  );
+
+  // Workspace detail via React Query (useWorkspace)
+  const { data: wsData } = useWorkspace(workspaceId);
+  // Keep location.state values as instant display fallbacks during navigation
+  const workspaceName = wsData?.name || location.state?.workspaceName || '';
+  const workspaceStatus = wsData?.status || location.state?.workspaceStatus || null;
   const isFlash = workspaceStatus === 'flash';
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+
+  // Thread loading via React Query
+  const { data: threadData, isLoading: isThreadsLoading, error: threadError } = useQuery({
+    queryKey: queryKeys.threads.byWorkspace(workspaceId),
+    queryFn: () => getWorkspaceThreads(workspaceId),
+    enabled: !!workspaceId,
+    staleTime: 30_000,
+  });
+
+  const isLoading = isThreadsLoading;
+  const error = threadError ? t('thread.failedLoadThreads') : null;
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, thread: null });
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
@@ -62,8 +75,7 @@ function ThreadGallery({ workspaceId, onBack, onThreadSelect, cache }) {
   const [showSystemFiles, setShowSystemFiles] = useState(
     () => localStorage.getItem('filePanel.showSystemFiles') === 'true'
   );
-  // Initialize files from cache for instant display on return navigation
-  const [files, setFiles] = useState(() => cache?.current?.[workspaceId]?.files || []);
+  const [files, setFiles] = useState([]);
   const isDraggingRef = useRef(false);
   const [isDragging, setIsDragging] = useState(false);
   const DIVIDER_WIDTH = 4; // px – matches w-[4px] divider
@@ -92,7 +104,6 @@ function ThreadGallery({ workspaceId, onBack, onThreadSelect, cache }) {
 
   const navigate = useNavigate();
   const { threadId: currentThreadId } = useParams();
-  const loadingRef = useRef(false);
 
   // Sort helper for file list display
   const sortFiles = useCallback((fileList) => {
@@ -111,17 +122,13 @@ function ThreadGallery({ workspaceId, onBack, onThreadSelect, cache }) {
     });
   }, []);
 
-  // Derive sorted file list from hook data and save to cache
+  // Derive sorted file list from hook data
   useEffect(() => {
     if (panelFiles.length > 0) {
       const sorted = sortFiles(panelFiles);
       setFiles(sorted);
-      // Save to cache so files show instantly on return navigation
-      if (cache?.current?.[workspaceId]) {
-        cache.current[workspaceId].files = sorted;
-      }
     }
-  }, [panelFiles, sortFiles, workspaceId, cache]);
+  }, [panelFiles, sortFiles]);
 
   // Save workspace-level session on unmount so tab switching restores to this workspace
   useEffect(() => {
@@ -132,87 +139,14 @@ function ThreadGallery({ workspaceId, onBack, onThreadSelect, cache }) {
     };
   }, [workspaceId]);
 
-  // Load threads on mount, using cache for instant display on return navigation
+  // Sync threads state from React Query data
   useEffect(() => {
-    if (!workspaceId) return;
-
-    // Guard: Prevent duplicate calls
-    if (loadingRef.current) {
-      return;
+    if (threadData) {
+      setThreads(threadData.threads || []);
+      setTotalThreads(threadData.total || 0);
+      setHasMore((threadData.threads?.length || 0) < (threadData.total || 0));
     }
-
-    // Show cached data instantly (stale-while-revalidate)
-    const cached = cache?.current?.[workspaceId];
-    if (cached?.threads) {
-      setThreads(cached.threads);
-      if (cached.workspaceName) setWorkspaceName(cached.workspaceName);
-      if (cached.total != null) {
-        setTotalThreads(cached.total);
-        setHasMore(cached.threads.length < cached.total);
-      }
-      setIsLoading(false);
-    }
-
-    loadingRef.current = true;
-    loadData().finally(() => {
-      loadingRef.current = false;
-    });
-  }, [workspaceId]);
-
-  /**
-   * Fetches threads (and workspace name if not yet known) from the API.
-   * File listing is handled separately by useWorkspaceFiles hook.
-   */
-  const loadData = async () => {
-    try {
-      // Only show spinner if we have nothing cached
-      const hasCached = cache?.current?.[workspaceId]?.threads;
-      if (!hasCached) setIsLoading(true);
-      setError(null);
-
-      // If we don't have workspace name yet, fetch it in parallel with threads
-      const needsName = !workspaceName;
-      const promises = [getWorkspaceThreads(workspaceId)];
-      if (needsName) {
-        promises.push(getWorkspace(workspaceId).catch(() => null));
-      }
-
-      const [threadsData, workspaceData] = await Promise.all(promises);
-
-      const freshThreads = threadsData.threads || [];
-      const total = threadsData.total ?? freshThreads.length;
-      setThreads(freshThreads);
-      setTotalThreads(total);
-      setHasMore(freshThreads.length < total);
-
-      const freshName = workspaceData?.name || workspaceName || t('thread.workspace');
-      if (needsName && workspaceData?.name) {
-        setWorkspaceName(freshName);
-      }
-
-      // Detect workspace status from API if not provided via navigation state
-      if (!workspaceStatus && workspaceData?.status) {
-        setWorkspaceStatus(workspaceData.status);
-      }
-
-      // Update cache for stale-while-revalidate on return navigation
-      // Spread existing entry to preserve cached files
-      if (cache?.current) {
-        cache.current[workspaceId] = {
-          ...cache.current[workspaceId],
-          threads: freshThreads,
-          total,
-          workspaceName: freshName,
-          fetchedAt: Date.now(),
-        };
-      }
-    } catch (err) {
-      console.error('Error loading threads:', err);
-      setError(t('thread.failedLoadThreads'));
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }, [threadData]);
 
   // Keep refs in sync with state for IntersectionObserver callback
   useEffect(() => { isLoadingMoreRef.current = isLoadingMore; }, [isLoadingMore]);
@@ -232,15 +166,7 @@ function ThreadGallery({ workspaceId, onBack, onThreadSelect, cache }) {
       const moreData = await getWorkspaceThreads(workspaceId, 20, offset);
       const moreThreads = moreData.threads || [];
       const updatedTotal = moreData.total ?? 0;
-      setThreads((prev) => {
-        const merged = [...prev, ...moreThreads];
-        // Update cache with merged list
-        if (cache?.current?.[workspaceId]) {
-          cache.current[workspaceId].threads = merged;
-          cache.current[workspaceId].total = updatedTotal;
-        }
-        return merged;
-      });
+      setThreads((prev) => [...prev, ...moreThreads]);
       setTotalThreads(updatedTotal);
       const newHasMore = offset + moreThreads.length < updatedTotal;
       setHasMore(newHasMore);
@@ -250,7 +176,7 @@ function ThreadGallery({ workspaceId, onBack, onThreadSelect, cache }) {
       isLoadingMoreRef.current = false;
       setIsLoadingMore(false);
     }
-  }, [workspaceId, cache]);
+  }, [workspaceId]);
 
   // Scroll-based infinite loading: trigger when near bottom of scroll container
   useEffect(() => {
@@ -335,6 +261,9 @@ function ThreadGallery({ workspaceId, onBack, onThreadSelect, cache }) {
       );
       setTotalThreads((prev) => (prev != null ? prev - 1 : prev));
 
+      // Invalidate thread query cache
+      queryClient.invalidateQueries({ queryKey: queryKeys.threads.byWorkspace(workspaceId) });
+
       // If the deleted thread is currently active, navigate back to thread gallery
       if (currentThreadId === threadId) {
         navigate(`/chat/${workspaceId}`);
@@ -400,6 +329,9 @@ function ThreadGallery({ workspaceId, onBack, onThreadSelect, cache }) {
         )
       );
 
+      // Invalidate thread query cache
+      queryClient.invalidateQueries({ queryKey: queryKeys.threads.byWorkspace(workspaceId) });
+
       // Close modal
       setRenameModal({ isOpen: false, thread: null });
     } catch (err) {
@@ -458,8 +390,9 @@ function ThreadGallery({ workspaceId, onBack, onThreadSelect, cache }) {
 
       const additionalContext = contexts.length > 0 ? contexts : null;
 
-      navigate(`/chat/${workspaceId}/__default__`, {
+      navigate(`/chat/t/__default__`, {
         state: {
+          workspaceId,
           initialMessage: message.trim(),
           planMode: planMode,
           ...(isFlash ? { agentMode: 'flash' } : {}),
@@ -536,7 +469,7 @@ function ThreadGallery({ workspaceId, onBack, onThreadSelect, cache }) {
             {error}
           </p>
           <button
-            onClick={loadData}
+            onClick={() => queryClient.invalidateQueries({ queryKey: queryKeys.threads.byWorkspace(workspaceId) })}
             className="px-4 py-2 rounded-md text-sm font-medium transition-colors"
             style={{
               backgroundColor: 'var(--color-accent-primary)',

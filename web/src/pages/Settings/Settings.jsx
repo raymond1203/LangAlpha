@@ -4,8 +4,13 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { updateCurrentUser, getCurrentUser, updatePreferences, getPreferences, clearPreferences, uploadAvatar, getAvailableModels, getUserApiKeys, updateUserApiKeys, deleteUserApiKey, initiateCodexDevice, pollCodexDevice, getCodexOAuthStatus, disconnectCodexOAuth, initiateClaudeOAuth, submitClaudeCallback, getClaudeOAuthStatus, disconnectClaudeOAuth } from '@/pages/Dashboard/utils/api';
+import { updateCurrentUser, clearPreferences, uploadAvatar, getAvailableModels, getUserApiKeys, updateUserApiKeys, deleteUserApiKey, initiateCodexDevice, pollCodexDevice, getCodexOAuthStatus, disconnectCodexOAuth, initiateClaudeOAuth, submitClaudeCallback, getClaudeOAuthStatus, disconnectClaudeOAuth } from '@/pages/Dashboard/utils/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUser } from '@/hooks/useUser';
+import { usePreferences } from '@/hooks/usePreferences';
+import { useUpdatePreferences } from '@/hooks/useUpdatePreferences';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/ui/use-toast';
@@ -17,7 +22,11 @@ function Settings() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
-  const { user: authUser, logout, refreshUser } = useAuth();
+  const { logout } = useAuth();
+  const { user: authUser, isLoading: isUserLoading } = useUser();
+  const { preferences: prefsData, isLoading: isPrefsLoading } = usePreferences();
+  const updatePrefsMutation = useUpdatePreferences();
+  const queryClient = useQueryClient();
   const { theme, preference, setTheme: setThemePref } = useTheme();
   const { t, i18n } = useTranslation();
 
@@ -90,7 +99,7 @@ function Settings() {
   const [isSubmittingClaudeCallback, setIsSubmittingClaudeCallback] = useState(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const isLoading = isUserLoading || isPrefsLoading;
   const [error, setError] = useState(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -147,12 +156,16 @@ function Settings() {
     }
   }, [searchParams]);
 
-  // Load user data and preferences on mount
+  // Initialize form state from user data (provided by useUser hook)
   useEffect(() => {
-    setIsLoading(true);
-    Promise.all([loadUserData(), loadPreferencesData()])
-      .finally(() => setIsLoading(false));
-  }, []);
+    if (authUser) {
+      setName(authUser.name || '');
+      setTimezone(authUser.timezone || '');
+      setLocale(authUser.locale || '');
+      const url = authUser.avatar_url;
+      setAvatarUrl(url ? `${url}?v=${authUser.updated_at || ''}` : null);
+    }
+  }, [authUser]);
 
   // Load model tab data lazily when tab is selected
   useEffect(() => {
@@ -171,36 +184,19 @@ function Settings() {
     };
   }, []);
 
-  const loadUserData = async () => {
-    try {
-      const userData = await getCurrentUser();
-      if (userData?.user) {
-        setName(userData.user.name || '');
-        setTimezone(userData.user.timezone || '');
-        setLocale(userData.user.locale || '');
-        const url = userData.user.avatar_url;
-        const version = userData.user.updated_at;
-        setAvatarUrl(url ? `${url}?v=${version}` : null);
-      }
-    } catch {
-      // User data load failed - keep existing state
+  // Sync local preferences state from usePreferences hook
+  useEffect(() => {
+    if (prefsData) {
+      setPreferences(prefsData);
     }
-  };
-
-  const loadPreferencesData = async () => {
-    try {
-      const preferencesData = await getPreferences();
-      setPreferences(preferencesData || null);
-    } catch {}
-  };
+  }, [prefsData]);
 
   const loadModelTabData = async () => {
     setModelTabError(null);
     try {
-      const [modelsRes, keysRes, prefsRes, codexStatus, claudeStatus] = await Promise.all([
+      const [modelsRes, keysRes, codexStatus, claudeStatus] = await Promise.all([
         getAvailableModels(),
         getUserApiKeys(),
-        getPreferences(),
         getCodexOAuthStatus(),
         getClaudeOAuthStatus(),
       ]);
@@ -214,13 +210,13 @@ function Settings() {
         if (p.base_url) initialBaseUrls[p.provider] = p.base_url;
       });
       setBaseUrlInputs(initialBaseUrls);
-      setPreferredModel(prefsRes?.other_preference?.preferred_model || '');
-      setPreferredFlashModel(prefsRes?.other_preference?.preferred_flash_model || '');
-      setStarredModels(prefsRes?.other_preference?.starred_models || []);
-      setCustomModels(prefsRes?.other_preference?.custom_models || []);
-      setSummarizationModel(prefsRes?.other_preference?.summarization_model || '');
-      setFetchModel(prefsRes?.other_preference?.fetch_model || '');
-      setFallbackModels(prefsRes?.other_preference?.fallback_models || defaults.fallback_models || []);
+      setPreferredModel(prefsData?.other_preference?.preferred_model || '');
+      setPreferredFlashModel(prefsData?.other_preference?.preferred_flash_model || '');
+      setStarredModels(prefsData?.other_preference?.starred_models || []);
+      setCustomModels(prefsData?.other_preference?.custom_models || []);
+      setSummarizationModel(prefsData?.other_preference?.summarization_model || '');
+      setFetchModel(prefsData?.other_preference?.fetch_model || '');
+      setFallbackModels(prefsData?.other_preference?.fallback_models || defaults.fallback_models || []);
       setCodexOAuthStatus(codexStatus || { connected: false });
       setClaudeOAuthStatus(claudeStatus || { connected: false });
     } catch {
@@ -241,7 +237,7 @@ function Settings() {
           if (p.use_response_api) entry.use_response_api = true;
           return entry;
         });
-      await updatePreferences({
+      await updatePrefsMutation.mutateAsync({
         other_preference: {
           preferred_model: preferredModel || null,
           preferred_flash_model: preferredFlashModel || null,
@@ -276,7 +272,6 @@ function Settings() {
       }
 
       setModelSaveSuccess(true);
-      refreshUser();
       setTimeout(() => setModelSaveSuccess(false), 3000);
     } catch {
       setModelTabError(t('settings.failedToSaveSettings'));
@@ -570,7 +565,7 @@ function Settings() {
     try {
       const { avatar_url } = await uploadAvatar(file);
       setAvatarUrl(`${avatar_url}?t=${Date.now()}`);
-      refreshUser();
+      queryClient.invalidateQueries({ queryKey: queryKeys.user.me() });
     } catch {
       setError(t('settings.failedToUploadAvatar'));
     } finally {
@@ -599,6 +594,7 @@ function Settings() {
       if (locale) userData.locale = locale;
       if (Object.keys(userData).length > 0) {
         await updateCurrentUser(userData);
+        queryClient.invalidateQueries({ queryKey: queryKeys.user.me() });
       }
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
@@ -612,8 +608,9 @@ function Settings() {
   const handleModifyPreferences = async () => {
     try {
       const flashWs = await getFlashWorkspace();
-      navigate(`/chat/${flashWs.workspace_id}/__default__`, {
+      navigate(`/chat/t/__default__`, {
         state: {
+          workspaceId: flashWs.workspace_id,
           isModifyingPreferences: true,
           agentMode: 'flash',
           workspaceStatus: 'flash',
@@ -632,8 +629,9 @@ function Settings() {
   const handleStartOnboarding = async () => {
     try {
       const flashWs = await getFlashWorkspace();
-      navigate(`/chat/${flashWs.workspace_id}/__default__`, {
+      navigate(`/chat/t/__default__`, {
         state: {
+          workspaceId: flashWs.workspace_id,
           isOnboarding: true,
           agentMode: 'flash',
           workspaceStatus: 'flash',
@@ -659,6 +657,7 @@ function Settings() {
     try {
       await clearPreferences();
       setPreferences(null);
+      queryClient.invalidateQueries({ queryKey: queryKeys.user.preferences() });
       setShowResetConfirm(false);
     } catch {
       setError(t('settings.failedToResetPreferences'));

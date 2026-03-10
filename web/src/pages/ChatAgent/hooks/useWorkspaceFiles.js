@@ -1,73 +1,37 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../../lib/queryKeys';
 import { listWorkspaceFiles } from '../utils/api';
 
 /**
  * Shared hook for workspace file listing.
- * Fetches on mount and when workspaceId changes.
- * Provides a debounced refresh to avoid rapid re-fetches.
+ * Uses React Query for automatic caching, retry, and deduplication.
  *
  * @param {string} workspaceId
  * @param {{ includeSystem?: boolean }} options
  * @returns {{ files: string[], loading: boolean, error: string|null, refresh: () => void }}
  */
 export function useWorkspaceFiles(workspaceId, { includeSystem = false } = {}) {
-  const [files, setFiles] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const debounceTimerRef = useRef(null);
+  const queryClient = useQueryClient();
+  const opts = { includeSystem };
 
-  const fetchFiles = useCallback(async (retryCount = 0, { autoStart = false } = {}) => {
-    if (!workspaceId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await listWorkspaceFiles(workspaceId, '.', { autoStart, includeSystem });
-      setFiles(data.files || []);
-    } catch (err) {
-      const status = err?.response?.status;
-      // Retry on transient errors (503 = sandbox not available, 500 = stopping race)
-      if ((status === 503 || status === 500) && retryCount < 3) {
-        const delay = 1000 * (retryCount + 1); // 1s, 2s, 3s
-        console.log(`[useWorkspaceFiles] Sandbox not ready (${status}), retrying in ${delay}ms...`);
-        setTimeout(() => fetchFiles(retryCount + 1), delay);
-        return;
-      }
-      console.error('[useWorkspaceFiles] Failed to list files:', err);
-      setError(
-        status === 503
-          ? 'Sandbox not available'
-          : 'Failed to load files'
-      );
-      setFiles([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [workspaceId, includeSystem]);
+  const { data, isLoading, error } = useQuery({
+    queryKey: queryKeys.workspaceFiles.byWs(workspaceId, opts),
+    queryFn: () => listWorkspaceFiles(workspaceId, '.', { autoStart: false, includeSystem }),
+    enabled: !!workspaceId,
+    retry: (count, err) => count < 3 && [500, 503].includes(err?.response?.status),
+    retryDelay: (attempt) => (attempt + 1) * 1000, // 1s, 2s, 3s
+    staleTime: 30_000,
+  });
 
-  // Fetch on mount / workspaceId change / includeSystem toggle
-  useEffect(() => {
-    fetchFiles();
-  }, [fetchFiles]);
-
-  // Debounced refresh (500ms) to avoid rapid re-fetches
   const refresh = useCallback(() => {
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
-    debounceTimerRef.current = setTimeout(() => {
-      fetchFiles(0, { autoStart: true });
-      debounceTimerRef.current = null;
-    }, 500);
-  }, [fetchFiles]);
+    queryClient.invalidateQueries({ queryKey: queryKeys.workspaceFiles.byWs(workspaceId, { includeSystem }) });
+  }, [queryClient, workspaceId, includeSystem]);
 
-  // Cleanup timer on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
-  }, []);
-
-  return { files, loading, error, refresh };
+  return {
+    files: data?.files || [],
+    loading: isLoading,
+    error: error ? (error.response?.status === 503 ? 'Sandbox not available' : 'Failed to load files') : null,
+    refresh,
+  };
 }

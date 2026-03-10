@@ -3,7 +3,9 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, FolderOpen, StopCircle, ScrollText, AlertTriangle, CheckCircle2, Circle, Loader2, TextSelect, Minus, PanelLeftOpen } from 'lucide-react';
 import { ScrollArea } from '../../../components/ui/scroll-area';
-import { useAuth } from '../../../contexts/AuthContext';
+import { usePreferences } from '@/hooks/usePreferences';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
 import { updateCurrentUser } from '../../Dashboard/utils/api';
 import { softInterruptWorkflow, getWorkspace, summarizeThread, offloadThread } from '../utils/api';
 import { useChatMessages } from '../hooks/useChatMessages';
@@ -130,7 +132,8 @@ function ChatView({ workspaceId, threadId, onBack, workspaceName: initialWorkspa
   const chatInputRef = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
-  const { refreshUser, preferences } = useAuth();
+  const { preferences } = usePreferences();
+  const queryClient = useQueryClient();
   const preferredModel = preferences?.other_preference?.preferred_model || null;
   const initialMessageSentRef = useRef(false);
   // Determine agent mode: flash workspaces use flash mode, otherwise ptc
@@ -277,11 +280,11 @@ function ChatView({ workspaceId, threadId, onBack, workspaceName: initialWorkspa
   const handleOnboardingRelatedToolComplete = useCallback(async () => {
     try {
       await updateCurrentUser({ onboarding_completed: true });
-      await refreshUser?.();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.user.me() });
     } catch (e) {
       console.warn('[ChatView] Failed to sync onboarding_completed:', e);
     }
-  }, [refreshUser]);
+  }, [queryClient]);
 
   // Navigate to a newly created workspace with an optional starter question
   const handleWorkspaceCreated = useCallback(({ workspaceId: newWsId, question }) => {
@@ -909,8 +912,10 @@ function ChatView({ workspaceId, threadId, onBack, workspaceName: initialWorkspa
       // Update URL to reflect the actual thread ID
       // This will cause ChatAgent to re-render with new threadId prop, triggering history load
       navigate(`/chat/t/${currentThreadId}`, { replace: true, state: { workspaceId } });
+      // Invalidate thread cache so navigation panel picks up the new thread
+      queryClient.invalidateQueries({ queryKey: queryKeys.threads.byWorkspace(workspaceId) });
     }
-  }, [currentThreadId, threadId, workspaceId, navigate]);
+  }, [currentThreadId, threadId, workspaceId, navigate, queryClient]);
 
   // Auto-send initial message from navigation state (e.g., from Dashboard)
   useEffect(() => {

@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { setTokenGetter } from '../api/client';
+import { queryKeys } from '../lib/queryKeys';
 
 const AuthContext = createContext(null);
 
@@ -15,15 +17,12 @@ const baseURL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
  */
 const _localDevValue = {
   userId: _LOCAL_DEV_USER_ID,
-  user: { id: _LOCAL_DEV_USER_ID, name: 'Local User' },
-  preferences: null,
   isInitialized: true,
   isLoggedIn: true,
   loginWithEmail: () => Promise.resolve(),
   signupWithEmail: () => Promise.resolve(),
   loginWithProvider: () => Promise.resolve(),
   logout: () => Promise.resolve(),
-  refreshUser: () => {},
 };
 
 export function AuthProvider({ children }) {
@@ -41,9 +40,8 @@ let _syncPromise = null;
 /** Inner provider that uses hooks — only rendered when Supabase auth is enabled. */
 function SupabaseAuthProvider({ children }) {
   const [session, setSession] = useState(null);
-  const [localUser, setLocalUser] = useState(null);
-  const [preferences, setPreferences] = useState(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const queryClient = useQueryClient();
 
   /** Wire up the axios token getter immediately when we have a session. */
   const wireTokenGetter = useCallback(() => {
@@ -52,23 +50,7 @@ function SupabaseAuthProvider({ children }) {
     );
   }, []);
 
-  /** Fetch user profile from backend (read-only, no side-effects). */
-  const fetchUser = useCallback(async (token) => {
-    try {
-      const res = await fetch(`${baseURL}/api/v1/users/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setLocalUser(data.user ?? data);
-        setPreferences(data.preferences ?? null);
-      }
-    } catch (err) {
-      console.error('[auth] fetchUser failed:', err);
-    }
-  }, []);
-
-  /** Sync user on actual sign-in: create/migrate + backfill fields. */
+  /** Sync user on actual sign-in: create/migrate + backfill fields. Seed React Query cache. */
   const syncUser = useCallback(async (sess) => {
     if (!sess) return;
     if (_syncPromise) return _syncPromise;
@@ -92,8 +74,11 @@ function SupabaseAuthProvider({ children }) {
         });
         if (res.ok) {
           const data = await res.json();
-          setLocalUser(data.user ?? data);
-          setPreferences(data.preferences ?? null);
+          // Seed React Query cache — instant, no extra fetch needed
+          queryClient.setQueryData(queryKeys.user.me(), data.user ?? data);
+          if (data.preferences !== undefined) {
+            queryClient.setQueryData(queryKeys.user.preferences(), data.preferences ?? null);
+          }
         }
       } catch (err) {
         console.error('[auth] syncUser failed:', err);
@@ -102,7 +87,7 @@ function SupabaseAuthProvider({ children }) {
       }
     })();
     return _syncPromise;
-  }, []);
+  }, [queryClient]);
 
   // Bootstrap: read existing session and listen for auth changes.
   useEffect(() => {
@@ -110,7 +95,8 @@ function SupabaseAuthProvider({ children }) {
       setSession(sess);
       if (sess) {
         wireTokenGetter();
-        fetchUser(sess.access_token);  // Read-only profile load
+        // Trigger background refetch of user data via React Query
+        queryClient.invalidateQueries({ queryKey: queryKeys.user.all });
       }
       setIsInitialized(true);
     });
@@ -124,19 +110,20 @@ function SupabaseAuthProvider({ children }) {
         if (event === 'SIGNED_IN') {
           syncUser(sess);  // Full sync only on actual login
         } else if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') {
-          // INITIAL_SESSION: getSession() above already calls fetchUser
+          // INITIAL_SESSION: getSession() above already triggers invalidation
           // TOKEN_REFRESHED: no backend call needed
         } else {
-          fetchUser(sess.access_token);
+          queryClient.invalidateQueries({ queryKey: queryKeys.user.all });
         }
       } else {
-        setLocalUser(null);
+        // Logged out — wipe all cached data
+        queryClient.clear();
         setTokenGetter(null);
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [wireTokenGetter, fetchUser, syncUser]);
+  }, [wireTokenGetter, syncUser, queryClient]);
 
   const loginWithEmail = useCallback(
     (email, password) => supabase.auth.signInWithPassword({ email, password }),
@@ -158,24 +145,19 @@ function SupabaseAuthProvider({ children }) {
     []
   );
 
-  const logout = useCallback(() => supabase.auth.signOut(), []);
-
-  const refreshUser = useCallback(async () => {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    if (sess) fetchUser(sess.access_token);
-  }, [fetchUser]);
+  const logout = useCallback(async () => {
+    await supabase.auth.signOut();
+    queryClient.clear();
+  }, [queryClient]);
 
   const value = {
     userId: session?.user?.id ?? null,
-    user: localUser,
-    preferences,
     isInitialized,
     isLoggedIn: !!session,
     loginWithEmail,
     signupWithEmail,
     loginWithProvider,
     logout,
-    refreshUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

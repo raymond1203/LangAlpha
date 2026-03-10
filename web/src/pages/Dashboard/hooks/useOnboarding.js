@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/ui/use-toast';
-import { useAuth } from '@/contexts/AuthContext';
+import { useUser } from '@/hooks/useUser';
 import { getFlashWorkspace } from '../../ChatAgent/utils/api';
 
 const ONBOARDING_IGNORE_STORAGE_KEY = 'langalpha-onboarding-ignored-at';
@@ -38,7 +38,7 @@ export function useOnboarding() {
     const { t } = useTranslation();
     const { toast } = useToast();
 
-    const { user: authUser } = useAuth();
+    const { user: authUser } = useUser();
 
     const [showOnboardingDialog, setShowOnboardingDialog] = useState(false);
     const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);

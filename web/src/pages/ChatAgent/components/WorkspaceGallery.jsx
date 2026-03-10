@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Plus, Loader2, Search, ArrowDownUp, MoreHorizontal, Zap, MessageSquareText, Pin, Trash2, GripVertical, Check } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -6,10 +6,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import CreateWorkspaceModal from './CreateWorkspaceModal';
 import DeleteConfirmModal from './DeleteConfirmModal';
 import MorphingPageDots from '../../../components/ui/morphing-page-dots';
-import { getWorkspaces, createWorkspace, deleteWorkspace, getFlashWorkspace, updateWorkspace, reorderWorkspaces } from '../utils/api';
+import { useWorkspaces } from '../../../hooks/useWorkspaces';
+import { queryKeys } from '../../../lib/queryKeys';
+import { createWorkspace, deleteWorkspace, getFlashWorkspace, updateWorkspace, reorderWorkspaces } from '../utils/api';
 import { removeStoredThreadId } from '../hooks/useChatMessages';
 import { clearChatSession } from '../hooks/utils/chatSessionRestore';
 
@@ -249,26 +252,21 @@ function WorkspaceCard({ workspace, onSelect, onTogglePin, onDelete, prefetchThr
  *
  * @param {Function} onWorkspaceSelect - Callback when a workspace is selected (receives workspaceId)
  */
-function WorkspaceGallery({ onWorkspaceSelect, cache, prefetchThreads }) {
+function WorkspaceGallery({ onWorkspaceSelect, prefetchThreads }) {
   const { t } = useTranslation();
-  const [workspaces, setWorkspaces] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, workspace: null });
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [sortBy, setSortBy] = useState('activity'); // 'activity' | 'name' | 'custom'
-  const sortByRef = useRef(sortBy);
-  sortByRef.current = sortBy;
-  const [totalWorkspaces, setTotalWorkspaces] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
   const [isReorderMode, setIsReorderMode] = useState(false);
   const [allWorkspaces, setAllWorkspaces] = useState([]); // full list for reorder mode
   const navigate = useNavigate();
   const { workspaceId: currentWorkspaceId } = useParams();
-  const loadingRef = useRef(false);
   const searchTimerRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const slideDirectionRef = useRef(0); // 1 = forward, -1 = back
@@ -276,8 +274,60 @@ function WorkspaceGallery({ onWorkspaceSelect, cache, prefetchThreads }) {
   const gridHeightRef = useRef(null); // locked grid height for consistent dot placement
   const preSortByRef = useRef(sortBy); // sort mode before entering reorder
   const didReorderRef = useRef(false); // whether a drag occurred in reorder mode
-  const isSearching = searchQuery.length > 0;
+  const isSearching = debouncedSearch.length > 0;
+
+  // Pagination: reserve one slot on page 0 for the flash workspace
+  const isFirstPage = currentPage === 0;
+  const wsLimit = isSearching ? 100 : isFirstPage ? PAGE_SIZE - 1 : PAGE_SIZE;
+  const wsOffset = isSearching ? 0 : isFirstPage ? 0 : (PAGE_SIZE - 1) + (currentPage - 1) * PAGE_SIZE;
+
+  // Main workspace list query
+  const {
+    data: wsData,
+    isLoading: isWsLoading,
+    error: wsError,
+  } = useWorkspaces({
+    limit: wsLimit,
+    offset: wsOffset,
+    sortBy,
+    enabled: !isReorderMode,
+  });
+
+  // Flash workspace query (idempotent POST — creates if not exists)
+  const { data: flashWs } = useQuery({
+    queryKey: queryKeys.workspaces.flash(),
+    queryFn: getFlashWorkspace,
+    staleTime: 5 * 60_000,
+  });
+
+  // Reorder mode: fetch all workspaces
+  const { data: allWsData } = useWorkspaces({
+    limit: 100,
+    offset: 0,
+    sortBy: 'custom',
+    enabled: isReorderMode,
+  });
+
+  // Derive workspace list from query data
+  const workspaces = useMemo(() => {
+    const list = wsData?.workspaces || [];
+    // Prepend flash workspace on first page when not searching
+    if (flashWs && isFirstPage && !isSearching) {
+      return [flashWs, ...list];
+    }
+    return list;
+  }, [wsData, flashWs, isFirstPage, isSearching]);
+
+  const totalWorkspaces = wsData?.total || 0;
   const totalPages = Math.ceil((totalWorkspaces + 1) / PAGE_SIZE);
+
+  // Sync allWorkspaces state from query data when in reorder mode
+  useEffect(() => {
+    if (isReorderMode && allWsData?.workspaces) {
+      const list = allWsData.workspaces;
+      setAllWorkspaces(flashWs ? [flashWs, ...list] : list);
+    }
+  }, [isReorderMode, allWsData, flashWs]);
 
   // DnD sensors — require 8px drag distance before activating
   const sensors = useSensors(
@@ -297,102 +347,26 @@ function WorkspaceGallery({ onWorkspaceSelect, cache, prefetchThreads }) {
     clearChatSession();
   }, []);
 
-  // Load workspaces on mount, using cache for instant display on return navigation
+  // Scroll to top when page changes
   useEffect(() => {
-    // Guard: Prevent duplicate calls
-    if (loadingRef.current) {
-      return;
-    }
-
-    // Show cached data instantly (stale-while-revalidate)
-    if (cache?.current?.workspaces) {
-      setWorkspaces(cache.current.workspaces);
-      if (cache.current.total != null) {
-        setTotalWorkspaces(cache.current.total);
-      }
-      setIsLoading(false);
-    }
-
-    loadingRef.current = true;
-    loadWorkspaces(0).finally(() => {
-      loadingRef.current = false;
-    });
-  }, []);
-
-  // Re-fetch when page changes (skip initial mount which is handled above)
-  const initialMountRef = useRef(true);
-  useEffect(() => {
-    if (initialMountRef.current) {
-      initialMountRef.current = false;
-      return;
-    }
-    if (!isSearching && !isReorderMode) {
-      loadWorkspaces(currentPage);
-    }
     scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [currentPage, isSearching, isReorderMode, sortBy]);
+  }, [currentPage]);
 
   /**
-   * Fetches workspaces from the API with pagination.
-   * @param {number} page - 0-indexed page number
-   */
-  const loadWorkspaces = async (page = currentPage) => {
-    try {
-      const hasCached = cache?.current?.workspaces;
-      if (!hasCached) setIsLoading(true);
-      setError(null);
-      // Reserve one slot on page 0 for the flash workspace
-      const isFirstPage = (page || 0) === 0;
-      const limit = isFirstPage ? PAGE_SIZE - 1 : PAGE_SIZE;
-      const offset = isFirstPage ? 0 : (PAGE_SIZE - 1) + (page - 1) * PAGE_SIZE;
-      const [data, flashWs] = await Promise.all([
-        getWorkspaces(limit, offset, sortByRef.current),
-        isFirstPage ? getFlashWorkspace().catch(() => null) : Promise.resolve(null),
-      ]);
-      let workspaceList = data.workspaces || [];
-      const total = data.total ?? workspaceList.length;
-      // Prepend flash workspace on first page (server excludes it from listings)
-      if (flashWs && isFirstPage) {
-        workspaceList = [flashWs, ...workspaceList];
-      }
-      setWorkspaces(workspaceList);
-      setTotalWorkspaces(total);
-
-      // Update cache
-      if (cache?.current) {
-        cache.current.workspaces = workspaceList;
-        cache.current.total = total;
-        cache.current.fetchedAt = Date.now();
-      }
-    } catch (err) {
-      console.error('Error loading workspaces:', err);
-      setError(t('workspace.failedLoadWorkspaces'));
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  /**
-   * Debounced search: fetch all workspaces matching query
+   * Debounced search: update debouncedSearch after 300ms
    */
   const handleSearchChange = useCallback((value) => {
     setSearchQuery(value);
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
 
     if (value.length > 0) {
-      searchTimerRef.current = setTimeout(async () => {
-        try {
-          const data = await getWorkspaces(100, 0, sortByRef.current);
-          setWorkspaces(data.workspaces || []);
-        } catch (err) {
-          console.error('Error searching workspaces:', err);
-        }
+      searchTimerRef.current = setTimeout(() => {
+        setDebouncedSearch(value);
       }, 300);
     } else {
-      // Search cleared — return to paginated view
-      loadWorkspaces(currentPage);
+      setDebouncedSearch('');
     }
-  }, [currentPage]);
+  }, []);
 
   // Cleanup timers on unmount
   useEffect(() => {
@@ -411,9 +385,8 @@ function WorkspaceGallery({ onWorkspaceSelect, cache, prefetchThreads }) {
         workspaceData.name,
         workspaceData.description,
       );
-      // Add new workspace to the list
-      setWorkspaces((prev) => [newWorkspace, ...prev]);
-      setTotalWorkspaces((prev) => prev + 1);
+      // Invalidate workspace list cache so the new workspace appears
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.lists() });
       // Return workspace so modal can use workspace_id for file uploads
       return newWorkspace;
     } catch (err) {
@@ -455,17 +428,15 @@ function WorkspaceGallery({ onWorkspaceSelect, cache, prefetchThreads }) {
       // Clean up localStorage: remove thread ID for deleted workspace
       removeStoredThreadId(workspaceId);
 
-      // Remove workspace from list and adjust total
-      setWorkspaces((prev) => {
-        const updated = prev.filter((ws) => ws.workspace_id !== workspaceId);
-        // If page is now empty, go to previous page
-        if (updated.length === 0 && currentPage > 0) {
-          slideDirectionRef.current = -1;
-          setCurrentPage((p) => p - 1);
-        }
-        return updated;
-      });
-      setTotalWorkspaces((prev) => Math.max(0, prev - 1));
+      // Invalidate workspace list cache
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.lists() });
+
+      // If page would be empty after deletion, go to previous page
+      const remainingOnPage = workspaces.filter((ws) => ws.workspace_id !== workspaceId).length;
+      if (remainingOnPage === 0 && currentPage > 0) {
+        slideDirectionRef.current = -1;
+        setCurrentPage((p) => p - 1);
+      }
 
       // If the deleted workspace is currently active, navigate back to gallery
       if (currentWorkspaceId === workspaceId) {
@@ -493,57 +464,48 @@ function WorkspaceGallery({ onWorkspaceSelect, cache, prefetchThreads }) {
   };
 
   /**
-   * Toggle pin state — optimistic update
+   * Toggle pin state with optimistic update and rollback on error.
    */
   const handleTogglePin = async (workspace) => {
     const newPinned = !workspace.is_pinned;
     const wsId = workspace.workspace_id;
 
-    // Optimistic update
-    setWorkspaces((prev) =>
-      prev.map((ws) =>
-        ws.workspace_id === wsId ? { ...ws, is_pinned: newPinned } : ws
-      )
-    );
+    // Snapshot + optimistic flip across all cached workspace lists
+    const previous = queryClient.getQueriesData({ queryKey: queryKeys.workspaces.lists() });
+    previous.forEach(([key, data]) => {
+      if (data?.workspaces) {
+        queryClient.setQueryData(key, {
+          ...data,
+          workspaces: data.workspaces.map(ws =>
+            ws.workspace_id === wsId ? { ...ws, is_pinned: newPinned } : ws
+          ),
+        });
+      }
+    });
 
     try {
       await updateWorkspace(wsId, { is_pinned: newPinned });
       // Refetch from server — pinning changes global sort order
       slideDirectionRef.current = -1;
       gridHeightRef.current = null;
-      if (currentPage === 0) {
-        await loadWorkspaces(0);
-      } else {
-        setCurrentPage(0); // useEffect handles the fetch
+      if (currentPage !== 0) {
+        setCurrentPage(0);
       }
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.lists() });
     } catch (err) {
+      // Rollback optimistic update
+      previous.forEach(([key, data]) => queryClient.setQueryData(key, data));
       console.error('Error toggling pin:', err);
-      // Rollback
-      setWorkspaces((prev) =>
-        prev.map((ws) =>
-          ws.workspace_id === wsId ? { ...ws, is_pinned: !newPinned } : ws
-        )
-      );
     }
   };
 
   /**
    * Enter reorder mode — fetch all workspaces
    */
-  const enterReorderMode = async () => {
-    try {
-      preSortByRef.current = sortBy;
-      didReorderRef.current = false;
-      const [data, flashWs] = await Promise.all([
-        getWorkspaces(100, 0),
-        getFlashWorkspace().catch(() => null),
-      ]);
-      const list = data.workspaces || [];
-      setAllWorkspaces(flashWs ? [flashWs, ...list] : list);
-      setIsReorderMode(true);
-    } catch (err) {
-      console.error('Error loading workspaces for reorder:', err);
-    }
+  const enterReorderMode = () => {
+    preSortByRef.current = sortBy;
+    didReorderRef.current = false;
+    setIsReorderMode(true);
   };
 
   /**
@@ -551,10 +513,12 @@ function WorkspaceGallery({ onWorkspaceSelect, cache, prefetchThreads }) {
    */
   const exitReorderMode = () => {
     setIsReorderMode(false);
-    setSortBy(didReorderRef.current ? 'custom' : preSortByRef.current);
+    const newSortBy = didReorderRef.current ? 'custom' : preSortByRef.current;
+    setSortBy(newSortBy);
     gridHeightRef.current = null;
     setCurrentPage(0);
-    // useEffect will re-fetch with correct sortBy after re-render
+    // Invalidate so paginated view refetches with correct sort order
+    queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.lists() });
   };
 
   /**
@@ -597,6 +561,7 @@ function WorkspaceGallery({ onWorkspaceSelect, cache, prefetchThreads }) {
     try {
       await reorderWorkspaces(items);
       didReorderRef.current = true;
+      queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.lists() });
     } catch (err) {
       console.error('Error reordering workspaces:', err);
       setAllWorkspaces(snapshot); // rollback
@@ -634,7 +599,7 @@ function WorkspaceGallery({ onWorkspaceSelect, cache, prefetchThreads }) {
   });
   const reorderSortedIds = reorderSortedList.map((ws) => ws.workspace_id);
 
-  if (isLoading) {
+  if (isWsLoading) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-4">
@@ -647,15 +612,15 @@ function WorkspaceGallery({ onWorkspaceSelect, cache, prefetchThreads }) {
     );
   }
 
-  if (error) {
+  if (wsError) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-4 max-w-md text-center px-4">
           <p className="text-sm" style={{ color: 'var(--color-loss)' }}>
-            {error}
+            {t('workspace.failedLoadWorkspaces')}
           </p>
           <button
-            onClick={() => loadWorkspaces(0)}
+            onClick={() => queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.lists() })}
             className="px-4 py-2 rounded-md text-sm font-medium transition-colors"
             style={{
               backgroundColor: 'var(--color-accent-primary)',
@@ -702,9 +667,10 @@ function WorkspaceGallery({ onWorkspaceSelect, cache, prefetchThreads }) {
               <button
                 onClick={async () => {
                   try {
-                    const flashWs = await getFlashWorkspace();
-                    navigate(`/chat/${flashWs.workspace_id}/__default__`, {
+                    const flashWsData = await getFlashWorkspace();
+                    navigate(`/chat/t/__default__`, {
                       state: {
+                        workspaceId: flashWsData.workspace_id,
                         isOnboarding: true,
                         agentMode: 'flash',
                         workspaceStatus: 'flash',

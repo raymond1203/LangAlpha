@@ -67,11 +67,12 @@ function NavigationPanel({
         next.delete(wsId);
       } else {
         next.add(wsId);
-        // Lazy-load threads when expanding
-        expandWorkspace(wsId);
       }
       return next;
     });
+    // Lazy-load threads when expanding — called outside updater to avoid setState-during-render warning.
+    // expandWorkspace is a no-op when data is already cached, so calling unconditionally is safe.
+    expandWorkspace(wsId);
   }, [expandWorkspace]);
 
   const toggleThread = useCallback((threadId) => {

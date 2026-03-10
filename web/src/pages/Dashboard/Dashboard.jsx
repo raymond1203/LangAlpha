@@ -1,7 +1,6 @@
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
 import DashboardHeader from './components/DashboardHeader';
@@ -26,8 +25,6 @@ import './Dashboard.css';
 function Dashboard() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { user: authUser } = useAuth();
-
   // News modal state
   const [selectedNewsId, setSelectedNewsId] = useState(null);
 

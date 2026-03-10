@@ -1,17 +1,15 @@
-import React, { Suspense, useRef, useCallback, useState, useEffect } from 'react';
+import React, { Suspense, useCallback, useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../lib/queryKeys';
 import { getWorkspaceThreads, getThread } from './utils/api';
 import ChatView from './components/ChatView';
 import './ChatAgent.css';
 
 const WorkspaceGallery = React.lazy(() => import('./components/WorkspaceGallery'));
 const ThreadGallery = React.lazy(() => import('./components/ThreadGallery'));
-
-// Module-level caches — survive ChatAgent unmount/remount from tab switching
-const _workspaceCache = {};  // { [workspaceId]: { threads, workspaceName, files, fetchedAt } }
-const _workspaceListCache = { workspaces: null, fetchedAt: 0 };
 
 /**
  * ChatAgent Component
@@ -33,30 +31,36 @@ function ChatAgent() {
   const [resolvedWorkspaceId, setResolvedWorkspaceId] = useState(
     urlWorkspaceId || location.state?.workspaceId || null
   );
-  const [accessDenied, setAccessDenied] = useState(false);
+  const needsThreadLookup = !!threadId && threadId !== '__default__' && !urlWorkspaceId && !location.state?.workspaceId;
 
+  const { data: resolvedThread, error: threadError } = useQuery({
+    queryKey: queryKeys.threads.detail(threadId),
+    queryFn: () => getThread(threadId),
+    enabled: needsThreadLookup,
+    retry: false,
+  });
+
+  const accessDenied = threadError?.response?.status === 403;
+
+  // Set resolvedWorkspaceId from thread lookup result
   useEffect(() => {
-    let cancelled = false;
+    if (resolvedThread?.workspace_id) {
+      setResolvedWorkspaceId(resolvedThread.workspace_id);
+    }
+  }, [resolvedThread]);
 
-    if (threadId && !resolvedWorkspaceId && threadId !== '__default__') {
-      // Direct URL access — resolve workspace from thread
-      setAccessDenied(false);
-      getThread(threadId).then(thread => {
-        if (!cancelled) setResolvedWorkspaceId(thread.workspace_id);
-      }).catch((err) => {
-        if (cancelled) return;
-        if (err.response?.status === 403) {
-          setAccessDenied(true);
-        } else {
-          navigate('/chat', { replace: true });
-        }
-      });
-    } else if (threadId === '__default__' && !resolvedWorkspaceId) {
-      // __default__ with lost state — redirect
+  // Redirect on non-403 thread lookup errors
+  useEffect(() => {
+    if (threadError && !accessDenied) {
       navigate('/chat', { replace: true });
     }
+  }, [threadError, accessDenied, navigate]);
 
-    return () => { cancelled = true; };
+  // __default__ with lost state — redirect
+  useEffect(() => {
+    if (threadId === '__default__' && !resolvedWorkspaceId) {
+      navigate('/chat', { replace: true });
+    }
   }, [threadId, resolvedWorkspaceId, navigate]);
 
   // Reset resolved workspace when URL params change (e.g., navigating between views)
@@ -69,10 +73,7 @@ function ChatAgent() {
   }, [urlWorkspaceId, location.state?.workspaceId]);
 
   const workspaceId = resolvedWorkspaceId;
-
-  // Refs point to module-level caches so children get a stable reference
-  const workspaceCacheRef = useRef(_workspaceCache);
-  const workspaceListCacheRef = useRef(_workspaceListCache);
+  const queryClient = useQueryClient();
 
   /**
    * Handles workspace selection from gallery
@@ -94,17 +95,17 @@ function ChatAgent() {
   const handleBackToThreadGallery = useCallback(() => {
     if (workspaceId) {
       // Preserve workspace name and status when navigating back from chat
-      const cached = workspaceCacheRef.current[workspaceId];
+      const cached = queryClient.getQueryData(queryKeys.workspaces.detail(workspaceId));
       navigate(`/chat/${workspaceId}`, {
         state: {
-          workspaceName: cached?.workspaceName || location.state?.workspaceName,
+          workspaceName: cached?.name || location.state?.workspaceName,
           workspaceStatus: location.state?.workspaceStatus || null,
         },
       });
     } else {
       navigate('/chat');
     }
-  }, [navigate, workspaceId, location.state]);
+  }, [navigate, workspaceId, location.state, queryClient]);
 
   const handleThreadSelect = useCallback((selectedWorkspaceId, selectedThreadId, agentMode) => {
     navigate(`/chat/t/${selectedThreadId}`, {
@@ -117,21 +118,15 @@ function ChatAgent() {
   }, [navigate, location.state]);
 
   /**
-   * Prefetch thread data on workspace card hover (Fix 6)
+   * Prefetch thread data on workspace card hover
    */
-  const prefetchThreads = useCallback(async (wsId) => {
-    if (workspaceCacheRef.current[wsId]) return;
-    try {
-      const data = await getWorkspaceThreads(wsId);
-      workspaceCacheRef.current[wsId] = {
-        threads: data.threads || [],
-        total: data.total,
-        fetchedAt: Date.now(),
-      };
-    } catch {
-      // Prefetch failure is non-critical
-    }
-  }, []);
+  const prefetchThreads = useCallback((wsId) => {
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.threads.byWorkspace(wsId),
+      queryFn: () => getWorkspaceThreads(wsId),
+      staleTime: 30_000,
+    });
+  }, [queryClient]);
 
   // Determine view key for AnimatePresence transitions
   // threadId = chat view, urlWorkspaceId (no threadId) = thread gallery, neither = workspace gallery
@@ -164,9 +159,8 @@ function ChatAgent() {
       // Still resolving workspace from API — show nothing (loading state)
       content = null;
     } else {
-      const cachedWorkspaceName = workspaceCacheRef.current[workspaceId]?.workspaceName
-        || location.state?.workspaceName
-        || '';
+      const cached = queryClient.getQueryData(queryKeys.workspaces.detail(workspaceId));
+      const cachedWorkspaceName = cached?.name || location.state?.workspaceName || '';
       content = <ChatView key={`${workspaceId}-${threadId}`} workspaceId={workspaceId} threadId={threadId} onBack={handleBackToThreadGallery} workspaceName={cachedWorkspaceName} />;
     }
   } else if (urlWorkspaceId) {
@@ -176,7 +170,6 @@ function ChatAgent() {
           workspaceId={urlWorkspaceId}
           onBack={handleBackToWorkspaceGallery}
           onThreadSelect={handleThreadSelect}
-          cache={workspaceCacheRef}
         />
       </Suspense>
     );
@@ -185,7 +178,6 @@ function ChatAgent() {
       <Suspense fallback={null}>
         <WorkspaceGallery
           onWorkspaceSelect={handleWorkspaceSelect}
-          cache={workspaceListCacheRef}
           prefetchThreads={prefetchThreads}
         />
       </Suspense>
