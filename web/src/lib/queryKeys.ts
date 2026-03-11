@@ -25,17 +25,17 @@ export const queryKeys = {
   workspaces: {
     all:    ['workspaces'],
     lists:  () => [...queryKeys.workspaces.all, 'list'],
-    list:   (params) => [...queryKeys.workspaces.lists(), params],
-    detail: (id) => [...queryKeys.workspaces.all, 'detail', id],
+    list:   (params: Record<string, unknown>) => [...queryKeys.workspaces.lists(), params],
+    detail: (id: string) => [...queryKeys.workspaces.all, 'detail', id],
     flash:  () => [...queryKeys.workspaces.all, 'flash'],
   },
   threads: {
     all:         ['threads'],
-    byWorkspace: (wsId) => [...queryKeys.threads.all, 'workspace', wsId],
-    detail:      (threadId) => [...queryKeys.threads.all, 'detail', threadId],
+    byWorkspace: (wsId: string) => [...queryKeys.threads.all, 'workspace', wsId],
+    detail:      (threadId: string) => [...queryKeys.threads.all, 'detail', threadId],
   },
   workspaceFiles: {
     all:  ['workspaceFiles'],
-    byWs: (wsId, opts) => [...queryKeys.workspaceFiles.all, wsId, opts],
+    byWs: (wsId: string, opts?: Record<string, unknown>) => [...queryKeys.workspaceFiles.all, wsId, opts],
   },
 };

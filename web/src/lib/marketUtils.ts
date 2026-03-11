@@ -3,16 +3,47 @@
  */
 import { api } from '@/api/client';
 
+interface MarketStatusData {
+  market?: string;
+  afterHours?: boolean;
+  earlyHours?: boolean;
+  [key: string]: unknown;
+}
+
+interface ExtendedHoursRow {
+  earlyTradingChangePercent?: number | null;
+  lateTradingChangePercent?: number | null;
+  early_trading_change_percent?: number | null;
+  late_trading_change_percent?: number | null;
+  previousClose?: number | null;
+  previous_close?: number | null;
+  [key: string]: unknown;
+}
+
+interface ExtendedHoursInfo {
+  extPct: number | null;
+  extLabel: string | null;
+  extType: 'pre' | 'post' | null;
+  extPrice: number | null;
+  extChange: number | null;
+  prevClose: number | null;
+}
+
+interface StockSearchResult {
+  query: string;
+  results: unknown[];
+  count: number;
+}
+
 /**
  * Compute extended-hours display info from market status and a data row.
  * Accepts both camelCase (snapshot-enriched rows) and snake_case (raw snapshot) field names.
- *
- * @param {Object|null} marketStatus - { market, afterHours, earlyHours }
- * @param {Object} data - Row with earlyTradingChangePercent/lateTradingChangePercent or early_trading_change_percent/late_trading_change_percent
- * @param {{ shortLabels?: boolean }} [opts]
- * @returns {{ extPct: number|null, extLabel: string|null }}
  */
-export function getExtendedHoursInfo(marketStatus, data, { shortLabels = false } = {}) {
+export function getExtendedHoursInfo(
+  marketStatus: MarketStatusData | null,
+  data: ExtendedHoursRow | null,
+  { shortLabels = false } = {},
+): ExtendedHoursInfo {
   const isRegularOpen = marketStatus?.market === 'open' && !marketStatus?.afterHours && !marketStatus?.earlyHours;
   const isPreMarket = marketStatus?.earlyHours === true;
 
@@ -31,7 +62,7 @@ export function getExtendedHoursInfo(marketStatus, data, { shortLabels = false }
       ? (shortLabels ? 'AH' : 'After-Hours')
       : null;
 
-  const extType = extLabel ? (isPreMarket && earlyPct != null ? 'pre' : 'post') : null;
+  const extType: 'pre' | 'post' | null = extLabel ? (isPreMarket && earlyPct != null ? 'pre' : 'post') : null;
 
   // Compute extended-hours price from previousClose + extPct when available
   const prevClose = data?.previousClose ?? data?.previous_close ?? null;
@@ -48,11 +79,8 @@ export function getExtendedHoursInfo(marketStatus, data, { shortLabels = false }
 /**
  * Search for stocks by keyword (symbol or company name).
  * GET /api/v1/market-data/search/stocks
- * @param {string} query - Search keyword
- * @param {number} limit - Maximum results (default: 50, max: 100)
- * @returns {Promise<{query: string, results: Array, count: number}>}
  */
-export async function searchStocks(query, limit = 50) {
+export async function searchStocks(query: string, limit = 50): Promise<StockSearchResult> {
   if (!query || !query.trim()) {
     return { query: '', results: [], count: 0 };
   }
@@ -62,8 +90,9 @@ export async function searchStocks(query, limit = 50) {
     params.append('limit', String(Math.min(Math.max(1, limit), 100)));
     const { data } = await api.get('/api/v1/market-data/search/stocks', { params });
     return data || { query: query.trim(), results: [], count: 0 };
-  } catch (e) {
-    console.error('Search stocks failed:', e?.response?.status, e?.response?.data, e?.message);
+  } catch (e: unknown) {
+    const err = e as { response?: { status?: number; data?: unknown }; message?: string };
+    console.error('Search stocks failed:', err?.response?.status, err?.response?.data, err?.message);
     return { query: query.trim(), results: [], count: 0 };
   }
 }
@@ -72,13 +101,14 @@ export async function searchStocks(query, limit = 50) {
  * GET /api/v1/market-data/market-status
  * Returns { market, afterHours, earlyHours, serverTime, exchanges }
  */
-export async function fetchMarketStatus({ signal } = {}) {
+export async function fetchMarketStatus({ signal }: { signal?: AbortSignal } = {}): Promise<MarketStatusData> {
   try {
     const { data } = await api.get('/api/v1/market-data/market-status', { signal });
     return data || {};
-  } catch (e) {
-    if (e?.name === 'CanceledError' || e?.name === 'AbortError') throw e;
-    console.error('[API] fetchMarketStatus failed:', e?.message);
+  } catch (e: unknown) {
+    const err = e as { name?: string; message?: string };
+    if (err?.name === 'CanceledError' || err?.name === 'AbortError') throw e;
+    console.error('[API] fetchMarketStatus failed:', err?.message);
     return {};
   }
 }

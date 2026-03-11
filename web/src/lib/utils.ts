@@ -1,7 +1,7 @@
-import { clsx } from "clsx"
+import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 
-export function cn(...inputs) {
+export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
@@ -21,19 +21,19 @@ const _etParts = new Intl.DateTimeFormat('en-US', {
 });
 
 /** Convert UTC Unix ms to ET date string (YYYY-MM-DD). */
-export const utcMsToETDate = (ms) =>
+export const utcMsToETDate = (ms: number): string =>
   new Date(ms).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 
 /** Convert UTC Unix ms to ET time string (HH:MM, 24h). */
-export const utcMsToETTime = (ms) =>
+export const utcMsToETTime = (ms: number): string =>
   new Date(ms).toLocaleTimeString('en-US', {
     timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false,
   });
 
-export function utcMsToChartSec(utcMs) {
+export function utcMsToChartSec(utcMs: number | null | undefined): number {
   if (utcMs == null || isNaN(utcMs)) return 0;
   const parts = _etParts.formatToParts(new Date(utcMs));
-  const get = (type) => parseInt(parts.find((p) => p.type === type).value);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parseInt(parts.find((p) => p.type === type)!.value);
   return Date.UTC(get('year'), get('month') - 1, get('day'),
     get('hour'), get('minute'), get('second')) / 1000;
 }

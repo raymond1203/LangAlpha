@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -14,5 +14,5 @@ if (supabaseUrl && !supabaseKey) {
 // Only create a real client when fully configured; otherwise export null.
 // AuthContext.jsx already short-circuits to local-dev mode when the URL is
 // missing, so no code path will call supabase.auth.* in that case.
-export const supabase =
+export const supabase: SupabaseClient | null =
   supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
