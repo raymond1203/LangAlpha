@@ -6,6 +6,7 @@ import AutomationFormDialog from './components/AutomationFormDialog';
 import ConfirmDeleteDialog from './components/ConfirmDeleteDialog';
 import { useAutomations } from './hooks/useAutomations';
 import { useAutomationMutations } from './hooks/useAutomationMutations';
+import type { Automation } from '@/types/automation';
 import './Automations.css';
 
 export default function Automations() {
@@ -13,7 +14,7 @@ export default function Automations() {
   const mutations = useAutomationMutations(refetch);
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [selectedAutomation, setSelectedAutomation] = useState(null);
+  const [selectedAutomation, setSelectedAutomation] = useState<Automation | null>(null);
 
   // Deep-link: auto-open detail overlay when ?id= is present
   const deepLinkHandledRef = useRef(false);
@@ -28,29 +29,29 @@ export default function Automations() {
     setSearchParams({}, { replace: true });
   }, [automations, loading, searchParams, setSearchParams]);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingAutomation, setEditingAutomation] = useState(null);
-  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [editingAutomation, setEditingAutomation] = useState<Automation | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Automation | null>(null);
 
   const handleCreateClick = useCallback(() => {
     setEditingAutomation(null);
     setIsFormOpen(true);
   }, []);
 
-  const handleEdit = useCallback((automation) => {
+  const handleEdit = useCallback((automation: Automation) => {
     setSelectedAutomation(null);
     setEditingAutomation(automation);
     setIsFormOpen(true);
   }, []);
 
-  const handleDelete = useCallback((automation) => {
+  const handleDelete = useCallback((automation: Automation) => {
     setSelectedAutomation(null);
     setDeleteTarget(automation);
   }, []);
 
-  const handleFormSubmit = useCallback(async (data) => {
+  const handleFormSubmit = useCallback(async (data: Record<string, unknown>) => {
     try {
       if (editingAutomation) {
-        await mutations.update(editingAutomation.automation_id, data);
+        await mutations.update(editingAutomation.automation_id as string, data);
       } else {
         await mutations.create(data);
       }
@@ -64,14 +65,14 @@ export default function Automations() {
   const handleConfirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
     try {
-      await mutations.remove(deleteTarget.automation_id);
+      await mutations.remove(deleteTarget.automation_id as string);
       setDeleteTarget(null);
     } catch {
       // error handled by mutations hook
     }
   }, [deleteTarget, mutations]);
 
-  const handleSelectAutomation = useCallback((automation) => {
+  const handleSelectAutomation = useCallback((automation: Automation) => {
     setSelectedAutomation((prev) =>
       prev?.automation_id === automation.automation_id ? null : automation
     );
@@ -116,7 +117,7 @@ export default function Automations() {
 
       <ConfirmDeleteDialog
         open={!!deleteTarget}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        onOpenChange={(open: boolean) => !open && setDeleteTarget(null)}
         onConfirm={handleConfirmDelete}
         automationName={deleteTarget?.name}
         loading={mutations.loading}

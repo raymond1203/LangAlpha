@@ -2,10 +2,14 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 
-export default function StatusBadge({ status }) {
+interface StatusBadgeProps {
+  status: string;
+}
+
+export default function StatusBadge({ status }: StatusBadgeProps) {
   const { t } = useTranslation();
 
-  const STATUS_MAP = {
+  const STATUS_MAP: Record<string, { variant: string; label: string }> = {
     active: { variant: 'success', label: t('automation.statusActive') },
     paused: { variant: 'warning', label: t('automation.statusPaused') },
     disabled: { variant: 'destructive', label: t('automation.statusDisabled') },

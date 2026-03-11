@@ -19,8 +19,15 @@ import ExecutionHistoryTable from './ExecutionHistoryTable';
 import { useExecutions } from '../hooks/useExecutions';
 import { cronToHuman } from '../utils/cron';
 import { formatRelativeTime, formatDateTime } from '../utils/time';
+import type { Automation } from '@/types/automation';
 
-function StatCard({ label, value, sub }) {
+interface StatCardProps {
+  label: string;
+  value: string;
+  sub?: string | null;
+}
+
+function StatCard({ label, value, sub }: StatCardProps) {
   return (
     <div
       className="rounded-lg px-3 py-2 border"
@@ -42,6 +49,17 @@ function StatCard({ label, value, sub }) {
   );
 }
 
+interface AutomationDetailOverlayProps {
+  automation: Automation;
+  onClose: () => void;
+  onEdit: (automation: Automation) => void;
+  onDelete: (automation: Automation) => void;
+  onPause: (id: string) => void;
+  onResume: (id: string) => void;
+  onTrigger: (id: string) => void;
+  mutationsLoading: boolean;
+}
+
 export default function AutomationDetailOverlay({
   automation,
   onClose,
@@ -51,9 +69,9 @@ export default function AutomationDetailOverlay({
   onResume,
   onTrigger,
   mutationsLoading,
-}) {
+}: AutomationDetailOverlayProps) {
   const navigate = useNavigate();
-  const { executions, loading: execLoading } = useExecutions(automation.automation_id);
+  const { executions, loading: execLoading } = useExecutions(automation.automation_id as string);
   const isCron = automation.trigger_type === 'cron';
 
   const latestThreadExecution = useMemo(
@@ -96,7 +114,7 @@ export default function AutomationDetailOverlay({
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => onPause(automation.automation_id)}
+                onClick={() => onPause(automation.automation_id as string)}
                 disabled={mutationsLoading}
                 className="hover:bg-[var(--color-warning-soft)] text-xs h-7 px-2.5"
                 style={{ color: 'var(--color-warning)' }}
@@ -107,7 +125,7 @@ export default function AutomationDetailOverlay({
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => onResume(automation.automation_id)}
+                onClick={() => onResume(automation.automation_id as string)}
                 disabled={mutationsLoading}
                 className="hover:bg-[var(--color-profit-soft)] text-xs h-7 px-2.5"
                 style={{ color: 'var(--color-profit)' }}
@@ -118,7 +136,7 @@ export default function AutomationDetailOverlay({
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => onTrigger(automation.automation_id)}
+              onClick={() => onTrigger(automation.automation_id as string)}
               disabled={mutationsLoading}
               className="hover:bg-[var(--color-info-soft)] text-xs h-7 px-2.5"
               style={{ color: 'var(--color-info)' }}
@@ -150,7 +168,7 @@ export default function AutomationDetailOverlay({
             <button
               onClick={() => {
                 const wsId = automation.workspace_id;
-                const threadId = latestThreadExecution.conversation_thread_id;
+                const threadId = latestThreadExecution.conversation_thread_id as string;
                 navigate(`/chat/t/${threadId}`, {
                   state: wsId ? { workspaceId: wsId } : {},
                 });
@@ -170,13 +188,13 @@ export default function AutomationDetailOverlay({
           <div className="grid grid-cols-3 gap-3">
             <StatCard
               label="Schedule"
-              value={isCron ? cronToHuman(automation.cron_expression) : 'One-time'}
-              sub={isCron ? `${automation.cron_expression} (${automation.timezone})` : `${automation.timezone}`}
+              value={isCron ? cronToHuman(automation.cron_expression as string) : 'One-time'}
+              sub={isCron ? `${automation.cron_expression} (${automation.timezone as string})` : `${automation.timezone as string}`}
             />
             <StatCard
               label="Next Run"
-              value={automation.next_run_at ? formatRelativeTime(automation.next_run_at) : '\u2014'}
-              sub={automation.next_run_at ? formatDateTime(automation.next_run_at) : null}
+              value={automation.next_run_at ? formatRelativeTime(automation.next_run_at as string) : '\u2014'}
+              sub={automation.next_run_at ? formatDateTime(automation.next_run_at as string) : null}
             />
             <StatCard
               label="Last Run"
@@ -197,7 +215,7 @@ export default function AutomationDetailOverlay({
                 color: 'var(--color-text-secondary)',
               }}
             >
-              {automation.instruction}
+              {automation.instruction as string}
             </div>
           </div>
 
@@ -209,21 +227,21 @@ export default function AutomationDetailOverlay({
             <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
               <div className="flex justify-between">
                 <span style={{ color: 'var(--color-text-secondary)' }}>Agent Mode</span>
-                <span className="uppercase font-mono text-xs" style={{ color: 'var(--color-text-primary)' }}>{automation.agent_mode}</span>
+                <span className="uppercase font-mono text-xs" style={{ color: 'var(--color-text-primary)' }}>{automation.agent_mode as string}</span>
               </div>
               <div className="flex justify-between">
                 <span style={{ color: 'var(--color-text-secondary)' }}>Thread Strategy</span>
-                <span className="text-xs" style={{ color: 'var(--color-text-primary)' }}>{automation.thread_strategy}</span>
+                <span className="text-xs" style={{ color: 'var(--color-text-primary)' }}>{automation.thread_strategy as string}</span>
               </div>
               {automation.workspace_id && (
                 <div className="flex justify-between">
                   <span style={{ color: 'var(--color-text-secondary)' }}>Workspace</span>
-                  <span className="text-xs truncate max-w-[160px]" style={{ color: 'var(--color-text-primary)' }}>{automation.workspace_id.slice(0, 8)}...</span>
+                  <span className="text-xs truncate max-w-[160px]" style={{ color: 'var(--color-text-primary)' }}>{(automation.workspace_id as string).slice(0, 8)}...</span>
                 </div>
               )}
               <div className="flex justify-between">
                 <span style={{ color: 'var(--color-text-secondary)' }}>Failures</span>
-                <span className="text-xs" style={{ color: 'var(--color-text-primary)' }}>{automation.failure_count} / {automation.max_failures}</span>
+                <span className="text-xs" style={{ color: 'var(--color-text-primary)' }}>{automation.failure_count as number} / {automation.max_failures as number}</span>
               </div>
             </div>
           </div>

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { listWorkspaces } from '../utils/api';
+import type { Automation } from '@/types/automation';
 
 const COMMON_TIMEZONES = [
   'UTC',
@@ -35,7 +36,15 @@ const inputStyle = {
 const labelClass = 'text-sm font-medium';
 const radioGroupClass = 'flex gap-3';
 
-function RadioOption({ name, value, checked, onChange, label }) {
+interface RadioOptionProps {
+  name: string;
+  value: string;
+  checked: boolean;
+  onChange: (value: string) => void;
+  label: string;
+}
+
+function RadioOption({ name, value, checked, onChange, label }: RadioOptionProps) {
   return (
     <label className="flex items-center gap-2 cursor-pointer text-sm" style={{ color: 'var(--color-text-secondary)' }}>
       <input
@@ -51,7 +60,21 @@ function RadioOption({ name, value, checked, onChange, label }) {
   );
 }
 
-const INITIAL_FORM = {
+interface FormState {
+  name: string;
+  description: string;
+  trigger_type: string;
+  cron_expression: string;
+  timezone: string;
+  next_run_at: string;
+  agent_mode: string;
+  workspace_id: string;
+  instruction: string;
+  thread_strategy: string;
+  max_failures: number | string;
+}
+
+const INITIAL_FORM: FormState = {
   name: '',
   description: '',
   trigger_type: 'cron',
@@ -65,27 +88,40 @@ const INITIAL_FORM = {
   max_failures: 3,
 };
 
-export default function AutomationFormDialog({ open, onOpenChange, onSubmit, automation, loading }) {
+interface WorkspaceOption {
+  workspace_id: string;
+  name: string;
+}
+
+interface AutomationFormDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (payload: Record<string, unknown>) => void;
+  automation: Automation | null;
+  loading: boolean;
+}
+
+export default function AutomationFormDialog({ open, onOpenChange, onSubmit, automation, loading }: AutomationFormDialogProps) {
   const { t } = useTranslation();
-  const [form, setForm] = useState(INITIAL_FORM);
-  const [workspaces, setWorkspaces] = useState([]);
+  const [form, setForm] = useState<FormState>(INITIAL_FORM);
+  const [workspaces, setWorkspaces] = useState<WorkspaceOption[]>([]);
 
   const isEdit = !!automation;
 
   useEffect(() => {
     if (automation) {
       setForm({
-        name: automation.name || '',
-        description: automation.description || '',
-        trigger_type: automation.trigger_type || 'cron',
-        cron_expression: automation.cron_expression || '',
-        timezone: automation.timezone || 'UTC',
-        next_run_at: automation.next_run_at ? automation.next_run_at.slice(0, 16) : '',
-        agent_mode: automation.agent_mode || 'flash',
-        workspace_id: automation.workspace_id || '',
-        instruction: automation.instruction || '',
-        thread_strategy: automation.thread_strategy || 'new',
-        max_failures: automation.max_failures ?? 3,
+        name: (automation.name as string) || '',
+        description: (automation.description as string) || '',
+        trigger_type: (automation.trigger_type as string) || 'cron',
+        cron_expression: (automation.cron_expression as string) || '',
+        timezone: (automation.timezone as string) || 'UTC',
+        next_run_at: automation.next_run_at ? (automation.next_run_at as string).slice(0, 16) : '',
+        agent_mode: (automation.agent_mode as string) || 'flash',
+        workspace_id: (automation.workspace_id as string) || '',
+        instruction: (automation.instruction as string) || '',
+        thread_strategy: (automation.thread_strategy as string) || 'new',
+        max_failures: (automation.max_failures as number) ?? 3,
       });
     } else {
       setForm(INITIAL_FORM);
@@ -95,24 +131,24 @@ export default function AutomationFormDialog({ open, onOpenChange, onSubmit, aut
   useEffect(() => {
     if (open) {
       listWorkspaces({ limit: 100 })
-        .then(({ data }) => setWorkspaces(data.workspaces || []))
+        .then(({ data }) => setWorkspaces((data.workspaces as WorkspaceOption[]) || []))
         .catch(() => {});
     }
   }, [open]);
 
-  const set = (key) => (e) =>
-    setForm((f) => ({ ...f, [key]: e?.target ? e.target.value : e }));
+  const set = (key: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement> | string) =>
+    setForm((f) => ({ ...f, [key]: typeof e === 'string' ? e : e.target.value }));
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = { ...form };
+    const payload: Record<string, unknown> = { ...form };
 
     if (payload.trigger_type === 'cron') {
       delete payload.next_run_at;
     } else {
       delete payload.cron_expression;
       if (payload.next_run_at) {
-        payload.next_run_at = new Date(payload.next_run_at).toISOString();
+        payload.next_run_at = new Date(payload.next_run_at as string).toISOString();
       }
     }
 
@@ -122,7 +158,7 @@ export default function AutomationFormDialog({ open, onOpenChange, onSubmit, aut
 
     if (!payload.description) delete payload.description;
 
-    payload.max_failures = parseInt(payload.max_failures, 10) || 3;
+    payload.max_failures = parseInt(String(payload.max_failures), 10) || 3;
 
     onSubmit(payload);
   };

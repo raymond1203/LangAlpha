@@ -10,7 +10,15 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
-export default function ConfirmDeleteDialog({ open, onOpenChange, onConfirm, automationName, loading }) {
+interface ConfirmDeleteDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+  automationName?: string;
+  loading: boolean;
+}
+
+export default function ConfirmDeleteDialog({ open, onOpenChange, onConfirm, automationName, loading }: ConfirmDeleteDialogProps) {
   const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

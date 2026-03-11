@@ -2,8 +2,14 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import type { Automation } from '@/types/automation';
 
-export default function AutomationsHeader({ automations, onCreateClick }) {
+interface AutomationsHeaderProps {
+  automations: Automation[];
+  onCreateClick: () => void;
+}
+
+export default function AutomationsHeader({ automations, onCreateClick }: AutomationsHeaderProps) {
   const { t } = useTranslation();
   const activeCount = automations.filter((a) => a.status === 'active').length;
   const pausedCount = automations.filter((a) => a.status === 'paused').length;

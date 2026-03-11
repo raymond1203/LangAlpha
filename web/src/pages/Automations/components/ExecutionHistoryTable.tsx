@@ -1,15 +1,22 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatDateTime, formatDuration } from '../utils/time';
+import type { AutomationExecution } from '@/types/automation';
 
-const STATUS_DOT = {
+const STATUS_DOT: Record<string, string> = {
   completed: 'bg-emerald-400',
   failed: 'bg-red-400',
   running: 'bg-yellow-400',
   pending: 'bg-gray-400',
 };
 
-export default function ExecutionHistoryTable({ executions, loading, workspaceId }) {
+interface ExecutionHistoryTableProps {
+  executions: AutomationExecution[];
+  loading: boolean;
+  workspaceId?: string;
+}
+
+export default function ExecutionHistoryTable({ executions, loading, workspaceId }: ExecutionHistoryTableProps) {
   const navigate = useNavigate();
 
   if (loading && executions.length === 0) {
@@ -46,9 +53,10 @@ export default function ExecutionHistoryTable({ executions, loading, workspaceId
         <tbody>
           {executions.map((exec) => {
             const dotClass = STATUS_DOT[exec.status] || STATUS_DOT.pending;
+            const threadId = exec.conversation_thread_id as string | undefined;
             return (
               <tr
-                key={exec.automation_execution_id}
+                key={exec.automation_execution_id as string}
                 className="border-t"
                 style={{ borderColor: 'var(--color-border-default)' }}
               >
@@ -59,11 +67,10 @@ export default function ExecutionHistoryTable({ executions, loading, workspaceId
                   </div>
                 </td>
                 <td className="py-2 pr-3">
-                  {exec.conversation_thread_id ? (
+                  {threadId ? (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        const threadId = exec.conversation_thread_id;
                         navigate(`/chat/t/${threadId}`, {
                           state: workspaceId ? { workspaceId } : {},
                         });
@@ -71,20 +78,20 @@ export default function ExecutionHistoryTable({ executions, loading, workspaceId
                       className="hover:underline truncate max-w-[120px] block"
                       style={{ color: 'var(--color-accent-primary)' }}
                     >
-                      {exec.conversation_thread_id.slice(0, 8)}...
+                      {threadId.slice(0, 8)}...
                     </button>
                   ) : (
                     <span style={{ color: 'var(--color-text-secondary)' }}>{'\u2014'}</span>
                   )}
                 </td>
                 <td className="py-2 pr-3" style={{ color: 'var(--color-text-secondary)' }}>
-                  {formatDateTime(exec.scheduled_at)}
+                  {formatDateTime(exec.scheduled_at as string | undefined)}
                 </td>
                 <td className="py-2 pr-3" style={{ color: 'var(--color-text-secondary)' }}>
                   {formatDuration(exec.started_at, exec.completed_at)}
                 </td>
                 <td className="py-2 max-w-[200px] truncate" style={{ color: 'var(--color-text-secondary)' }}>
-                  {exec.error_message || '\u2014'}
+                  {(exec.error_message as string) || '\u2014'}
                 </td>
               </tr>
             );

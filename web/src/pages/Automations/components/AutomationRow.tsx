@@ -4,18 +4,25 @@ import { Clock, Timer } from 'lucide-react';
 import StatusBadge from './StatusBadge';
 import { cronToHuman } from '../utils/cron';
 import { formatRelativeTime, formatDateTime } from '../utils/time';
+import type { Automation } from '@/types/automation';
 
-const STATUS_GLOW = {
+const STATUS_GLOW: Record<string, string> = {
   active: 'var(--color-success-soft)',
   paused: 'var(--color-warning-soft)',
   disabled: 'var(--color-loss-soft)',
   completed: 'var(--color-info-soft)',
 };
 
-export default function AutomationRow({ automation, index, onClick }) {
+interface AutomationRowProps {
+  automation: Automation;
+  index: number;
+  onClick: (automation: Automation) => void;
+}
+
+export default function AutomationRow({ automation, index, onClick }: AutomationRowProps) {
   const isCron = automation.trigger_type === 'cron';
   const schedule = isCron
-    ? cronToHuman(automation.cron_expression)
+    ? cronToHuman(automation.cron_expression as string)
     : formatDateTime(automation.next_run_at);
 
   const glowColor = STATUS_GLOW[automation.status] || 'transparent';
@@ -61,7 +68,7 @@ export default function AutomationRow({ automation, index, onClick }) {
         className="text-xs uppercase font-mono tracking-wide"
         style={{ color: 'var(--color-text-secondary)' }}
       >
-        {automation.agent_mode}
+        {automation.agent_mode as string}
       </span>
 
       {/* Next Run */}

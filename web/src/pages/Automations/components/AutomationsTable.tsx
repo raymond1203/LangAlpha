@@ -4,6 +4,22 @@ import { AnimatePresence } from 'framer-motion';
 import AutomationRow from './AutomationRow';
 import AutomationDetailOverlay from './AutomationDetailOverlay';
 import EmptyState from './EmptyState';
+import type { Automation } from '@/types/automation';
+
+interface AutomationsTableProps {
+  automations: Automation[];
+  loading: boolean;
+  selectedAutomation: Automation | null;
+  onSelectAutomation: (automation: Automation) => void;
+  onCloseOverlay: () => void;
+  onCreateClick: () => void;
+  onEdit: (automation: Automation) => void;
+  onDelete: (automation: Automation) => void;
+  onPause: (id: string) => void;
+  onResume: (id: string) => void;
+  onTrigger: (id: string) => void;
+  mutationsLoading: boolean;
+}
 
 export default function AutomationsTable({
   automations,
@@ -18,11 +34,11 @@ export default function AutomationsTable({
   onResume,
   onTrigger,
   mutationsLoading,
-}) {
+}: AutomationsTableProps) {
   const { t } = useTranslation();
 
   if (!loading && automations.length === 0) {
-    return <EmptyState onCreateClick={onCreateClick} />;
+    return <EmptyState />;
   }
 
   return (
@@ -44,7 +60,7 @@ export default function AutomationsTable({
         <AnimatePresence>
           {automations.map((automation, index) => (
             <AutomationRow
-              key={automation.automation_id}
+              key={automation.automation_id as string}
               automation={automation}
               index={index}
               onClick={onSelectAutomation}
