@@ -103,6 +103,23 @@ def _append_to_last_user_message(messages: list[dict], text: str) -> None:
         last_msg["content"].append({"type": "text", "text": text})
 
 
+def _resolve_timezone(request_timezone: Optional[str], locale: Optional[str]) -> str:
+    """Validate request timezone, falling back to locale-based default."""
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    if request_timezone:
+        try:
+            ZoneInfo(request_timezone)
+            return request_timezone
+        except ZoneInfoNotFoundError:
+            logger.warning(
+                f"Invalid timezone '{request_timezone}', falling back to locale-based timezone."
+            )
+
+    locale_config = get_locale_config(locale or "en-US", "en")
+    return locale_config.get("timezone", "UTC")
+
+
 async def _setup_fork_and_persistence(
     *,
     request: ChatRequest,
@@ -911,6 +928,9 @@ async def astream_flash_workflow(
                 fast_mode=getattr(request, "fast_mode", None),
             )
 
+        # Resolve timezone for metadata (observability only — agent clock uses DB user_profile)
+        timezone_str = _resolve_timezone(request.timezone, request.locale)
+
         # Propagate fetch model override to tool context
         if config.llm.fetch:
             from src.tools.fetch import fetch_model_override
@@ -1016,18 +1036,32 @@ async def astream_flash_workflow(
                 input_state["loaded_skills"] = loaded_skill_names
 
         # Build LangGraph config
+        langsmith_tags = get_langsmith_tags(
+            msg_type="flash",
+            locale=request.locale,
+        )
+        langsmith_metadata = get_langsmith_metadata(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            thread_id=thread_id,
+            workflow_type="flash_agent",
+            locale=request.locale,
+            timezone=timezone_str,
+            llm_model=effective_model,
+            reasoning_effort=getattr(request, "reasoning_effort", None),
+            fast_mode=getattr(request, "fast_mode", None),
+            is_byok=is_byok,
+            platform=request.platform,
+        )
         graph_config = {
             "configurable": {
                 "thread_id": thread_id,
                 "user_id": user_id,
+                "workspace_id": workspace_id,
             },
             "recursion_limit": 100,
-            "tags": ["flash_agent"],
-            "metadata": {
-                "user_id": user_id,
-                "thread_id": thread_id,
-                "workflow_type": "flash_agent",
-            },
+            "tags": langsmith_tags,
+            "metadata": langsmith_metadata,
         }
 
         if request.checkpoint_id:
@@ -1093,6 +1127,8 @@ async def astream_flash_workflow(
             metadata={
                 "started_at": datetime.now().isoformat(),
                 "msg_type": "flash",
+                "locale": request.locale,
+                "timezone": timezone_str,
             },
         )
 
@@ -1108,7 +1144,13 @@ async def astream_flash_workflow(
 
                 if persistence_service:
                     await persistence_service.persist_completion(
-                        metadata={"msg_type": "flash", "is_byok": is_byok},
+                        metadata={
+                            "workspace_id": workspace_id,
+                            "locale": request.locale,
+                            "timezone": timezone_str,
+                            "msg_type": "flash",
+                            "is_byok": is_byok,
+                        },
                         execution_time=execution_time,
                         per_call_records=_per_call_records,
                         tool_usage=_tool_usage,
@@ -1157,6 +1199,8 @@ async def astream_flash_workflow(
                     "start_time": start_time,
                     "msg_type": "flash",
                     "is_byok": is_byok,
+                    "locale": request.locale,
+                    "timezone": timezone_str,
                     "handler": handler,
                     "token_callback": token_callback,
                 },
@@ -1363,7 +1407,13 @@ async def astream_flash_workflow(
                             error_message=error_msg,
                             errors=[error_msg],
                             execution_time=time.time() - start_time,
-                            metadata={"msg_type": "flash", "is_byok": is_byok},
+                            metadata={
+                                "workspace_id": workspace_id,
+                                "locale": request.locale,
+                                "timezone": timezone_str,
+                                "msg_type": "flash",
+                                "is_byok": is_byok,
+                            },
                             per_call_records=_per_call_records,
                             tool_usage=_tool_usage,
                             sse_events=_sse_events,
@@ -1411,7 +1461,13 @@ async def astream_flash_workflow(
                     await persistence_service.persist_error(
                         error_message=str(e),
                         execution_time=time.time() - start_time,
-                        metadata={"msg_type": "flash", "is_byok": is_byok},
+                        metadata={
+                            "workspace_id": workspace_id,
+                            "locale": request.locale,
+                            "timezone": timezone_str,
+                            "msg_type": "flash",
+                            "is_byok": is_byok,
+                        },
                         per_call_records=_per_call_records,
                         tool_usage=_tool_usage,
                         sse_events=_sse_events,
@@ -1743,34 +1799,7 @@ async def astream_ptc_workflow(
         # Timezone and Locale Validation
         # =====================================================================
 
-        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
-        timezone_str = "UTC"  # Default
-
-        if request.timezone:
-            # Validate user-provided timezone
-            try:
-                ZoneInfo(request.timezone)
-                timezone_str = request.timezone
-                logger.debug(f"[PTC_CHAT] Using user-provided timezone: {timezone_str}")
-            except ZoneInfoNotFoundError as e:
-                logger.warning(
-                    f"[PTC_CHAT] Invalid timezone '{request.timezone}': {e}. "
-                    f"Falling back to locale-based timezone."
-                )
-                timezone_str = None  # Will use locale fallback
-
-        if not timezone_str or timezone_str == "UTC":
-            # Fallback to locale-based timezone
-            locale_config = get_locale_config(
-                request.locale or "en-US",
-                "en",  # Default prompt language
-            )
-            timezone_str = locale_config.get("timezone", "UTC")
-            logger.debug(
-                f"[PTC_CHAT] Using locale-based timezone: {timezone_str} "
-                f"(locale: {request.locale})"
-            )
+        timezone_str = _resolve_timezone(request.timezone, request.locale)
 
         # =====================================================================
         # Phase 3: Token and Tool Tracking
@@ -2013,8 +2042,6 @@ async def astream_ptc_workflow(
         # Build LangSmith tags for filtering/grouping traces
         langsmith_tags = get_langsmith_tags(
             msg_type="ptc",
-            deepthinking=False,  # PTC agent doesn't use deep thinking mode
-            auto_accepted_plan=False,
             locale=request.locale,
         )
 
@@ -2026,9 +2053,12 @@ async def astream_ptc_workflow(
             workflow_type="ptc_agent",
             locale=request.locale,
             timezone=timezone_str,
-            deepthinking=False,
-            auto_accepted_plan=False,
-            track_tokens=True,
+            llm_model=effective_model,
+            reasoning_effort=getattr(request, "reasoning_effort", None),
+            fast_mode=getattr(request, "fast_mode", None),
+            plan_mode=effective_plan_mode,
+            is_byok=is_byok,
+            platform=request.platform,
         )
 
         # Build LangGraph config

@@ -675,8 +675,6 @@ def get_redis_ttl_workflow_events(default: int = 86400) -> int:
 
 def get_langsmith_tags(
     msg_type: str,
-    deepthinking: bool = False,
-    auto_accepted_plan: bool = False,
     locale: Optional[str] = None,
 ) -> List[str]:
     """
@@ -686,38 +684,23 @@ def get_langsmith_tags(
     All tags should be known upfront at request time (no runtime-determined values).
 
     Args:
-        msg_type: Workflow type (chat, technical_analysis, fundamental_analysis)
-        deepthinking: Whether deep thinking mode is enabled
-        auto_accepted_plan: Whether plan auto-acceptance is enabled
+        msg_type: Workflow type (e.g. "ptc", "flash", "technical_analysis")
         locale: Locale string (e.g., "zh-CN", "en-US")
 
     Returns:
         List of tags for LangSmith tracing
 
-    Example tags:
-        With deepthinking=true: ["workflow:deep_research", "feature:deepthinking", "locale:zh-CN"]
-        With deepthinking=false: ["workflow:chat", "locale:zh-CN"]
+    Example tags: ["workflow:chat", "locale:zh-CN"]
     """
     tags = []
 
     # Workflow type tag
-    # For chat msg_type, distinguish between deep_research and chat based on deepthinking flag
-    if msg_type == "chat":
-        workflow_tag = "workflow:deep_research" if deepthinking else "workflow:chat"
-    else:
-        workflow_map = {
-            "technical_analysis": "workflow:technical_analysis",
-            "fundamental_analysis": "workflow:fundamental_analysis",
-            "podcast_generation": "workflow:podcast_generation",
-        }
-        workflow_tag = workflow_map.get(msg_type, "workflow:chat")
-    tags.append(workflow_tag)
-
-    # Feature flags
-    if deepthinking:
-        tags.append("feature:deepthinking")
-    if auto_accepted_plan:
-        tags.append("feature:auto_plan")
+    workflow_map = {
+        "technical_analysis": "workflow:technical_analysis",
+        "fundamental_analysis": "workflow:fundamental_analysis",
+        "podcast_generation": "workflow:podcast_generation",
+    }
+    tags.append(workflow_map.get(msg_type, "workflow:chat"))
 
     # Locale tag
     if locale:
@@ -731,16 +714,14 @@ def get_langsmith_metadata(
     workspace_id: Optional[str] = None,
     thread_id: Optional[str] = None,
     workflow_type: Optional[str] = None,
-    stock_code: Optional[str] = None,
     locale: Optional[str] = None,
     timezone: Optional[str] = None,
-    deepthinking: bool = False,
-    auto_accepted_plan: bool = False,
-    track_tokens: bool = True,
-    max_plan_iterations: Optional[int] = None,
-    max_step_num: Optional[int] = None,
-    agent_llm_preset: Optional[str] = None,
-    report_style: Optional[str] = None,
+    llm_model: Optional[str] = None,
+    reasoning_effort: Optional[str] = None,
+    fast_mode: Optional[bool] = None,
+    plan_mode: bool = False,
+    is_byok: bool = False,
+    platform: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Generate LangSmith metadata for workflow tracing.
@@ -752,17 +733,15 @@ def get_langsmith_metadata(
         user_id: User identifier
         workspace_id: Workspace identifier
         thread_id: Thread identifier (LangGraph checkpoint ID)
-        workflow_type: Workflow type (chat, technical_analysis, etc.)
-        stock_code: Stock ticker symbol
+        workflow_type: Workflow type (e.g. "ptc_agent", "flash_agent")
         locale: Locale string
         timezone: Timezone string
-        deepthinking: Deep thinking mode flag
-        auto_accepted_plan: Auto plan acceptance flag
-        track_tokens: Token tracking flag (always True, kept for compatibility)
-        max_plan_iterations: Maximum plan iterations
-        max_step_num: Maximum step number
-        agent_llm_preset: Agent LLM preset name
-        report_style: Report style
+        llm_model: Resolved LLM model name
+        reasoning_effort: Reasoning effort level (e.g. "low", "medium", "high")
+        fast_mode: Whether fast/streaming mode is enabled
+        plan_mode: Whether plan mode is enabled
+        is_byok: Whether user is using their own API key
+        platform: Client platform (e.g. "web", "slack", "api")
 
     Returns:
         Dictionary of metadata for LangSmith tracing
@@ -780,27 +759,23 @@ def get_langsmith_metadata(
     # Workflow configuration
     if workflow_type:
         metadata["workflow_type"] = workflow_type
-    if stock_code:
-        metadata["stock_code"] = stock_code
     if locale:
         metadata["locale"] = locale
     if timezone:
         metadata["timezone"] = timezone
 
-    # Feature flags
-    metadata["deepthinking"] = deepthinking
-    metadata["auto_accepted_plan"] = auto_accepted_plan
-
-    # Execution parameters
-    if max_plan_iterations is not None:
-        metadata["max_plan_iterations"] = max_plan_iterations
-    if max_step_num is not None:
-        metadata["max_step_num"] = max_step_num
-
-    # Agent configuration
-    if agent_llm_preset:
-        metadata["agent_llm_preset"] = agent_llm_preset
-    if report_style:
-        metadata["report_style"] = report_style
+    # Model configuration
+    if llm_model:
+        metadata["llm_model"] = llm_model
+    if reasoning_effort:
+        metadata["reasoning_effort"] = reasoning_effort
+    if fast_mode is not None:
+        metadata["fast_mode"] = fast_mode
+    if plan_mode:
+        metadata["plan_mode"] = plan_mode
+    if is_byok:
+        metadata["is_byok"] = is_byok
+    if platform:
+        metadata["platform"] = platform
 
     return metadata
