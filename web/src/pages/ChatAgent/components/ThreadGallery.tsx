@@ -68,7 +68,7 @@ function ThreadGallery({ workspaceId, onBack, onThreadSelect }: ThreadGalleryPro
   const [threads, setThreads] = useState<ThreadRecord[]>([]);
 
   // Workspace detail via React Query (useWorkspace)
-  const { data: wsData } = useWorkspace(workspaceId);
+  const { data: wsData, error: wsError } = useWorkspace(workspaceId);
   // Keep location.state values as instant display fallbacks during navigation
   const locationState = location.state as Record<string, unknown> | null;
   const workspaceName = (wsData?.name || locationState?.workspaceName || '') as string;
@@ -81,10 +81,20 @@ function ThreadGallery({ workspaceId, onBack, onThreadSelect }: ThreadGalleryPro
     queryFn: () => getWorkspaceThreads(workspaceId),
     enabled: !!workspaceId,
     staleTime: 30_000,
+    retry: (failureCount, error) => {
+      // Don't retry 403s — access is denied, retrying won't help
+      if ((error as { response?: { status?: number } })?.response?.status === 403) return false;
+      return failureCount < 3;
+    },
   });
 
+  // Detect 403 from either workspace or thread queries
+  const accessDenied =
+    (threadError as { response?: { status?: number } } | null)?.response?.status === 403 ||
+    (wsError as { response?: { status?: number } } | null)?.response?.status === 403;
+
   const isLoading = isThreadsLoading;
-  const error = threadError ? t('thread.failedLoadThreads') : null;
+  const error = threadError && !accessDenied ? t('thread.failedLoadThreads') : null;
   const [deleteModal, setDeleteModal] = useState<DeleteModalState>({ isOpen: false, thread: null });
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -472,6 +482,37 @@ function ThreadGallery({ workspaceId, onBack, onThreadSelect }: ThreadGalleryPro
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
   }, [filePanelWidth]);
+
+  if (accessDenied) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="flex flex-col items-center gap-4 text-center px-6" style={{ color: 'var(--color-text-secondary, #888)' }}>
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}>
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          <div className="text-base font-medium" style={{ color: 'var(--color-text-primary, #ccc)' }}>
+            {t('chat.accessDeniedTitle')}
+          </div>
+          <div className="text-sm">
+            {t('chat.accessDeniedDesc')}
+          </div>
+          <button
+            onClick={onBack}
+            className="mt-2 px-5 py-2 rounded-lg text-sm transition-colors"
+            style={{
+              border: '1px solid var(--color-border-muted, #333)',
+              background: 'transparent',
+              color: 'var(--color-text-primary, #ccc)',
+              cursor: 'pointer',
+            }}
+          >
+            {t('chat.goToChats')}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

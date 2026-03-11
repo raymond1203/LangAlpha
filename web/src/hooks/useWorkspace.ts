@@ -15,6 +15,10 @@ export function useWorkspace(workspaceId: string | null | undefined) {
     queryFn: () => getWorkspace(workspaceId!),
     enabled: !!workspaceId,
     staleTime: 5 * 60_000,
+    retry: (failureCount, error) => {
+      if ((error as { response?: { status?: number } })?.response?.status === 403) return false;
+      return failureCount < 3;
+    },
     initialData: (): Workspace | undefined => {
       // Try to derive from any cached workspace list
       const queries = queryClient.getQueriesData<WorkspacesResponse>({ queryKey: queryKeys.workspaces.lists() });
