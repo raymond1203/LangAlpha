@@ -56,7 +56,7 @@ const slideVariants = {
 };
 
 const slideTransition = {
-  x: { type: 'spring', stiffness: 400, damping: 35 },
+  x: { type: 'spring' as const, stiffness: 400, damping: 35 },
   opacity: { duration: 0.15 },
 };
 
@@ -593,7 +593,7 @@ function WorkspaceGallery({ onWorkspaceSelect, prefetchThreads }: WorkspaceGalle
     setAllWorkspaces(updated);
 
     try {
-      await reorderWorkspaces(items);
+      await reorderWorkspaces(items.map(it => ({ workspace_id: it.workspace_id, position: it.sort_order })));
       didReorderRef.current = true;
       queryClient.invalidateQueries({ queryKey: queryKeys.workspaces.lists() });
     } catch (err) {

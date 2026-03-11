@@ -15,15 +15,15 @@ interface UseWorkspaceFilesResult {
 }
 
 export function useWorkspaceFiles(
-  workspaceId: string,
+  workspaceId: string | null,
   { includeSystem = false }: UseWorkspaceFilesOptions = {},
 ): UseWorkspaceFilesResult {
   const queryClient = useQueryClient();
   const opts = { includeSystem };
 
   const { data, isLoading, error } = useQuery({
-    queryKey: queryKeys.workspaceFiles.byWs(workspaceId, opts),
-    queryFn: () => listWorkspaceFiles(workspaceId, '.', { autoStart: false, includeSystem }),
+    queryKey: queryKeys.workspaceFiles.byWs(workspaceId!, opts),
+    queryFn: () => listWorkspaceFiles(workspaceId!, '.', { autoStart: false, includeSystem }),
     enabled: !!workspaceId,
     retry: (count, err: { response?: { status?: number } }) =>
       count < 3 && [500, 503].includes(err?.response?.status ?? 0),
@@ -32,7 +32,7 @@ export function useWorkspaceFiles(
   });
 
   const refresh = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.workspaceFiles.byWs(workspaceId, { includeSystem }) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.workspaceFiles.byWs(workspaceId!, { includeSystem }) });
   }, [queryClient, workspaceId, includeSystem]);
 
   return {

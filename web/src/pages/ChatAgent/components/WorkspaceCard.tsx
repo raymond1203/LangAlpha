@@ -68,7 +68,7 @@ function WorkspaceCard({ workspace, onClick, onDelete }: WorkspaceCardProps) {
 
       {/* Workspace name */}
       <h3 className="text-lg font-semibold pr-16" style={{ color: 'var(--color-text-primary)' }}>
-        {workspace.name as string}
+        {String(workspace.name || '')}
       </h3>
 
       {/* Info panel */}
@@ -88,12 +88,12 @@ function WorkspaceCard({ workspace, onClick, onDelete }: WorkspaceCardProps) {
               Workspace ID
             </p>
             <p className="text-xs font-mono break-all" style={{ color: 'var(--color-text-primary)' }}>
-              {workspace.workspace_id as string}
+              {String(workspace.workspace_id)}
             </p>
           </div>
 
           {/* Description */}
-          {workspace.description && (
+          {!!workspace.description && (
             <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--color-border-muted)' }}>
               <p className="text-xs mb-1" style={{ color: 'var(--color-text-tertiary)' }}>
                 Description
@@ -107,7 +107,7 @@ function WorkspaceCard({ workspace, onClick, onDelete }: WorkspaceCardProps) {
       )}
 
       {/* Status badge */}
-      {workspace.status && (
+      {!!workspace.status && (
         <div
           className="mt-3 inline-block px-2 py-1 rounded text-xs font-medium"
           style={{

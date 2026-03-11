@@ -59,7 +59,7 @@ function ThreadCard({ thread, onClick, onDelete, onRename }: ThreadCardProps) {
         <h3 className="text-sm font-normal truncate" style={{ color: 'var(--color-text-primary)' }}>
           {(thread.title as string) || `Thread ${(thread.thread_index as number | undefined) !== undefined ? (thread.thread_index as number) + 1 : ''}`}
         </h3>
-        {thread.updated_at && (
+        {!!thread.updated_at && (
           <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
             {new Date(thread.updated_at as string).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
           </p>
@@ -67,11 +67,10 @@ function ThreadCard({ thread, onClick, onDelete, onRename }: ThreadCardProps) {
       </div>
 
       {/* Shared indicator */}
-      {thread.is_shared && (
+      {!!thread.is_shared && (
         <Globe
           className="h-3.5 w-3.5 flex-shrink-0"
           style={{ color: 'var(--color-accent-primary)' }}
-          title={t('thread.shared')}
         />
       )}
 
