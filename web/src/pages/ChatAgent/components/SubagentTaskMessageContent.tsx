@@ -126,7 +126,7 @@ function SubagentTaskMessageContent({
         <span style={{ fontWeight: 600, color: 'var(--color-text-primary)', fontSize: 14, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {summary || 'Subagent Task'}
         </span>
-        {hasResult && (
+        {!!hasResult && (
           <ArrowRight
             style={{ width: 14, height: 14, flexShrink: 0, color: 'var(--color-accent-primary)' }}
             onClick={handleViewOutput}

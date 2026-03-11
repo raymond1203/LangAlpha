@@ -194,7 +194,7 @@ interface ToolCallMessageContentProps {
  * In the main chat textOnly mode, tool calls are rendered via ActivityAccordion/LiveActivity instead.
  */
 function ToolCallMessageContent({
-  toolCallId,
+  toolCallId: _toolCallId,
   toolName,
   toolCall,
   toolCallResult,

@@ -205,7 +205,6 @@ function ActivityBlock({ items, preparingToolCall, isStreaming, onToolCallClick,
               {isExpanded && (
                 <motion.div
                   key="accordion-body"
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- CSS custom property in framer-motion animation
                   initial={{ height: 0, opacity: 0, '--mask-stop': '0%', overflow: 'hidden' } as any}
                   animate={{ height: 'auto', opacity: 1, '--mask-stop': '100%', overflow: 'visible' } as any}
                   exit={{ height: 0, opacity: 0, '--mask-stop': '0%', overflow: 'hidden' } as any}
@@ -546,7 +545,7 @@ function ReasoningRow({ item }: ReasoningRowProps): React.ReactElement {
         {expanded && item.content && (
           <motion.div
             key="reasoning-content"
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- CSS custom property in framer-motion animation
+            // CSS custom property in framer-motion animation requires `as any`
             initial={{ height: 0, opacity: 0, '--mask-stop': '0%', overflow: 'hidden' } as any}
             animate={{ height: 'auto', opacity: 1, '--mask-stop': '100%', overflow: 'visible' } as any}
             exit={{ height: 0, opacity: 0, '--mask-stop': '0%', overflow: 'hidden' } as any}
@@ -658,7 +657,7 @@ function EditToolRow({ item, onOpenFile }: EditToolRowProps): React.ReactElement
         {expanded && hasDiff && (
           <motion.div
             key="diff-content"
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- CSS custom property in framer-motion animation
+            // CSS custom property in framer-motion animation requires `as any`
             initial={{ height: 0, opacity: 0, '--mask-stop': '0%', overflow: 'hidden' } as any}
             animate={{ height: 'auto', opacity: 1, '--mask-stop': '100%', overflow: 'visible' } as any}
             exit={{ height: 0, opacity: 0, '--mask-stop': '0%', overflow: 'hidden' } as any}

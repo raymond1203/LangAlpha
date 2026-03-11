@@ -79,7 +79,6 @@ function tryFormatJson(code: string): { formatted: string; language: string } | 
 
 // --- Helper to extract code info from a <pre> element ---
 function extractCodeFromPre(children: React.ReactNode): { language: string | null; code: string } {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- react-markdown passes arbitrary props
   const codeEl = (children as any)?.props ? (children as any) : null;
   const className = (codeEl?.props?.className || '') as string;
   const match = /language-(\w+)/.exec(className);
@@ -94,20 +93,19 @@ function extractCodeFromPre(children: React.ReactNode): { language: string | nul
 // We strip it out via destructuring to avoid passing it to DOM elements.
 // Using a loose props type for these overrides since react-markdown's
 // component typing is complex and varies by element.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type MarkdownComponentProps = Record<string, any>;
 
 // --- Shared overrides (used by all variants) ---
-const strong = ({ node, ...props }: MarkdownComponentProps) => (
+const strong = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <strong style={{ color: 'var(--color-text-primary)', fontWeight: 700 }} {...props} />
 );
-const em = ({ node, ...props }: MarkdownComponentProps) => (
+const em = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <em className="italic" style={{ color: 'var(--color-text-primary)' }} {...props} />
 );
-const del = ({ node, ...props }: MarkdownComponentProps) => (
+const del = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <del style={{ color: 'var(--color-text-tertiary)', textDecoration: 'line-through' }} {...props} />
 );
-const input = ({ node, type, checked, ...props }: MarkdownComponentProps) => {
+const input = ({ node: _node, type, checked, ...props }: MarkdownComponentProps) => {
   if (type === 'checkbox') {
     return (
       <input type="checkbox" checked={checked} readOnly
@@ -116,43 +114,43 @@ const input = ({ node, type, checked, ...props }: MarkdownComponentProps) => {
   }
   return <input {...props} />;
 };
-const img = ({ node, ...props }: MarkdownComponentProps) => <WorkspaceImage {...props} />;
-const ul = ({ node, ...props }: MarkdownComponentProps) => (
+const img = ({ node: _node, ...props }: MarkdownComponentProps) => <WorkspaceImage {...props} />;
+const ul = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <ul className="list-disc ml-4 my-1" style={{ color: 'var(--color-text-primary)' }} {...props} />
 );
-const ol = ({ node, ...props }: MarkdownComponentProps) => (
+const ol = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <ol className="list-decimal ml-4 my-1" style={{ color: 'var(--color-text-primary)' }} {...props} />
 );
-const li = ({ node, ...props }: MarkdownComponentProps) => (
+const li = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <li className="break-words" style={{ color: 'var(--color-text-primary)' }} {...props} />
 );
 
 // ===================== CHAT variant =====================
-const chatUl = ({ node, ...props }: MarkdownComponentProps) => (
+const chatUl = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <ul className="list-disc ml-6 my-2" style={{ color: 'var(--color-text-primary)' }} {...props} />
 );
-const chatOl = ({ node, ...props }: MarkdownComponentProps) => (
+const chatOl = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <ol className="list-decimal ml-6 my-2" style={{ color: 'var(--color-text-primary)' }} {...props} />
 );
-const chatLi = ({ node, ...props }: MarkdownComponentProps) => (
+const chatLi = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <li className="ps-[2px] break-words" style={{ color: 'var(--color-text-primary)' }} {...props} />
 );
-const chatP = ({ node, ...props }: MarkdownComponentProps) => (
+const chatP = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <p className="my-[1px] py-[3px] whitespace-pre-wrap break-words first:mt-0 last:mb-0" style={{ color: 'var(--color-text-primary)' }} {...props} />
 );
-const chatH1 = ({ node, ...props }: MarkdownComponentProps) => (
+const chatH1 = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <h1 className="first:mt-0" style={{ color: 'var(--color-text-primary)', fontSize: '1.75em', fontWeight: 700, lineHeight: '1.3', marginTop: '1.5em', marginBottom: '0.5em' }} {...props} />
 );
-const chatH2 = ({ node, ...props }: MarkdownComponentProps) => (
+const chatH2 = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <h2 className="first:mt-0" style={{ color: 'var(--color-text-primary)', fontSize: '1.4em', fontWeight: 700, lineHeight: '1.3', marginTop: '1.4em', marginBottom: '0.4em' }} {...props} />
 );
-const chatH3 = ({ node, ...props }: MarkdownComponentProps) => (
+const chatH3 = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <h3 className="first:mt-0" style={{ color: 'var(--color-text-primary)', fontSize: '1.2em', fontWeight: 600, lineHeight: '1.3', marginTop: '1.2em', marginBottom: '0.3em' }} {...props} />
 );
-const chatH4 = ({ node, ...props }: MarkdownComponentProps) => (
+const chatH4 = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <h4 className="first:mt-0" style={{ color: 'var(--color-text-primary)', fontSize: '1.05em', fontWeight: 600, lineHeight: '1.4', marginTop: '1em', marginBottom: '0.25em' }} {...props} />
 );
-const chatCode = ({ node, className, children, ...props }: MarkdownComponentProps) => {
+const chatCode = ({ node: _node, className, children, ...props }: MarkdownComponentProps) => {
   const isBlock = /language-/.test(className || '');
   if (!isBlock) {
     return (
@@ -165,34 +163,34 @@ const chatCode = ({ node, className, children, ...props }: MarkdownComponentProp
   }
   return <code className={className} {...props}>{children}</code>;
 };
-const chatPre = ({ node, children, ...props }: MarkdownComponentProps) => {
+const chatPre = ({ node: _node, children, ..._props }: MarkdownComponentProps) => {
   const { language, code } = extractCodeFromPre(children);
   return <CodeBlock language={language} code={code} />;
 };
-const chatBlockquote = ({ node, ...props }: MarkdownComponentProps) => (
+const chatBlockquote = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <blockquote
     className="border-l-4 pl-4 my-2 italic"
     style={{ borderColor: 'var(--color-accent-primary)', color: 'var(--color-text-primary)', opacity: 0.8 }}
     {...props}
   />
 );
-const chatA = ({ node, ...props }: MarkdownComponentProps) => (
+const chatA = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <a className="underline hover:opacity-80 transition-opacity" style={{ color: 'var(--color-accent-primary)' }} target="_blank" rel="noopener noreferrer" {...props} />
 );
-const chatHr = ({ node, ...props }: MarkdownComponentProps) => (
+const chatHr = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <hr className="my-4 border-0" style={{ borderTop: '1px solid var(--color-border-muted)' }} {...props} />
 );
-const chatTable = ({ node, ...props }: MarkdownComponentProps) => (
+const chatTable = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <div className="pt-[8px] pb-[18px]">
     <div className="overflow-x-auto rounded-lg" style={{ border: '1px solid var(--color-border-muted)' }}>
       <table className="m-0 w-full border-collapse" {...props} />
     </div>
   </div>
 );
-const chatThead = ({ node, ...props }: MarkdownComponentProps) => <thead style={{ backgroundColor: 'var(--color-bg-input)' }} {...props} />;
-const chatTbody = ({ node, ...props }: MarkdownComponentProps) => <tbody {...props} />;
-const chatTr = ({ node, ...props }: MarkdownComponentProps) => <tr {...props} />;
-const chatTh = ({ node, style, ...props }: MarkdownComponentProps) => (
+const chatThead = ({ node: _node, ...props }: MarkdownComponentProps) => <thead style={{ backgroundColor: 'var(--color-bg-input)' }} {...props} />;
+const chatTbody = ({ node: _node, ...props }: MarkdownComponentProps) => <tbody {...props} />;
+const chatTr = ({ node: _node, ...props }: MarkdownComponentProps) => <tr {...props} />;
+const chatTh = ({ node: _node, style, ...props }: MarkdownComponentProps) => (
   <th
     className="align-top [&:not(:first-child)]:border-l"
     style={{
@@ -208,7 +206,7 @@ const chatTh = ({ node, style, ...props }: MarkdownComponentProps) => (
     {...props}
   />
 );
-const chatTd = ({ node, style, ...props }: MarkdownComponentProps) => (
+const chatTd = ({ node: _node, style, ...props }: MarkdownComponentProps) => (
   <td
     className="align-top [&:not(:first-child)]:border-l"
     style={{
@@ -225,22 +223,22 @@ const chatTd = ({ node, style, ...props }: MarkdownComponentProps) => (
 );
 
 // ===================== PANEL variant =====================
-const panelP = ({ node, ...props }: MarkdownComponentProps) => (
+const panelP = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <p className="my-1 whitespace-pre-wrap break-words" style={{ color: 'var(--color-text-primary)' }} {...props} />
 );
-const panelH1 = ({ node, ...props }: MarkdownComponentProps) => (
+const panelH1 = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <h1 className="first:mt-0" style={{ color: 'var(--color-text-primary)', fontSize: '1.5em', fontWeight: 700, lineHeight: '1.3', marginTop: '1.2em', marginBottom: '0.4em' }} {...props} />
 );
-const panelH2 = ({ node, ...props }: MarkdownComponentProps) => (
+const panelH2 = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <h2 className="first:mt-0" style={{ color: 'var(--color-text-primary)', fontSize: '1.25em', fontWeight: 700, lineHeight: '1.3', marginTop: '1.1em', marginBottom: '0.35em' }} {...props} />
 );
-const panelH3 = ({ node, ...props }: MarkdownComponentProps) => (
+const panelH3 = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <h3 className="first:mt-0" style={{ color: 'var(--color-text-primary)', fontSize: '1.1em', fontWeight: 600, lineHeight: '1.3', marginTop: '1em', marginBottom: '0.3em' }} {...props} />
 );
-const panelH4 = ({ node, ...props }: MarkdownComponentProps) => (
+const panelH4 = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <h4 className="first:mt-0" style={{ color: 'var(--color-text-primary)', fontSize: '1em', fontWeight: 600, lineHeight: '1.4', marginTop: '0.8em', marginBottom: '0.2em' }} {...props} />
 );
-const panelCode = ({ node, className, children, ...props }: MarkdownComponentProps) => {
+const panelCode = ({ node: _node, className, children, ...props }: MarkdownComponentProps) => {
   const isBlock = /language-/.test(className || '');
   if (!isBlock) {
     return (
@@ -253,51 +251,51 @@ const panelCode = ({ node, className, children, ...props }: MarkdownComponentPro
   }
   return <code className={className} {...props}>{children}</code>;
 };
-const panelPre = ({ node, children, ...props }: MarkdownComponentProps) => {
+const panelPre = ({ node: _node, children, ..._props }: MarkdownComponentProps) => {
   const { language, code } = extractCodeFromPre(children);
   return <CodeBlock language={language} code={code} />;
 };
-const panelA = ({ node, ...props }: MarkdownComponentProps) => (
+const panelA = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <a className="underline" style={{ color: 'var(--color-accent-primary)' }} target="_blank" rel="noopener noreferrer" {...props} />
 );
-const panelBlockquote = ({ node, ...props }: MarkdownComponentProps) => (
+const panelBlockquote = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <blockquote
     className="pl-3 my-2"
     style={{ borderLeft: '3px solid var(--color-accent-overlay)', color: 'var(--color-text-primary)' }}
     {...props}
   />
 );
-const panelHr = ({ node, ...props }: MarkdownComponentProps) => (
+const panelHr = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <hr className="my-3 border-0" style={{ borderTop: '1px solid var(--color-border-muted)' }} {...props} />
 );
-const panelTable = ({ node, ...props }: MarkdownComponentProps) => (
+const panelTable = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <div className="my-2 overflow-x-auto rounded" style={{ border: '1px solid var(--color-border-muted)' }}>
     <table className="w-full border-collapse text-left" style={{ minWidth: '100%' }} {...props} />
   </div>
 );
-const panelThead = ({ node, ...props }: MarkdownComponentProps) => <thead style={{ backgroundColor: 'var(--color-bg-input)' }} {...props} />;
-const panelTr = ({ node, ...props }: MarkdownComponentProps) => <tr className="last:border-b-0" style={{ borderBottom: '1px solid var(--color-border-muted)' }} {...props} />;
-const panelTh = ({ node, ...props }: MarkdownComponentProps) => (
+const panelThead = ({ node: _node, ...props }: MarkdownComponentProps) => <thead style={{ backgroundColor: 'var(--color-bg-input)' }} {...props} />;
+const panelTr = ({ node: _node, ...props }: MarkdownComponentProps) => <tr className="last:border-b-0" style={{ borderBottom: '1px solid var(--color-border-muted)' }} {...props} />;
+const panelTh = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <th className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--color-text-primary)', fontWeight: 600, borderBottom: '1px solid var(--color-border-muted)' }} {...props} />
 );
-const panelTd = ({ node, ...props }: MarkdownComponentProps) => (
+const panelTd = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <td className="px-3 py-2 break-words align-top" style={{ color: 'var(--color-text-primary)' }} {...props} />
 );
 
 // ===================== COMPACT variant =====================
-const compactP = ({ node, ...props }: MarkdownComponentProps) => (
+const compactP = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <p className="my-[1px] py-[3px] whitespace-pre-wrap break-words first:mt-0 last:mb-0" style={{ color: 'var(--color-text-primary)' }} {...props} />
 );
-const compactH1 = ({ node, ...props }: MarkdownComponentProps) => (
+const compactH1 = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <h1 className="first:mt-0" style={{ color: 'var(--color-text-primary)', fontSize: '1.25em', fontWeight: 700, lineHeight: '1.3', marginTop: '0.8em', marginBottom: '0.2em' }} {...props} />
 );
-const compactH2 = ({ node, ...props }: MarkdownComponentProps) => (
+const compactH2 = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <h2 className="first:mt-0" style={{ color: 'var(--color-text-primary)', fontSize: '1.15em', fontWeight: 700, lineHeight: '1.3', marginTop: '0.7em', marginBottom: '0.15em' }} {...props} />
 );
-const compactH3 = ({ node, ...props }: MarkdownComponentProps) => (
+const compactH3 = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <h3 className="first:mt-0" style={{ color: 'var(--color-text-primary)', fontSize: '1.05em', fontWeight: 600, lineHeight: '1.3', marginTop: '0.6em', marginBottom: '0.1em' }} {...props} />
 );
-const compactCode = ({ node, className, children, ...props }: MarkdownComponentProps) => {
+const compactCode = ({ node: _node, className, children, ...props }: MarkdownComponentProps) => {
   const isBlock = /language-/.test(className || '');
   if (!isBlock) {
     return (
@@ -310,7 +308,7 @@ const compactCode = ({ node, className, children, ...props }: MarkdownComponentP
   }
   return <code className={className} {...props}>{children}</code>;
 };
-const compactPre = ({ node, children, ...props }: MarkdownComponentProps) => {
+const compactPre = ({ node: _node, children, ..._props }: MarkdownComponentProps) => {
   const { language, code } = extractCodeFromPre(children);
   return <CodeBlock language={language} code={code} compact />;
 };
@@ -334,17 +332,17 @@ const PANEL_COMPONENTS = {
 };
 
 // Compact table components -- reuse panel styles for consistency
-const compactTable = ({ node, ...props }: MarkdownComponentProps) => (
+const compactTable = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <div className="my-1 overflow-x-auto rounded" style={{ border: '1px solid var(--color-border-muted)' }}>
     <table className="w-full border-collapse text-left" style={{ minWidth: '100%', fontSize: '0.85em' }} {...props} />
   </div>
 );
-const compactThead = ({ node, ...props }: MarkdownComponentProps) => <thead style={{ backgroundColor: 'var(--color-bg-input)' }} {...props} />;
-const compactTr = ({ node, ...props }: MarkdownComponentProps) => <tr className="last:border-b-0" style={{ borderBottom: '1px solid var(--color-border-muted)' }} {...props} />;
-const compactTh = ({ node, ...props }: MarkdownComponentProps) => (
+const compactThead = ({ node: _node, ...props }: MarkdownComponentProps) => <thead style={{ backgroundColor: 'var(--color-bg-input)' }} {...props} />;
+const compactTr = ({ node: _node, ...props }: MarkdownComponentProps) => <tr className="last:border-b-0" style={{ borderBottom: '1px solid var(--color-border-muted)' }} {...props} />;
+const compactTh = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <th className="px-2 py-1.5 whitespace-nowrap" style={{ color: 'var(--color-text-primary)', fontWeight: 600, borderBottom: '1px solid var(--color-border-muted)' }} {...props} />
 );
-const compactTd = ({ node, ...props }: MarkdownComponentProps) => (
+const compactTd = ({ node: _node, ...props }: MarkdownComponentProps) => (
   <td className="px-2 py-1.5 break-words align-top" style={{ color: 'var(--color-text-primary)' }} {...props} />
 );
 
@@ -524,7 +522,7 @@ function Markdown({ content, variant = 'panel', className = '', style, onOpenFil
 
   const components = useMemo(() => {
     if (!onOpenFile && variant !== 'chat') return config.components;
-    const fileAwareA = ({ node, href, children, ...props }: MarkdownComponentProps) => {
+    const fileAwareA = ({ node: _node, href, children, ...props }: MarkdownComponentProps) => {
       if (isFilePath(href)) {
         // Image file linked as [name](path.png) -- render as embedded image
         if (isImagePath(href)) {
@@ -545,7 +543,7 @@ function Markdown({ content, variant = 'panel', className = '', style, onOpenFil
       }
       // External URL -- default behavior
       const DefaultA = config.components.a;
-      return <DefaultA node={node} href={href} {...props}>{children}</DefaultA>;
+      return <DefaultA node={_node} href={href} {...props}>{children}</DefaultA>;
     };
     return { ...config.components, a: fileAwareA };
   }, [onOpenFile, variant, config.components]);
