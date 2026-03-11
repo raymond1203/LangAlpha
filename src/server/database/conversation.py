@@ -87,7 +87,7 @@ def get_or_create_pool() -> AsyncConnectionPool:
         _conversation_db_pool_cache[db_uri] = AsyncConnectionPool(
             conninfo=db_uri,
             min_size=1,
-            max_size=10,
+            max_size=20,
             configure=_configure_postgres_connection,
             check=AsyncConnectionPool.check_connection,
             open=False,
@@ -133,7 +133,7 @@ async def get_db_connection():
         )
 
     # Get connection from pool - do not modify after acquisition
-    async with pool.connection() as conn:
+    async with pool.connection(timeout=10) as conn:
         try:
             yield conn
         finally:
@@ -2357,3 +2357,61 @@ async def delete_feedback(
     except Exception as e:
         logger.error(f"Error deleting feedback: {e}")
         raise
+
+
+async def get_replay_thread_data(
+    thread_id: str,
+) -> tuple[str | None, dict | None, list[dict], list[dict]]:
+    """Fetch all data needed for thread replay in a single connection.
+
+    Consolidates 4 separate connection acquisitions (owner check, thread summary,
+    queries, responses) into 1, reducing pool pressure during concurrent replays.
+
+    Returns:
+        (owner_user_id, thread_summary, queries, responses)
+    """
+    async with get_db_connection() as conn:
+        async with conn.cursor(row_factory=dict_row) as cur:
+            # 1. Owner check (join threads -> workspaces)
+            await cur.execute(
+                """SELECT w.user_id
+                   FROM conversation_threads t
+                   JOIN workspaces w ON w.workspace_id = t.workspace_id
+                   WHERE t.conversation_thread_id = %s""",
+                (thread_id,),
+            )
+            owner_row = await cur.fetchone()
+            owner_id = owner_row["user_id"] if owner_row else None
+
+            if owner_id is None:
+                return None, None, [], []
+
+            # 2. Thread summary
+            await cur.execute(
+                """SELECT conversation_thread_id, workspace_id, current_status,
+                          thread_index, created_at, updated_at
+                   FROM conversation_threads
+                   WHERE conversation_thread_id = %s""",
+                (thread_id,),
+            )
+            thread = await cur.fetchone()
+
+            # 3. Queries
+            await cur.execute(
+                """SELECT * FROM conversation_queries
+                   WHERE conversation_thread_id = %s
+                   ORDER BY turn_index ASC""",
+                (thread_id,),
+            )
+            queries = [dict(r) for r in await cur.fetchall()]
+
+            # 4. Responses
+            await cur.execute(
+                """SELECT * FROM conversation_responses
+                   WHERE conversation_thread_id = %s
+                   ORDER BY turn_index ASC""",
+                (thread_id,),
+            )
+            responses = [dict(r) for r in await cur.fetchall()]
+
+    return owner_id, dict(thread) if thread else None, queries, responses

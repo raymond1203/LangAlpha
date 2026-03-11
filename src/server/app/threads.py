@@ -40,9 +40,6 @@ from src.server.models.workflow import RetryRequest
 from src.server.database.conversation import (
     get_workspace_threads,
     get_threads_for_user,
-    get_thread_with_summary,
-    get_queries_for_thread,
-    get_responses_for_thread,
     delete_thread,
     update_thread_title,
     get_thread_by_id,
@@ -52,7 +49,9 @@ from src.server.database.conversation import (
     upsert_feedback,
     get_feedback_for_thread,
     delete_feedback,
+    get_replay_thread_data,
 )
+from psycopg_pool import PoolTimeout
 from src.server.dependencies.usage_limits import ChatRateLimited
 
 # Import setup module to access initialized globals
@@ -431,15 +430,18 @@ async def replay_thread_messages(thread_id: str, x_user_id: CurrentUserId):
     - replay_done: terminal sentinel
     """
     try:
-        await require_thread_owner(thread_id, x_user_id)
-        thread = await get_thread_with_summary(thread_id)
+        owner_id, thread, queries, responses = await get_replay_thread_data(thread_id)
+
+        # Preserve existing 404/403 semantics from require_thread_owner
+        if owner_id is None:
+            raise HTTPException(status_code=404, detail="Thread not found")
+        if owner_id != x_user_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
         if not thread:
             raise HTTPException(
                 status_code=404, detail=f"Thread not found: {thread_id}"
             )
 
-        queries, _ = await get_queries_for_thread(thread_id)
-        responses, _ = await get_responses_for_thread(thread_id)
         responses_by_turn = {
             r.get("turn_index"): r for r in responses if isinstance(r, dict)
         }
@@ -505,6 +507,12 @@ async def replay_thread_messages(thread_id: str, x_user_id: CurrentUserId):
             headers={"Cache-Control": "no-cache"},
         )
 
+    except PoolTimeout:
+        raise HTTPException(
+            status_code=503,
+            detail="Database connection pool busy, please retry",
+            headers={"Retry-After": "2"},
+        )
     except HTTPException:
         raise
     except Exception as e:
