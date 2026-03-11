@@ -149,13 +149,13 @@ export default function CompanyOverviewPanel({ symbol, visible, onClose, data, l
       {data && !loading && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <QuoteSummary data={data} />
-          <PerformanceBarChart performance={data.performance} />
-          <AnalystRatingsChart ratings={data.analystRatings} />
-          <QuarterlyRevenueChart data={data.quarterlyFundamentals} />
-          <MarginsChart data={data.quarterlyFundamentals} />
-          <EarningsSurpriseChart data={data.earningsSurprises} />
-          <CashFlowChart data={data.cashFlow} />
-          <RevenueBreakdownChart revenueByProduct={data.revenueByProduct} revenueByGeo={data.revenueByGeo} />
+          <PerformanceBarChart performance={data.performance as Record<string, number> | undefined} />
+          <AnalystRatingsChart ratings={data.analystRatings as Record<string, unknown> | undefined} />
+          <QuarterlyRevenueChart data={data.quarterlyFundamentals as Record<string, unknown>[] | undefined} />
+          <MarginsChart data={data.quarterlyFundamentals as Record<string, unknown>[] | undefined} />
+          <EarningsSurpriseChart data={data.earningsSurprises as Record<string, unknown>[] | undefined} />
+          <CashFlowChart data={data.cashFlow as Record<string, unknown>[] | undefined} />
+          <RevenueBreakdownChart revenueByProduct={data.revenueByProduct as Record<string, number> | undefined} revenueByGeo={data.revenueByGeo as Record<string, number> | undefined} />
         </div>
       )}
     </div>

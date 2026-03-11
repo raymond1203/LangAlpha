@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
 import { renderHookWithProviders, createTestQueryClient } from '../../test/utils';
 import { useWorkspace } from '../useWorkspace';
 import { waitFor } from '@testing-library/react';
@@ -10,6 +11,8 @@ vi.mock('../../pages/ChatAgent/utils/api', () => ({
 
 import { getWorkspace } from '../../pages/ChatAgent/utils/api';
 
+const mockGetWorkspace = getWorkspace as Mock;
+
 describe('useWorkspace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -17,27 +20,27 @@ describe('useWorkspace', () => {
 
   it('fetches workspace details when workspaceId is provided', async () => {
     const mockWs = { workspace_id: 'ws-1', name: 'Test WS' };
-    getWorkspace.mockResolvedValue(mockWs);
+    mockGetWorkspace.mockResolvedValue(mockWs);
 
     const { result } = renderHookWithProviders(() => useWorkspace('ws-1'));
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(mockWs);
-    expect(getWorkspace).toHaveBeenCalledWith('ws-1');
+    expect(mockGetWorkspace).toHaveBeenCalledWith('ws-1');
   });
 
   it('does not fetch when workspaceId is falsy', () => {
     const { result } = renderHookWithProviders(() => useWorkspace(null));
 
     expect(result.current.isFetching).toBe(false);
-    expect(getWorkspace).not.toHaveBeenCalled();
+    expect(mockGetWorkspace).not.toHaveBeenCalled();
   });
 
   it('does not fetch when workspaceId is undefined', () => {
     const { result } = renderHookWithProviders(() => useWorkspace(undefined));
 
     expect(result.current.isFetching).toBe(false);
-    expect(getWorkspace).not.toHaveBeenCalled();
+    expect(mockGetWorkspace).not.toHaveBeenCalled();
   });
 
   it('derives initialData from cached workspace lists', async () => {
@@ -48,13 +51,13 @@ describe('useWorkspace', () => {
       workspaces: [cachedWs, { workspace_id: 'ws-other', name: 'Other' }],
     });
 
-    getWorkspace.mockResolvedValue({ ...cachedWs, name: 'Updated WS' });
+    mockGetWorkspace.mockResolvedValue({ ...cachedWs, name: 'Updated WS' });
 
     const { result } = renderHookWithProviders(() => useWorkspace('ws-cached'), { queryClient });
 
     // initialData should be present immediately from the cached list
     expect(result.current.data).toEqual(cachedWs);
-    expect(result.current.data.name).toBe('Cached WS');
+    expect(result.current.data!.name).toBe('Cached WS');
   });
 
   it('returns undefined initialData when workspace is not in cache', async () => {
@@ -63,7 +66,7 @@ describe('useWorkspace', () => {
       workspaces: [{ workspace_id: 'ws-other', name: 'Other' }],
     });
 
-    getWorkspace.mockResolvedValue({ workspace_id: 'ws-missing', name: 'Fetched' });
+    mockGetWorkspace.mockResolvedValue({ workspace_id: 'ws-missing', name: 'Fetched' });
 
     const { result } = renderHookWithProviders(() => useWorkspace('ws-missing'), { queryClient });
 
@@ -71,6 +74,6 @@ describe('useWorkspace', () => {
     expect(result.current.data).toBeUndefined();
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data.name).toBe('Fetched');
+    expect(result.current.data!.name).toBe('Fetched');
   });
 });

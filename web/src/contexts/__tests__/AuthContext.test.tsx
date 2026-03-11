@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { type ReactElement } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -16,8 +16,8 @@ const mockOnAuthStateChange = vi.fn().mockReturnValue({
 vi.mock('../../lib/supabase', () => ({
   supabase: {
     auth: {
-      getSession: (...args) => mockGetSession(...args),
-      onAuthStateChange: (...args) => mockOnAuthStateChange(...args),
+      getSession: (...args: unknown[]) => mockGetSession(...args),
+      onAuthStateChange: (...args: unknown[]) => mockOnAuthStateChange(...args),
       signInWithPassword: vi.fn(),
       signUp: vi.fn(),
       signInWithOAuth: vi.fn(),
@@ -44,7 +44,7 @@ function TestConsumer() {
   );
 }
 
-function renderWithQueryClient(ui) {
+function renderWithQueryClient(ui: ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });

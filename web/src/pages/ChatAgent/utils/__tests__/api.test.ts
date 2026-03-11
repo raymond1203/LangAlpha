@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
 
 vi.mock('@/api/client', () => {
   const mockGet = vi.fn().mockResolvedValue({ data: {} });
@@ -32,6 +33,10 @@ import {
   deleteThread,
 } from '../api';
 
+const mockGet = api.get as Mock;
+const mockPost = api.post as Mock;
+const mockDelete = api.delete as Mock;
+
 describe('ChatAgent API utilities', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -40,20 +45,20 @@ describe('ChatAgent API utilities', () => {
   describe('getWorkspaces', () => {
     it('calls api.get with default params', async () => {
       const mockData = { workspaces: [], total: 0 };
-      api.get.mockResolvedValue({ data: mockData });
+      mockGet.mockResolvedValue({ data: mockData });
 
       const result = await getWorkspaces();
-      expect(api.get).toHaveBeenCalledWith('/api/v1/workspaces', {
+      expect(mockGet).toHaveBeenCalledWith('/api/v1/workspaces', {
         params: { limit: 20, offset: 0, sort_by: 'custom' },
       });
       expect(result).toEqual(mockData);
     });
 
     it('passes custom limit, offset, and sortBy', async () => {
-      api.get.mockResolvedValue({ data: {} });
+      mockGet.mockResolvedValue({ data: {} });
 
       await getWorkspaces(10, 5, 'name');
-      expect(api.get).toHaveBeenCalledWith('/api/v1/workspaces', {
+      expect(mockGet).toHaveBeenCalledWith('/api/v1/workspaces', {
         params: { limit: 10, offset: 5, sort_by: 'name' },
       });
     });
@@ -62,10 +67,10 @@ describe('ChatAgent API utilities', () => {
   describe('createWorkspace', () => {
     it('posts workspace data and returns response', async () => {
       const mockWs = { workspace_id: 'ws-new', name: 'My Workspace' };
-      api.post.mockResolvedValue({ data: mockWs });
+      mockPost.mockResolvedValue({ data: mockWs });
 
       const result = await createWorkspace('My Workspace', 'desc', { mode: 'ptc' });
-      expect(api.post).toHaveBeenCalledWith('/api/v1/workspaces', {
+      expect(mockPost).toHaveBeenCalledWith('/api/v1/workspaces', {
         name: 'My Workspace',
         description: 'desc',
         config: { mode: 'ptc' },
@@ -76,26 +81,26 @@ describe('ChatAgent API utilities', () => {
 
   describe('deleteWorkspace', () => {
     it('throws when workspaceId is falsy', async () => {
-      await expect(deleteWorkspace(null)).rejects.toThrow('Workspace ID is required');
+      await expect(deleteWorkspace(null as unknown as string)).rejects.toThrow('Workspace ID is required');
       await expect(deleteWorkspace('')).rejects.toThrow('Workspace ID is required');
     });
 
     it('calls api.delete with trimmed workspace id', async () => {
-      api.delete.mockResolvedValue({});
+      mockDelete.mockResolvedValue({});
 
       await deleteWorkspace('  ws-123  ');
-      expect(api.delete).toHaveBeenCalledWith('/api/v1/workspaces/ws-123');
+      expect(mockDelete).toHaveBeenCalledWith('/api/v1/workspaces/ws-123');
     });
   });
 
   describe('getWorkspace', () => {
     it('throws when workspaceId is falsy', async () => {
-      await expect(getWorkspace(null)).rejects.toThrow('Workspace ID is required');
+      await expect(getWorkspace(null as unknown as string)).rejects.toThrow('Workspace ID is required');
     });
 
     it('returns workspace data', async () => {
       const mockWs = { workspace_id: 'ws-1', name: 'Test' };
-      api.get.mockResolvedValue({ data: mockWs });
+      mockGet.mockResolvedValue({ data: mockWs });
 
       const result = await getWorkspace('ws-1');
       expect(result).toEqual(mockWs);
@@ -104,30 +109,30 @@ describe('ChatAgent API utilities', () => {
 
   describe('getThread', () => {
     it('throws when threadId is falsy', async () => {
-      await expect(getThread(null)).rejects.toThrow('Thread ID is required');
+      await expect(getThread(null as unknown as string)).rejects.toThrow('Thread ID is required');
     });
 
     it('fetches thread by id', async () => {
       const mockThread = { thread_id: 't-1', title: 'Thread 1' };
-      api.get.mockResolvedValue({ data: mockThread });
+      mockGet.mockResolvedValue({ data: mockThread });
 
       const result = await getThread('t-1');
-      expect(api.get).toHaveBeenCalledWith('/api/v1/threads/t-1');
+      expect(mockGet).toHaveBeenCalledWith('/api/v1/threads/t-1');
       expect(result).toEqual(mockThread);
     });
   });
 
   describe('deleteThread', () => {
     it('throws when threadId is falsy', async () => {
-      await expect(deleteThread(null)).rejects.toThrow('Thread ID is required');
+      await expect(deleteThread(null as unknown as string)).rejects.toThrow('Thread ID is required');
     });
 
     it('calls api.delete and returns response data', async () => {
       const mockResp = { success: true, thread_id: 't-1' };
-      api.delete.mockResolvedValue({ data: mockResp });
+      mockDelete.mockResolvedValue({ data: mockResp });
 
       const result = await deleteThread('t-1');
-      expect(api.delete).toHaveBeenCalledWith('/api/v1/threads/t-1');
+      expect(mockDelete).toHaveBeenCalledWith('/api/v1/threads/t-1');
       expect(result).toEqual(mockResp);
     });
   });

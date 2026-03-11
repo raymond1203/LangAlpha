@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
 import { renderHookWithProviders } from '../../../../test/utils';
 import { useDashboardData } from '../useDashboardData';
 import { waitFor } from '@testing-library/react';
@@ -7,10 +8,10 @@ vi.mock('../../utils/api', () => ({
   getNews: vi.fn(),
   getIndices: vi.fn(),
   INDEX_SYMBOLS: ['GSPC', 'IXIC', 'DJI', 'RUT', 'VIX'],
-  fallbackIndex: vi.fn((s) => ({
+  fallbackIndex: vi.fn((s: string) => ({
     symbol: s, name: s, price: 0, change: 0, changePercent: 0, isPositive: true, sparklineData: [],
   })),
-  normalizeIndexSymbol: vi.fn((s) => String(s).replace(/^\^/, '').toUpperCase()),
+  normalizeIndexSymbol: vi.fn((s: string) => String(s).replace(/^\^/, '').toUpperCase()),
 }));
 
 vi.mock('@/lib/marketUtils', () => ({
@@ -20,24 +21,28 @@ vi.mock('@/lib/marketUtils', () => ({
 import { getNews, getIndices } from '../../utils/api';
 import { fetchMarketStatus } from '@/lib/marketUtils';
 
+const mockFetchMarketStatus = fetchMarketStatus as Mock;
+const mockGetIndices = getIndices as Mock;
+const mockGetNews = getNews as Mock;
+
 describe('useDashboardData', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    fetchMarketStatus.mockResolvedValue({ market: 'open', afterHours: false, earlyHours: false });
-    getIndices.mockResolvedValue({
+    mockFetchMarketStatus.mockResolvedValue({ market: 'open', afterHours: false, earlyHours: false });
+    mockGetIndices.mockResolvedValue({
       indices: [
         { symbol: 'GSPC', name: 'S&P 500', price: 5000, change: 50, changePercent: 1.0, isPositive: true, sparklineData: [] },
       ],
       failedCount: 0,
     });
-    getNews.mockResolvedValue({ results: [], count: 0 });
+    mockGetNews.mockResolvedValue({ results: [], count: 0 });
   });
 
   it('returns marketStatus from the fetched data', async () => {
     const { result } = renderHookWithProviders(() => useDashboardData());
 
     await waitFor(() => expect(result.current.marketStatus).not.toBeNull());
-    expect(result.current.marketStatus.market).toBe('open');
+    expect(result.current.marketStatus!.market).toBe('open');
   });
 
   it('returns indices data', async () => {
@@ -49,7 +54,7 @@ describe('useDashboardData', () => {
   });
 
   it('returns newsItems as an empty array when no news', async () => {
-    getNews.mockResolvedValue({ results: [] });
+    mockGetNews.mockResolvedValue({ results: [] });
 
     const { result } = renderHookWithProviders(() => useDashboardData());
 
@@ -58,7 +63,7 @@ describe('useDashboardData', () => {
   });
 
   it('transforms news results into formatted items', async () => {
-    getNews.mockResolvedValue({
+    mockGetNews.mockResolvedValue({
       results: [
         {
           id: 'n-1',

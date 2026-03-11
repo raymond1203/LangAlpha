@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
 import { getExtendedHoursInfo, searchStocks, fetchMarketStatus } from '../marketUtils';
 
 // Mock the api client
@@ -9,6 +10,8 @@ vi.mock('@/api/client', () => ({
 }));
 
 import { api } from '@/api/client';
+
+const mockGet = api.get as Mock;
 
 describe('getExtendedHoursInfo', () => {
   it('returns nulls when marketStatus is null', () => {
@@ -103,36 +106,36 @@ describe('searchStocks', () => {
   it('returns empty result for empty query', async () => {
     const result = await searchStocks('');
     expect(result).toEqual({ query: '', results: [], count: 0 });
-    expect(api.get).not.toHaveBeenCalled();
+    expect(mockGet).not.toHaveBeenCalled();
   });
 
   it('returns empty result for whitespace-only query', async () => {
     const result = await searchStocks('   ');
     expect(result).toEqual({ query: '', results: [], count: 0 });
-    expect(api.get).not.toHaveBeenCalled();
+    expect(mockGet).not.toHaveBeenCalled();
   });
 
   it('calls the API with trimmed query and returns data', async () => {
     const mockData = { query: 'AAPL', results: [{ symbol: 'AAPL' }], count: 1 };
-    api.get.mockResolvedValue({ data: mockData });
+    mockGet.mockResolvedValue({ data: mockData });
 
     const result = await searchStocks(' AAPL ');
-    expect(api.get).toHaveBeenCalledWith('/api/v1/market-data/search/stocks', {
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/market-data/search/stocks', {
       params: expect.any(URLSearchParams),
     });
     expect(result).toEqual(mockData);
   });
 
   it('clamps limit between 1 and 100', async () => {
-    api.get.mockResolvedValue({ data: { query: 'X', results: [], count: 0 } });
+    mockGet.mockResolvedValue({ data: { query: 'X', results: [], count: 0 } });
 
     await searchStocks('X', 200);
-    const params = api.get.mock.calls[0][1].params;
+    const params = mockGet.mock.calls[0][1].params as URLSearchParams;
     expect(params.get('limit')).toBe('100');
   });
 
   it('returns fallback on API failure', async () => {
-    api.get.mockRejectedValue(new Error('Network error'));
+    mockGet.mockRejectedValue(new Error('Network error'));
 
     const result = await searchStocks('AAPL');
     expect(result).toEqual({ query: 'AAPL', results: [], count: 0 });
@@ -146,15 +149,15 @@ describe('fetchMarketStatus', () => {
 
   it('returns data from the API', async () => {
     const mockData = { market: 'open', afterHours: false, earlyHours: false };
-    api.get.mockResolvedValue({ data: mockData });
+    mockGet.mockResolvedValue({ data: mockData });
 
     const result = await fetchMarketStatus();
-    expect(api.get).toHaveBeenCalledWith('/api/v1/market-data/market-status', { signal: undefined });
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/market-data/market-status', { signal: undefined });
     expect(result).toEqual(mockData);
   });
 
   it('returns empty object on API failure', async () => {
-    api.get.mockRejectedValue(new Error('Server error'));
+    mockGet.mockRejectedValue(new Error('Server error'));
 
     const result = await fetchMarketStatus();
     expect(result).toEqual({});
@@ -163,7 +166,7 @@ describe('fetchMarketStatus', () => {
   it('re-throws AbortError (CanceledError)', async () => {
     const err = new Error('canceled');
     err.name = 'CanceledError';
-    api.get.mockRejectedValue(err);
+    mockGet.mockRejectedValue(err);
 
     await expect(fetchMarketStatus()).rejects.toThrow();
   });

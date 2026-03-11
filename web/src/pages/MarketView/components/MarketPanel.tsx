@@ -83,7 +83,6 @@ const MarketPanel = ({ messages = [], isLoading = false, error = null }: MarketP
           </div>
         ) : (
           <div style={{ padding: '16px 24px', maxWidth: '100%' }}>
-            {/* @ts-expect-error MessageList is still JSX — will be typed after ChatAgent migration */}
             <MessageList
               messages={messages}
               hideAvatar

@@ -1,12 +1,6 @@
 import React, { useState, useRef } from 'react';
-import ChatInput from '../../../components/ui/chat-input';
+import ChatInput, { type ChatInputHandle } from '../../../components/ui/chat-input';
 import { useChatInput } from '../hooks/useChatInput';
-
-// TODO: type properly when chat-input is migrated to TS
-interface ChatInputHandle {
-  setValue: (value: string) => void;
-  [key: string]: unknown;
-}
 
 const SUGGESTION_CHIPS: string[] = [
   "Summarize Apple's earnings",

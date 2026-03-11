@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Badge } from '@/components/ui/badge';
+import { Badge, type BadgeProps } from '@/components/ui/badge';
 
 interface StatusBadgeProps {
   status: string;
@@ -9,7 +9,7 @@ interface StatusBadgeProps {
 export default function StatusBadge({ status }: StatusBadgeProps) {
   const { t } = useTranslation();
 
-  const STATUS_MAP: Record<string, { variant: string; label: string }> = {
+  const STATUS_MAP: Record<string, { variant: BadgeProps['variant']; label: string }> = {
     active: { variant: 'success', label: t('automation.statusActive') },
     paused: { variant: 'warning', label: t('automation.statusPaused') },
     disabled: { variant: 'destructive', label: t('automation.statusDisabled') },

@@ -1,9 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
 import { setTokenGetter } from '../client';
+
+interface InterceptorHandler<T = unknown> {
+  fulfilled: (value: T) => T | Promise<T>;
+  rejected: (error: unknown) => unknown;
+}
+
+interface InterceptorManager<T> {
+  handlers: InterceptorHandler<T>[];
+}
 
 describe('setTokenGetter', () => {
   beforeEach(() => {
-    setTokenGetter(null);
+    setTokenGetter(null as unknown as () => Promise<string | null>);
   });
 
   it('accepts a function that will be used for auth', () => {
@@ -12,7 +22,7 @@ describe('setTokenGetter', () => {
   });
 
   it('accepts null to clear the token getter', () => {
-    expect(() => setTokenGetter(null)).not.toThrow();
+    expect(() => setTokenGetter(null as unknown as () => Promise<string | null>)).not.toThrow();
   });
 });
 
@@ -34,8 +44,10 @@ describe('api axios instance', () => {
   it('has interceptors registered', async () => {
     const { api } = await import('../client');
     // Axios interceptors have a handlers array
-    expect(api.interceptors.request.handlers.length).toBeGreaterThan(0);
-    expect(api.interceptors.response.handlers.length).toBeGreaterThan(0);
+    const reqInterceptors = api.interceptors.request as unknown as InterceptorManager<unknown>;
+    const resInterceptors = api.interceptors.response as unknown as InterceptorManager<unknown>;
+    expect(reqInterceptors.handlers.length).toBeGreaterThan(0);
+    expect(resInterceptors.handlers.length).toBeGreaterThan(0);
   });
 });
 
@@ -44,23 +56,24 @@ describe('request interceptor behavior', () => {
     const { api } = await import('../client');
     setTokenGetter(() => Promise.resolve('my-token'));
 
-    // Get the request interceptor handler
-    const handler = api.interceptors.request.handlers[0];
+    const reqInterceptors = api.interceptors.request as unknown as InterceptorManager<{ headers: Record<string, string> }>;
+    const handler = reqInterceptors.handlers[0];
     const interceptor = handler.fulfilled;
 
-    const config = { headers: {} };
+    const config = { headers: {} as Record<string, string> };
     const result = await interceptor(config);
     expect(result.headers.Authorization).toBe('Bearer my-token');
   });
 
   it('does not attach Authorization when token getter is null', async () => {
     const { api } = await import('../client');
-    setTokenGetter(null);
+    setTokenGetter(null as unknown as () => Promise<string | null>);
 
-    const handler = api.interceptors.request.handlers[0];
+    const reqInterceptors = api.interceptors.request as unknown as InterceptorManager<{ headers: Record<string, string> }>;
+    const handler = reqInterceptors.handlers[0];
     const interceptor = handler.fulfilled;
 
-    const config = { headers: {} };
+    const config = { headers: {} as Record<string, string> };
     const result = await interceptor(config);
     expect(result.headers.Authorization).toBeUndefined();
   });
@@ -69,10 +82,11 @@ describe('request interceptor behavior', () => {
     const { api } = await import('../client');
     setTokenGetter(() => Promise.reject(new Error('auth error')));
 
-    const handler = api.interceptors.request.handlers[0];
+    const reqInterceptors = api.interceptors.request as unknown as InterceptorManager<{ headers: Record<string, string> }>;
+    const handler = reqInterceptors.handlers[0];
     const interceptor = handler.fulfilled;
 
-    const config = { headers: {} };
+    const config = { headers: {} as Record<string, string> };
     const result = await interceptor(config);
     expect(result.headers.Authorization).toBeUndefined();
   });
@@ -82,7 +96,8 @@ describe('response interceptor behavior (429 handling)', () => {
   it('enriches 429 errors with rateLimitInfo and retryAfter', async () => {
     const { api } = await import('../client');
 
-    const handler = api.interceptors.response.handlers[0];
+    const resInterceptors = api.interceptors.response as unknown as InterceptorManager<unknown>;
+    const handler = resInterceptors.handlers[0];
     const errorHandler = handler.rejected;
 
     const error = {
@@ -103,10 +118,11 @@ describe('response interceptor behavior (429 handling)', () => {
   it('rejects non-429 errors without enrichment', async () => {
     const { api } = await import('../client');
 
-    const handler = api.interceptors.response.handlers[0];
+    const resInterceptors = api.interceptors.response as unknown as InterceptorManager<unknown>;
+    const handler = resInterceptors.handlers[0];
     const errorHandler = handler.rejected;
 
-    const error = {
+    const error: Record<string, unknown> = {
       response: { status: 500, data: { detail: 'Server error' } },
     };
 

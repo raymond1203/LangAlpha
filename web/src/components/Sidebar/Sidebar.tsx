@@ -38,7 +38,7 @@ function Sidebar() {
     },
   ];
 
-  const handleItemClick = (path) => {
+  const handleItemClick = (path: string) => {
     if (path === '/chat') {
       const session = getChatSession();
       if (session) {

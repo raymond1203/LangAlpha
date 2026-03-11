@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
 import { renderHookWithProviders } from '../../test/utils';
 import { useWorkspaces } from '../useWorkspaces';
 import { waitFor } from '@testing-library/react';
@@ -9,6 +10,8 @@ vi.mock('../../pages/ChatAgent/utils/api', () => ({
 
 import { getWorkspaces } from '../../pages/ChatAgent/utils/api';
 
+const mockGetWorkspaces = getWorkspaces as Mock;
+
 describe('useWorkspaces', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -16,24 +19,24 @@ describe('useWorkspaces', () => {
 
   it('fetches workspaces with default parameters', async () => {
     const mockData = { workspaces: [{ workspace_id: 'ws-1' }], total: 1 };
-    getWorkspaces.mockResolvedValue(mockData);
+    mockGetWorkspaces.mockResolvedValue(mockData);
 
     const { result } = renderHookWithProviders(() => useWorkspaces());
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(mockData);
-    expect(getWorkspaces).toHaveBeenCalledWith(20, 0, 'custom');
+    expect(mockGetWorkspaces).toHaveBeenCalledWith(20, 0, 'custom');
   });
 
   it('passes custom limit, offset, and sortBy', async () => {
-    getWorkspaces.mockResolvedValue({ workspaces: [], total: 0 });
+    mockGetWorkspaces.mockResolvedValue({ workspaces: [], total: 0 });
 
     const { result } = renderHookWithProviders(
       () => useWorkspaces({ limit: 10, offset: 5, sortBy: 'name' })
     );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(getWorkspaces).toHaveBeenCalledWith(10, 5, 'name');
+    expect(mockGetWorkspaces).toHaveBeenCalledWith(10, 5, 'name');
   });
 
   it('does not fetch when enabled is false', () => {
@@ -42,11 +45,11 @@ describe('useWorkspaces', () => {
     );
 
     expect(result.current.isFetching).toBe(false);
-    expect(getWorkspaces).not.toHaveBeenCalled();
+    expect(mockGetWorkspaces).not.toHaveBeenCalled();
   });
 
   it('handles API errors gracefully', async () => {
-    getWorkspaces.mockRejectedValue(new Error('Network error'));
+    mockGetWorkspaces.mockRejectedValue(new Error('Network error'));
 
     const { result } = renderHookWithProviders(() => useWorkspaces());
 
@@ -55,7 +58,7 @@ describe('useWorkspaces', () => {
   });
 
   it('uses the correct query key structure', async () => {
-    getWorkspaces.mockResolvedValue({ workspaces: [], total: 0 });
+    mockGetWorkspaces.mockResolvedValue({ workspaces: [], total: 0 });
 
     const { result, queryClient } = renderHookWithProviders(
       () => useWorkspaces({ limit: 5, offset: 0, sortBy: 'custom' })

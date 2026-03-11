@@ -15,13 +15,13 @@ npm run lint         # ESLint 9 flat config
 npm run preview      # Preview production build
 
 npx vitest run                        # All tests (CI mode)
-npx vitest run src/path/to/test.js    # Single test file
+npx vitest run src/path/to/test.ts    # Single test file
 npx vitest                            # Watch mode
 ```
 
 ## Architecture
 
-### Provider Stack (`main.jsx`)
+### Provider Stack (`main.tsx`)
 
 ```
 QueryClientProvider (React Query — 2min staleTime, retry: 1)
@@ -34,9 +34,9 @@ QueryClientProvider (React Query — 2min staleTime, retry: 1)
 
 ### Routing
 
-**`App.jsx`** handles top-level routes: `/` (login or redirect), `/callback` (OAuth), `/s/:shareToken` (public shared chat).
+**`App.tsx`** handles top-level routes: `/` (login or redirect), `/callback` (OAuth), `/s/:shareToken` (public shared chat).
 
-**`components/Main/Main.jsx`** handles authenticated routes inside the app shell (Sidebar + Main). All pages are **lazy-loaded** with `React.lazy` and animated via `AnimatePresence` (keyed by top-level path segment):
+**`components/Main/Main.tsx`** handles authenticated routes inside the app shell (Sidebar + Main). All pages are **lazy-loaded** with `React.lazy` and animated via `AnimatePresence` (keyed by top-level path segment):
 
 - `/dashboard` — Dashboard (watchlist, portfolio, news)
 - `/chat`, `/chat/:workspaceId`, `/chat/t/:threadId` — ChatAgent
@@ -44,7 +44,7 @@ QueryClientProvider (React Query — 2min staleTime, retry: 1)
 - `/automations` — Automations
 - `/settings` — Settings
 
-### Auth — Dual Mode (`contexts/AuthContext.jsx`)
+### Auth — Dual Mode (`contexts/AuthContext.tsx`)
 
 Controlled by `VITE_SUPABASE_URL`:
 
@@ -53,19 +53,19 @@ Controlled by `VITE_SUPABASE_URL`:
 
 ### Data Fetching
 
-**REST calls:** Via shared axios instance (`api/client.js`) with automatic Bearer token injection. Base URL from `VITE_API_BASE_URL` (default `http://localhost:8000`).
+**REST calls:** Via shared axios instance (`api/client.ts`) with automatic Bearer token injection. Base URL from `VITE_API_BASE_URL` (default `http://localhost:8000`).
 
-**SSE streaming (chat):** Uses raw `fetch()` + `ReadableStream` (not axios — it doesn't support streaming). Implemented as `streamFetch()` in `pages/ChatAgent/utils/api.js` and `pages/MarketView/utils/api.js`. Auth tokens for fetch are obtained directly from `supabase.auth.getSession()`.
+**SSE streaming (chat):** Uses raw `fetch()` + `ReadableStream` (not axios — it doesn't support streaming). Implemented as `streamFetch()` in `pages/ChatAgent/utils/api.ts` and `pages/MarketView/utils/api.ts`. Auth tokens for fetch are obtained directly from `supabase.auth.getSession()`.
 
-**React Query:** Global `QueryClient` in `main.jsx`. Key factory in `lib/queryKeys.js` — hierarchical keys enabling prefix-based invalidation (e.g., invalidate `queryKeys.user.all` to refresh all user-related data). Shared hooks in `hooks/` (`useUser`, `useWorkspaces`, `useWorkspace`, `usePreferences`, `useUpdatePreferences`).
+**React Query:** Global `QueryClient` in `main.tsx`. Key factory in `lib/queryKeys.ts` — hierarchical keys enabling prefix-based invalidation (e.g., invalidate `queryKeys.user.all` to refresh all user-related data). Shared hooks in `hooks/` (`useUser`, `useWorkspaces`, `useWorkspace`, `usePreferences`, `useUpdatePreferences`).
 
 ### API Layer Pattern
 
-Each page group owns its API calls in a local `utils/api.js`:
-- `pages/ChatAgent/utils/api.js` — workspaces, threads, SSE streams, file ops, HITL, feedback, skills, models
-- `pages/Dashboard/utils/api.js` — user profile, dashboard data
-- `pages/MarketView/utils/api.js` — market data, WebSocket
-- `pages/Automations/utils/api.js` — automation CRUD
+Each page group owns its API calls in a local `utils/api.ts`:
+- `pages/ChatAgent/utils/api.ts` — workspaces, threads, SSE streams, file ops, HITL, feedback, skills, models
+- `pages/Dashboard/utils/api.ts` — user profile, dashboard data
+- `pages/MarketView/utils/api.ts` — market data, WebSocket
+- `pages/Automations/utils/api.ts` — automation CRUD
 
 Cross-page data goes through shared hooks in `hooks/`.
 
@@ -80,10 +80,10 @@ Cross-page data goes through shared hooks in `hooks/`.
 ### Key Conventions
 
 - **Path alias:** `@` → `src/` (configured in both `vite.config.js` and `vitest.config.js`)
-- **Tests:** Co-located in `__tests__/` subdirectories next to the code they test. Vitest + jsdom + Testing Library + `@testing-library/jest-dom`. Global setup mocks `matchMedia`, `IntersectionObserver`, `ResizeObserver` (`src/test/setup.js`).
+- **Tests:** Co-located in `__tests__/` subdirectories next to the code they test. Vitest + jsdom + Testing Library + `@testing-library/jest-dom`. Global setup mocks `matchMedia`, `IntersectionObserver`, `ResizeObserver` (`src/test/setup.ts`).
 - **UI primitives:** `components/ui/` has Radix-based primitives (dialog, toast, button, card, etc.) using `class-variance-authority` for variant props.
-- **i18n:** `i18next` + `react-i18next`. Setup in `src/i18n.js`.
-- **WebSocket:** Real-time market data via `pages/MarketView/contexts/MarketDataWSContext.jsx`.
+- **i18n:** `i18next` + `react-i18next`. Setup in `src/i18n.ts`.
+- **WebSocket:** Real-time market data via `pages/MarketView/contexts/MarketDataWSContext.tsx`.
 
 ### Env Variables
 

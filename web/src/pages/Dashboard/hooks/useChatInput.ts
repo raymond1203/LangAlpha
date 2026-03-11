@@ -11,17 +11,21 @@ interface ChatAttachment {
   file: File;
   type: string;
   preview?: string | null;
-  dataUrl: string;
-  [key: string]: unknown;
+  dataUrl: string | null;
 }
 
 interface SlashCommand {
-  [key: string]: unknown;
+  type: string;
+  name: string;
+  skillName?: string;
+  description?: string;
+  aliases?: string[];
 }
 
 interface SendOptions {
-  model?: string;
-  reasoningEffort?: string;
+  model?: string | null;
+  reasoningEffort?: string | null;
+  fastMode?: boolean;
 }
 
 /**
@@ -69,8 +73,8 @@ export function useChatInput() {
     setIsLoading(true);
     try {
       // Build additional context and attachment metadata from attachments
-      let additionalContext: Array<{ type: string; data: string; description: string }> | null = null;
-      let attachmentMeta: Array<{ name: string; type: string; size: number; preview: string | null; dataUrl: string }> | null = null;
+      let additionalContext: Array<{ type: string; data: string | null; description: string }> | null = null;
+      let attachmentMeta: Array<{ name: string; type: string; size: number; preview: string | null; dataUrl: string | null }> | null = null;
       if (attachments && attachments.length > 0) {
         additionalContext = attachments.map((a) => ({
           type: 'image',
