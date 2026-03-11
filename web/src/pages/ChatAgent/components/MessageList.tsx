@@ -261,7 +261,7 @@ interface MessageListProps {
   onRegenerate?: (messageId: string) => void;
   onRetry?: () => void;
   onThumbUp?: (messageId: string) => Promise<FeedbackResult | null>;
-  onThumbDown?: (messageId: string, issueCategories: string[], comment: string, consentHumanReview: boolean) => Promise<FeedbackResult | null>;
+  onThumbDown?: (messageId: string, issueCategories: string[], comment: string | null, consentHumanReview: boolean) => Promise<FeedbackResult | null>;
   getFeedbackForMessage?: (messageId: string) => FeedbackResult | null;
   onReportWithAgent?: (instruction: string) => void;
 }
@@ -390,7 +390,7 @@ interface MessageBubbleProps {
   onRegenerate?: (messageId: string) => void;
   onRetry?: () => void;
   onThumbUp?: (messageId: string) => Promise<FeedbackResult | null>;
-  onThumbDown?: (messageId: string, issueCategories: string[], comment: string, consentHumanReview: boolean) => Promise<FeedbackResult | null>;
+  onThumbDown?: (messageId: string, issueCategories: string[], comment: string | null, consentHumanReview: boolean) => Promise<FeedbackResult | null>;
   getFeedbackForMessage?: (messageId: string) => FeedbackResult | null;
   onReportWithAgent?: (instruction: string) => void;
 }
@@ -442,7 +442,7 @@ function MessageBubble({ message, isLoading, hideAvatar, compactToolCalls, isSub
     else if (result) setFeedbackRating(result.rating);
   };
 
-  const handleThumbDownSubmit = async (issueCategories: string[], comment: string, consentHumanReview: boolean) => {
+  const handleThumbDownSubmit = async (issueCategories: string[], comment: string | null, consentHumanReview: boolean) => {
     if (!onThumbDown) return;
     const prevRating = feedbackRating;
     setFeedbackRating('thumbs_down');
@@ -665,7 +665,7 @@ function MessageBubble({ message, isLoading, hideAvatar, compactToolCalls, isSub
           {(message.isStreaming as boolean) && !Object.keys((message.pendingToolCallChunks as Record<string, unknown>) || {}).length && (() => {
             const contentSegments = message.contentSegments as ContentSegmentRecord[] | undefined;
             const hasContent = contentSegments?.some(s => s.content?.trim()) || (message.content as string)?.trim();
-            return <MorphLoading size="sm" className={hasContent ? "mt-2" : "mt-4"} style={{ color: 'var(--color-accent-primary)' }} />;
+            return <MorphLoading size="sm" className={`${hasContent ? "mt-2" : "mt-4"} text-[var(--color-accent-primary)]`} />;
           })()}
         </div>
 
@@ -767,7 +767,7 @@ function MessageBubble({ message, isLoading, hideAvatar, compactToolCalls, isSub
             onReportWithAgent={onReportWithAgent ? (instruction: string) => {
               setShowThumbDownModal(false);
               onReportWithAgent(instruction);
-            } : null}
+            } : undefined}
           />
         )}
       </div>
@@ -1132,7 +1132,7 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
     // Derived values
     const chunkEntries = Object.values(pendingToolCallChunks);
     const preparingToolCall = chunkEntries.length > 0 ? {
-      toolName: chunkEntries.find((c) => (c as Record<string, unknown>).toolName)?.toolName as string | null,
+      toolName: (chunkEntries.find((c) => (c as Record<string, unknown>).toolName)?.toolName as string | undefined) ?? undefined,
       chunkCount: chunkEntries.reduce((sum, c) => sum + ((c as Record<string, unknown>).chunkCount as number || 0), 0),
       argsLength: chunkEntries.reduce((sum, c) => sum + ((c as Record<string, unknown>).argsLength as number || 0), 0),
     } : null;
@@ -1170,8 +1170,8 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
                           key={`tool-call-${item.toolCallId}`}
                           toolCallId={item.toolCallId as string}
                           toolName={item.toolName as string}
-                          toolCall={item.toolCall}
-                          toolCallResult={item.toolCallResult}
+                          toolCall={item.toolCall as any} // TODO: type properly
+                          toolCallResult={item.toolCallResult as any} // TODO: type properly
                           isInProgress={(item.isInProgress as boolean) || false}
                           isComplete={(item.isComplete as boolean) || false}
                           isFailed={(item.isFailed as boolean) || false}
@@ -1199,10 +1199,10 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
             return (
               <ActivityBlock
                 key={block.key}
-                items={(block as ActivityRenderBlock).items}
+                items={(block as ActivityRenderBlock).items as any} // TODO: type properly — ActivityItem[] not exported
                 preparingToolCall={blockIdx === lastActivityBlockIdx ? preparingToolCall : null}
-                isStreaming={isStreaming}
-                onToolCallClick={onToolCallDetailClick}
+                isStreaming={isStreaming ?? false}
+                onToolCallClick={onToolCallDetailClick as any} // TODO: type properly
                 onOpenFile={onOpenFile}
               />
             );
@@ -1229,13 +1229,13 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
           }
 
           if (block.type === 'text') {
-            const textContent = isSubagentView ? normalizeSubagentText((block as TextRenderBlock).segment.content) : (block as TextRenderBlock).segment.content;
+            const textContent = isSubagentView ? normalizeSubagentText((block as TextRenderBlock).segment.content) : ((block as TextRenderBlock).segment.content ?? '');
             return (
               <TextMessageContent
                 key={block.key}
                 content={textContent}
-                isStreaming={isStreaming && blockIdx === lastTextBlockIdx && !hasAnyTrulyInProgress}
-                hasError={hasError}
+                isStreaming={!!(isStreaming && blockIdx === lastTextBlockIdx && !hasAnyTrulyInProgress)}
+                hasError={!!hasError}
                 onOpenFile={onOpenFile}
               />
             );
@@ -1244,12 +1244,12 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
           if (block.type === 'subagent_task') {
             const task = subagentTasks[(block as SubagentTaskRenderBlock).segment.subagentId!];
             if (!task) return null;
-            const rawToolCallProcess = toolCallProcesses[(block as SubagentTaskRenderBlock).segment.subagentId!] || null;
+            const rawToolCallProcess = toolCallProcesses[(block as SubagentTaskRenderBlock).segment.subagentId!] || undefined;
             const toolCallProcess = rawToolCallProcess ? {
               ...rawToolCallProcess,
               _subagentResult: (task.result as string) || null,
               _subagentStatus: (task.status as string) || null,
-            } : null;
+            } : undefined;
             return (
               <SubagentTaskMessageContent
                 key={block.key}
@@ -1257,11 +1257,11 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
                 description={task.description as string}
                 type={task.type as string}
                 status={task.status as string}
-                action={task.action as string}
+                action={task.action as 'init' | 'update' | 'resume' | undefined}
                 resumeTargetId={task.resumeTargetId as string}
                 onOpen={readOnly ? undefined : onOpenSubagentTask}
-                onDetailOpen={readOnly ? undefined : onToolCallDetailClick}
-                toolCallProcess={toolCallProcess}
+                onDetailOpen={readOnly ? undefined : (onToolCallDetailClick as any)} // TODO: type properly
+                toolCallProcess={toolCallProcess as any} // TODO: type properly — ToolCallProcess not exported
               />
             );
           }
@@ -1272,7 +1272,7 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
             return (
               <PlanApprovalCard
                 key={block.key}
-                planData={pd}
+                planData={pd as any} // TODO: type properly — PlanData not exported
                 onApprove={readOnly ? undefined : onApprovePlan}
                 onReject={readOnly ? undefined : onRejectPlan}
                 onDetailClick={readOnly ? undefined : () => onPlanDetailClick?.(pd)}
@@ -1286,7 +1286,7 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
             return (
               <UserQuestionCard
                 key={block.key}
-                questionData={qd}
+                questionData={qd as any} // TODO: type properly — QuestionData not exported
                 onAnswer={readOnly ? undefined : (answer: string) => onAnswerQuestion!(answer, (block as UserQuestionRenderBlock).segment.questionId!, qd.interruptId as string)}
                 onSkip={readOnly ? undefined : () => onSkipQuestion!((block as UserQuestionRenderBlock).segment.questionId!, qd.interruptId as string)}
               />
@@ -1300,9 +1300,9 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
             return (
               <CreateWorkspaceCard
                 key={block.key}
-                proposalData={wd}
-                onApprove={onApproveCreateWorkspace}
-                onReject={onRejectCreateWorkspace}
+                proposalData={wd as any} // TODO: type properly — ProposalData not exported
+                onApprove={onApproveCreateWorkspace ? () => onApproveCreateWorkspace(wd) : undefined}
+                onReject={onRejectCreateWorkspace ? () => onRejectCreateWorkspace(wd) : undefined}
               />
             );
           }
@@ -1314,9 +1314,9 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
             return (
               <StartQuestionCard
                 key={block.key}
-                proposalData={sqd}
-                onApprove={onApproveStartQuestion}
-                onReject={onRejectStartQuestion}
+                proposalData={sqd as any} // TODO: type properly — ProposalData not exported
+                onApprove={onApproveStartQuestion ? () => onApproveStartQuestion(sqd) : undefined}
+                onReject={onRejectStartQuestion ? () => onRejectStartQuestion(sqd) : undefined}
               />
             );
           }
@@ -1328,13 +1328,13 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
           <ActivityBlock
             items={[]}
             preparingToolCall={preparingToolCall}
-            isStreaming={isStreaming}
-            onToolCallClick={onToolCallDetailClick}
+            isStreaming={isStreaming ?? false}
+            onToolCallClick={onToolCallDetailClick as any} // TODO: type properly
             onOpenFile={onOpenFile}
           />
         )}
         {detectedFiles.length > 0 && (!readOnly || allowFiles) && (
-          <FileMentionCards filePaths={detectedFiles} onOpenFile={(readOnly && !allowFiles) ? undefined : onOpenFile} onOpenDir={(readOnly && !allowFiles) ? undefined : onOpenDir} />
+          <FileMentionCards filePaths={detectedFiles} onOpenFile={((readOnly && !allowFiles) ? undefined : onOpenFile)!} onOpenDir={(readOnly && !allowFiles) ? undefined : onOpenDir} />
         )}
       </div>
     );
@@ -1349,9 +1349,9 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
           return (
             <div key={`text-${segment.order}-${index}`}>
               <TextMessageContent
-                content={segment.content}
-                isStreaming={isStreaming && isLastSegment}
-                hasError={hasError}
+                content={segment.content ?? ''}
+                isStreaming={!!(isStreaming && isLastSegment)}
+                hasError={!!hasError}
                 onOpenFile={onOpenFile}
               />
             </div>
@@ -1376,8 +1376,8 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
               key={`tool-call-${segment.toolCallId}`}
               toolCallId={segment.toolCallId!}
               toolName={proc.toolName as string}
-              toolCall={proc.toolCall}
-              toolCallResult={proc.toolCallResult}
+              toolCall={proc.toolCall as any} // TODO: type properly
+              toolCallResult={proc.toolCallResult as any} // TODO: type properly
               isInProgress={(proc.isInProgress as boolean) || false}
               isComplete={(proc.isComplete as boolean) || false}
               isFailed={(proc.isFailed as boolean) || false}
@@ -1390,7 +1390,7 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
             return (
               <TodoListMessageContent
                 key={`todo-list-${segment.todoListId}`}
-                todos={(todoListProcess.todos as unknown[]) || []}
+                todos={(todoListProcess.todos as any[]) || []} // TODO: type properly — TodoItem[] not exported
                 total={(todoListProcess.total as number) || 0}
                 completed={(todoListProcess.completed as number) || 0}
                 in_progress={(todoListProcess.in_progress as number) || 0}
@@ -1409,7 +1409,7 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
                 description={task.description as string}
                 type={task.type as string}
                 status={task.status as string}
-                action={task.action as string}
+                action={task.action as 'init' | 'update' | 'resume' | undefined}
                 resumeTargetId={task.resumeTargetId as string}
                 onOpen={onOpenSubagentTask}
               />
@@ -1422,7 +1422,7 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
             return (
               <PlanApprovalCard
                 key={`plan-${segment.planApprovalId}`}
-                planData={pd}
+                planData={pd as any} // TODO: type properly — PlanData not exported
                 onApprove={onApprovePlan}
                 onReject={onRejectPlan}
                 onDetailClick={() => onPlanDetailClick?.(pd)}
@@ -1436,7 +1436,7 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
             return (
               <UserQuestionCard
                 key={`question-${segment.questionId}`}
-                questionData={qd}
+                questionData={qd as any} // TODO: type properly — QuestionData not exported
                 onAnswer={(answer: string) => onAnswerQuestion!(answer, segment.questionId!, qd.interruptId as string)}
                 onSkip={() => onSkipQuestion!(segment.questionId!, qd.interruptId as string)}
               />
@@ -1449,9 +1449,9 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
             return (
               <CreateWorkspaceCard
                 key={`workspace-${segment.proposalId}`}
-                proposalData={wd}
-                onApprove={onApproveCreateWorkspace}
-                onReject={onRejectCreateWorkspace}
+                proposalData={wd as any} // TODO: type properly — ProposalData not exported
+                onApprove={onApproveCreateWorkspace ? () => onApproveCreateWorkspace(wd) : undefined}
+                onReject={onRejectCreateWorkspace ? () => onRejectCreateWorkspace(wd) : undefined}
               />
             );
           }
@@ -1462,9 +1462,9 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
             return (
               <StartQuestionCard
                 key={`start-question-${segment.proposalId}`}
-                proposalData={sqd}
-                onApprove={onApproveStartQuestion}
-                onReject={onRejectStartQuestion}
+                proposalData={sqd as any} // TODO: type properly — ProposalData not exported
+                onApprove={onApproveStartQuestion ? () => onApproveStartQuestion(sqd) : undefined}
+                onReject={onRejectStartQuestion ? () => onRejectStartQuestion(sqd) : undefined}
               />
             );
           }

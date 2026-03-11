@@ -501,7 +501,7 @@ function ArtifactOrMarkdown({ artifact, content, toolName, toolCallProcess, onOp
   // Fallback: render content as markdown (strip line numbers from Read/SEC filing results)
   const displayContent = stripLineNumbers(rawContent || t('toolArtifact.noResultContent'));
 
-  return <Markdown variant="panel" content={displayContent} className="text-sm" />;
+  return <Markdown variant="panel" content={displayContent || ''} className="text-sm" />;
 }
 
 // --- parseWebSearchResults ---
@@ -722,7 +722,7 @@ function TruncatedResultMessage({ filePath, preview, onOpenFile }: TruncatedResu
           <p className="text-xs font-medium" style={{ color: 'var(--color-text-tertiary)' }}>
             {t('toolArtifact.preview')}
           </p>
-          <Markdown variant="panel" content={stripLineNumbers(preview)} className="text-sm" />
+          <Markdown variant="panel" content={stripLineNumbers(preview) || ''} className="text-sm" />
         </div>
       )}
     </div>

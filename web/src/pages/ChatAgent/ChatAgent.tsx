@@ -48,7 +48,7 @@ function ChatAgent(): React.ReactElement | null {
   const needsThreadLookup = !!threadId && threadId !== '__default__' && !urlWorkspaceId && !state?.workspaceId;
 
   const { data: resolvedThread, error: threadError } = useQuery({
-    queryKey: queryKeys.threads.detail(threadId),
+    queryKey: queryKeys.threads.detail(threadId!),
     queryFn: () => getThread(threadId!),
     enabled: needsThreadLookup,
     retry: false,
@@ -93,7 +93,7 @@ function ChatAgent(): React.ReactElement | null {
    * Handles workspace selection from gallery
    * Passes workspace name via route state to avoid refetching all workspaces
    */
-  const handleWorkspaceSelect = useCallback((selectedWorkspaceId: string, workspaceName: string, workspaceStatus: string | null) => {
+  const handleWorkspaceSelect = useCallback((selectedWorkspaceId: string, workspaceName?: string, workspaceStatus?: string) => {
     navigate(`/chat/${selectedWorkspaceId}`, {
       state: {
         workspaceName: workspaceName || 'Workspace',
@@ -121,7 +121,7 @@ function ChatAgent(): React.ReactElement | null {
     }
   }, [navigate, workspaceId, state, queryClient]);
 
-  const handleThreadSelect = useCallback((selectedWorkspaceId: string, selectedThreadId: string, agentMode?: string) => {
+  const handleThreadSelect = useCallback((selectedWorkspaceId: string, selectedThreadId: string, agentMode?: string | null) => {
     navigate(`/chat/t/${selectedThreadId}`, {
       state: {
         workspaceId: selectedWorkspaceId,
@@ -183,7 +183,7 @@ function ChatAgent(): React.ReactElement | null {
         <ThreadGallery
           workspaceId={urlWorkspaceId}
           onBack={handleBackToWorkspaceGallery}
-          onThreadSelect={handleThreadSelect}
+          onThreadSelect={handleThreadSelect as any} // TODO: type properly
         />
       </Suspense>
     );
@@ -191,7 +191,7 @@ function ChatAgent(): React.ReactElement | null {
     content = (
       <Suspense fallback={null}>
         <WorkspaceGallery
-          onWorkspaceSelect={handleWorkspaceSelect}
+          onWorkspaceSelect={handleWorkspaceSelect as any} // TODO: type properly
           prefetchThreads={prefetchThreads}
         />
       </Suspense>

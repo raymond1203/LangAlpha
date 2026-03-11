@@ -52,7 +52,7 @@ interface EditorTextSelectData {
   text: string;
   startLine: number;
   endLine: number;
-  rect?: { left: number; top: number };
+  rect: { left: number; top: number; width: number; height: number } | null;
 }
 
 interface ApiAdapter {
@@ -1656,39 +1656,39 @@ function FilePanel({
             ) : fileMime === 'pdf' ? (
               <Suspense fallback={<DocumentLoadingFallback />}>
                 <DocumentErrorBoundary fallback={<DocumentErrorFallback onDownload={() => triggerDownloadFn(workspaceId, selectedFile).catch((err: unknown) => console.error('[FilePanel] Download failed:', err))} />}>
-                  <PdfViewer data={fileArrayBuffer} />
+                  <PdfViewer data={fileArrayBuffer!} />
                 </DocumentErrorBoundary>
               </Suspense>
             ) : fileMime === 'excel' ? (
               <Suspense fallback={<DocumentLoadingFallback />}>
                 <DocumentErrorBoundary fallback={<DocumentErrorFallback onDownload={() => triggerDownloadFn(workspaceId, selectedFile).catch((err: unknown) => console.error('[FilePanel] Download failed:', err))} />}>
-                  <ExcelViewer data={fileArrayBuffer} />
+                  <ExcelViewer data={fileArrayBuffer!} />
                 </DocumentErrorBoundary>
               </Suspense>
             ) : getFileExtension(selectedFile) === 'csv' ? (
               isEditing ? (
                 <div className="file-panel-editor-container">
                   <Suspense fallback={<DocumentLoadingFallback />}>
-                    <CodeEditor value={editContent} onChange={handleEditorChange} fileName={selectedFile} diffMode={showDiff} originalValue={originalContent} editorRef={editorRef} onUndoRedoChange={handleUndoRedoChange} onTextSelect={onAddContext ? handleEditorTextSelect : undefined} />
+                    <CodeEditor value={editContent ?? undefined} onChange={handleEditorChange} fileName={selectedFile} diffMode={showDiff} originalValue={originalContent ?? undefined} editorRef={editorRef} onUndoRedoChange={handleUndoRedoChange} onTextSelect={onAddContext ? handleEditorTextSelect : undefined} />
                   </Suspense>
                 </div>
               ) : (
                 <Suspense fallback={<DocumentLoadingFallback />}>
                   <DocumentErrorBoundary fallback={<DocumentErrorFallback onDownload={() => triggerDownloadFn(workspaceId, selectedFile).catch((err: unknown) => console.error('[FilePanel] Download failed:', err))} />}>
-                    <CsvViewer content={fileContent} />
+                    <CsvViewer content={fileContent ?? ''} />
                   </DocumentErrorBoundary>
                 </Suspense>
               )
             ) : ['html', 'htm'].includes(getFileExtension(selectedFile)) ? (
               <Suspense fallback={<DocumentLoadingFallback />}>
                 <DocumentErrorBoundary fallback={<DocumentErrorFallback onDownload={() => triggerDownloadFn(workspaceId, selectedFile).catch((err: unknown) => console.error('[FilePanel] Download failed:', err))} />}>
-                  <HtmlViewer content={fileContent} />
+                  <HtmlViewer content={fileContent ?? ''} />
                 </DocumentErrorBoundary>
               </Suspense>
             ) : isEditing ? (
               <div className="file-panel-editor-container">
                 <Suspense fallback={<DocumentLoadingFallback />}>
-                  <CodeEditor value={editContent} onChange={handleEditorChange} fileName={selectedFile} diffMode={showDiff} originalValue={originalContent} editorRef={editorRef} onUndoRedoChange={handleUndoRedoChange} onTextSelect={onAddContext ? handleEditorTextSelect : undefined} />
+                  <CodeEditor value={editContent ?? undefined} onChange={handleEditorChange} fileName={selectedFile} diffMode={showDiff} originalValue={originalContent ?? undefined} editorRef={editorRef} onUndoRedoChange={handleUndoRedoChange} onTextSelect={onAddContext ? handleEditorTextSelect : undefined} />
                 </Suspense>
               </div>
             ) : (
@@ -1703,7 +1703,7 @@ function FilePanel({
                     className={`markdown-print-content ${printMode ? 'print-preview-active' : ''}`}
                     style={printMode ? { '--print-font-size': `${printFontSize}px`, '--print-line-height': printLineHeight, '--print-font-family': printFontFamily } as React.CSSProperties : undefined}
                   >
-                    <Markdown variant="panel" content={stripLineNumbers(fileContent)} className={printMode ? undefined : 'text-sm'} />
+                    <Markdown variant="panel" content={stripLineNumbers(fileContent) ?? ''} className={printMode ? undefined : 'text-sm'} />
                   </div>
                 ) : fileMime?.includes('markdown') || getFileExtension(selectedFile) === 'md' ? (
                   <div
@@ -1711,7 +1711,7 @@ function FilePanel({
                     className={`markdown-print-content ${printMode ? 'print-preview-active' : ''}`}
                     style={printMode ? { '--print-font-size': `${printFontSize}px`, '--print-line-height': printLineHeight, '--print-font-family': printFontFamily } as React.CSSProperties : undefined}
                   >
-                    <Markdown variant="panel" content={fileContent} className={printMode ? undefined : 'text-sm'} />
+                    <Markdown variant="panel" content={fileContent ?? ''} className={printMode ? undefined : 'text-sm'} />
                   </div>
                 ) : (
                   <SyntaxHighlighter
@@ -1722,7 +1722,7 @@ function FilePanel({
                     showLineNumbers
                     lineNumberStyle={{ minWidth: '2.5em', paddingRight: '1em', color: 'var(--color-text-tertiary)', userSelect: 'none', fontSize: '11px', opacity: 0.5 }}
                     wrapLines
-                    lineProps={(lineNumber: number) => ({ 'data-line': lineNumber })}
+                    lineProps={(lineNumber: number) => ({ 'data-line': lineNumber } as React.HTMLProps<HTMLElement>)}
                     wrapLongLines
                   >
                     {fileContent!}
