@@ -42,7 +42,9 @@ from src.tools.market_data.tool import (
     get_stock_daily_prices,
     get_company_overview,
     get_market_indices,
+    get_options_chain,
     get_sector_performance,
+    screen_stocks,
 )
 
 logger = structlog.get_logger(__name__)
@@ -126,7 +128,9 @@ class FlashAgent:
                 get_stock_daily_prices,
                 get_company_overview,
                 get_market_indices,
+                get_options_chain,
                 get_sector_performance,
+                screen_stocks,
             ]
         )
 
