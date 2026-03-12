@@ -29,6 +29,7 @@ import { SlidersHorizontal, Settings2, Maximize2, Minimize2, ChevronDown, Plus, 
 import { loadPref, savePref } from '../utils/prefs';
 import type { SnapshotData } from '@/types/market';
 import type { BarData } from '../hooks/useMarketDataWS';
+import { useOnClickOutside } from '@/hooks/useOnClickOutside';
 
 interface ChartDataBar {
   time: number;
@@ -85,20 +86,6 @@ export interface MarketChartHandle {
   getChartMetadata: () => Record<string, unknown> | null;
 }
 
-function useClickOutside(ref: React.RefObject<HTMLElement | null>, onClose: (() => void) | null) {
-  useEffect(() => {
-    if (!onClose) return;
-    const handler = (e: MouseEvent | TouchEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    document.addEventListener('mousedown', handler);
-    document.addEventListener('touchstart', handler, { passive: true });
-    return () => {
-      document.removeEventListener('mousedown', handler);
-      document.removeEventListener('touchstart', handler);
-    };
-  }, [ref, onClose]);
-}
 
 const MarketChart = React.memo(forwardRef<MarketChartHandle, MarketChartProps>(({
   symbol,
@@ -182,10 +169,10 @@ const MarketChart = React.memo(forwardRef<MarketChartHandle, MarketChartProps>((
   const toolsDropdownRef = useRef<HTMLDivElement>(null);
   const intervalsDropdownRef = useRef<HTMLDivElement>(null);
   const viewDropdownRef = useRef<HTMLDivElement>(null);
-  useClickOutside(indicatorsDropdownRef, indicatorsOpen ? () => setIndicatorsOpen(false) : null);
-  useClickOutside(toolsDropdownRef, toolsOpen ? () => setToolsOpen(false) : null);
-  useClickOutside(intervalsDropdownRef, intervalsOpen ? () => setIntervalsOpen(false) : null);
-  useClickOutside(viewDropdownRef, viewOpen ? () => setViewOpen(false) : null);
+  useOnClickOutside(indicatorsDropdownRef, () => setIndicatorsOpen(false), indicatorsOpen);
+  useOnClickOutside(toolsDropdownRef, () => setToolsOpen(false), toolsOpen);
+  useOnClickOutside(intervalsDropdownRef, () => setIntervalsOpen(false), intervalsOpen);
+  useOnClickOutside(viewDropdownRef, () => setViewOpen(false), viewOpen);
 
   // Crosshair tooltip state
   const [tooltipState, setTooltipState] = useState<TooltipState>({ visible: false, x: 0, y: 0, data: null });

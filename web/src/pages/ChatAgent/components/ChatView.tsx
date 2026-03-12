@@ -2,7 +2,7 @@ import React, { Suspense, useEffect, useRef, useState, useCallback, useMemo } fr
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, FolderOpen, StopCircle, ScrollText, AlertTriangle, CheckCircle2, Circle, Loader2, TextSelect, Minus, PanelLeftOpen, Menu } from 'lucide-react';
-import { useIsMobile } from '@/hooks/useIsMobile';
+import { useIsMobile, getIsMobileSnapshot } from '@/hooks/useIsMobile';
 import { ScrollArea } from '../../../components/ui/scroll-area';
 import { usePreferences } from '@/hooks/usePreferences';
 import { useQueryClient } from '@tanstack/react-query';
@@ -301,7 +301,7 @@ function ChatView({ workspaceId, threadId, onBack, workspaceName: initialWorkspa
       const width = entries[0].contentRect.width;
       contentAreaWidthRef.current = width;
       // Skip auto-hide on mobile — hamburger controls nav drawer
-      if (window.matchMedia('(max-width: 767px)').matches) return;
+      if (getIsMobileSnapshot()) return;
       if (width < 1100 && _navPanelVisible) {
         if (navHideTimerRef.current) clearTimeout(navHideTimerRef.current);
         _navPanelVisible = false;

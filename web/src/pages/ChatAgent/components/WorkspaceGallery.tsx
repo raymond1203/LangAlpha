@@ -11,6 +11,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import CreateWorkspaceModal from './CreateWorkspaceModal';
 import DeleteConfirmModal from './DeleteConfirmModal';
 import MorphingPageDots from '../../../components/ui/morphing-page-dots';
+import { getIsMobileSnapshot } from '@/hooks/useIsMobile';
 import { useWorkspaces } from '../../../hooks/useWorkspaces';
 import { queryKeys } from '../../../lib/queryKeys';
 import { createWorkspace, deleteWorkspace, getFlashWorkspace, updateWorkspace, reorderWorkspaces } from '../utils/api';
@@ -418,11 +419,11 @@ function WorkspaceGallery({ onWorkspaceSelect, prefetchThreads }: WorkspaceGalle
   // Pagination container is always rendered (visibility:hidden when unused)
   // so the scroll container height is stable and no paginationReserve is needed.
   const computePageSizeFromHeight = useCallback((height: number) => {
-    const isMd = window.matchMedia('(min-width: 768px)').matches;
-    const columns = isMd ? 2 : 1;
-    const gap = isMd ? 24 : 12;
+    const isMobile = getIsMobileSnapshot();
+    const columns = isMobile ? 1 : 2;
+    const gap = isMobile ? 12 : 24;
     const cardHeight = 160;
-    const gridBottomMargin = isMd ? 24 : 12;
+    const gridBottomMargin = isMobile ? 12 : 24;
     const available = height - gridBottomMargin;
     const rows = Math.max(1, Math.floor((available + gap) / (cardHeight + gap)));
     return Math.max(2, columns * rows);

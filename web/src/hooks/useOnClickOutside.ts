@@ -1,7 +1,9 @@
-import { useEffect, type RefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 
 /**
- * Calls `handler` when a mousedown event fires outside `ref`.
+ * Calls `handler` when a pointerdown event fires outside `ref`.
+ * Uses `pointerdown` to handle mouse, touch, and stylus uniformly.
+ * Handler is stored in a ref so callers don't need `useCallback`.
  * No-ops when `enabled` is false.
  */
 export function useOnClickOutside(
@@ -9,14 +11,17 @@ export function useOnClickOutside(
   handler: () => void,
   enabled = true,
 ): void {
+  const handlerRef = useRef(handler);
+  useEffect(() => { handlerRef.current = handler; });
+
   useEffect(() => {
     if (!enabled) return;
-    const handle = (e: MouseEvent) => {
+    const handle = (e: PointerEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
-        handler();
+        handlerRef.current();
       }
     };
-    document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
-  }, [ref, handler, enabled]);
+    document.addEventListener('pointerdown', handle);
+    return () => document.removeEventListener('pointerdown', handle);
+  }, [ref, enabled]);
 }

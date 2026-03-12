@@ -9,7 +9,8 @@ function subscribe(callback: () => void): () => void {
   return () => mql.removeEventListener('change', callback);
 }
 
-function getSnapshot(): boolean {
+/** Synchronous snapshot — safe to call outside React render (e.g. ResizeObserver, rAF). */
+export function getIsMobileSnapshot(): boolean {
   return mql?.matches ?? false;
 }
 
@@ -18,5 +19,5 @@ function getServerSnapshot(): boolean {
 }
 
 export function useIsMobile(): boolean {
-  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  return useSyncExternalStore(subscribe, getIsMobileSnapshot, getServerSnapshot);
 }
