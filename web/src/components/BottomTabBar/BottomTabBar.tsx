@@ -1,7 +1,6 @@
 import { ChartCandlestick, LayoutDashboard, MessageSquareText, Timer, Settings } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { getChatSession } from '../../pages/ChatAgent/hooks/utils/chatSessionRestore';
 import './BottomTabBar.css';
 
 const menuItems = [
@@ -17,19 +16,6 @@ export default function BottomTabBar() {
   const navigate = useNavigate();
   const location = useLocation();
   const handleItemClick = (path: string) => {
-    if (path === '/chat') {
-      const session = getChatSession();
-      if (session) {
-        if (session.threadId) {
-          navigate(`/chat/t/${session.threadId}`, {
-            state: { workspaceId: session.workspaceId },
-          });
-        } else {
-          navigate(`/chat/${session.workspaceId}`);
-        }
-        return;
-      }
-    }
     navigate(path);
   };
 

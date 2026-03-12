@@ -36,4 +36,7 @@
     padding-left: 0;
     padding-bottom: var(--bottom-tab-height);
   }
+  .app-main--no-tab {
+    padding-bottom: 0;
+  }
 }

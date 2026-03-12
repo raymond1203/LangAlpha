@@ -5,7 +5,6 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import logoLight from '../../assets/img/logo.svg';
 import logoDark from '../../assets/img/logo-dark.svg';
 import { useTheme } from '../../contexts/ThemeContext';
-import { getChatSession } from '../../pages/ChatAgent/hooks/utils/chatSessionRestore';
 import './Sidebar.css';
 
 function Sidebar() {
@@ -39,19 +38,6 @@ function Sidebar() {
   ];
 
   const handleItemClick = (path: string) => {
-    if (path === '/chat') {
-      const session = getChatSession();
-      if (session) {
-        if (session.threadId) {
-          navigate(`/chat/t/${session.threadId}`, {
-            state: { workspaceId: session.workspaceId },
-          });
-        } else {
-          navigate(`/chat/${session.workspaceId}`);
-        }
-        return;
-      }
-    }
     navigate(path);
   };
 

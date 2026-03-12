@@ -4,7 +4,7 @@
   left: 0;
   right: 0;
   z-index: 1000;
-  padding: 8px 16px calc(env(safe-area-inset-bottom, 0px) + 14px);
+  padding: 8px 16px 14px;
   background: transparent;
   pointer-events: none;
 }
@@ -33,13 +33,15 @@
   background: transparent;
   cursor: pointer;
   border-radius: 16px;
-  transition: all 0.2s ease;
+  transition: color 0.2s ease;
   color: var(--color-text-tertiary);
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 .bottom-tab-item:active {
-  transform: scale(0.95);
+  transform: scale(0.92);
+  transition: transform 0s;
 }
 
 .bottom-tab-item.active {

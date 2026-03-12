@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import Sidebar from './components/Sidebar/Sidebar';
 import BottomTabBar from './components/BottomTabBar/BottomTabBar';
 import Main from './components/Main/Main';
@@ -51,6 +51,8 @@ function App() {
   const { isLoggedIn, isInitialized } = useAuth();
   const { t } = useTranslation();
   const isMobile = useIsMobile();
+  const location = useLocation();
+  const hideTabBar = isMobile && location.pathname.startsWith('/chat/t/');
 
   if (!isInitialized) {
     return (
@@ -69,8 +71,8 @@ function App() {
         isLoggedIn ? (
           <div className="app-layout">
             {!isMobile && <Sidebar />}
-            {isMobile && <BottomTabBar />}
-            <main className="app-main">
+            {isMobile && !hideTabBar && <BottomTabBar />}
+            <main className={`app-main${hideTabBar ? ' app-main--no-tab' : ''}`}>
               <Main />
             </main>
           </div>

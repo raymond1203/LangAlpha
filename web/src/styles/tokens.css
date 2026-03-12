@@ -3,10 +3,22 @@
    Semantic color tokens + Tailwind theme + base/utilities
    ============================================ */
 
+/* ---------- Mobile touch polish ---------- */
+@media (max-width: 767px) {
+  /* Disable tap highlight globally on touch devices */
+  * { -webkit-tap-highlight-color: transparent; }
+
+  /* Prevent iOS Safari from shifting the page when the virtual keyboard opens */
+  body { position: fixed; }
+
+  /* Utility: contain overscroll inside overlays/drawers */
+  .mobile-scroll-contain { overscroll-behavior: contain; }
+}
+
 /* ---------- Semantic color tokens (hex/rgba for inline use) ---------- */
 :root {
   --sidebar-width: 80px;
-  --bottom-tab-height: calc(78px + env(safe-area-inset-bottom, 0px));
+  --bottom-tab-height: 78px;
 
   --color-bg-page: #000000;
   --color-bg-card: #0A0A0A;
