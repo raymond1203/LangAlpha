@@ -4,6 +4,7 @@ import { Clock, Timer } from 'lucide-react';
 import StatusBadge from './StatusBadge';
 import { cronToHuman } from '../utils/cron';
 import { formatRelativeTime, formatDateTime } from '../utils/time';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import type { Automation } from '@/types/automation';
 
 const STATUS_GLOW: Record<string, string> = {
@@ -26,6 +27,55 @@ export default function AutomationRow({ automation, index, onClick }: Automation
     : formatDateTime(automation.next_run_at);
 
   const glowColor = STATUS_GLOW[automation.status] || 'transparent';
+  const isMobile = useIsMobile();
+
+  if (isMobile) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, x: -20 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.3, delay: index * 0.05 }}
+        onClick={() => onClick(automation)}
+        className="flex flex-col gap-2 px-4 py-3 cursor-pointer transition-colors relative overflow-hidden rounded-lg border"
+        style={{
+          backgroundColor: 'var(--color-bg-card)',
+          borderColor: 'var(--color-border-default)',
+        }}
+      >
+        {/* Status gradient glow on right edge */}
+        <div
+          className="absolute inset-y-0 right-0 w-32 pointer-events-none"
+          style={{
+            background: `linear-gradient(to left, ${glowColor}, transparent)`,
+          }}
+        />
+
+        {/* Top row: icon + name + status */}
+        <div className="flex items-center gap-2 min-w-0">
+          {isCron ? (
+            <Clock className="w-4 h-4 shrink-0" style={{ color: 'var(--color-text-secondary)' }} />
+          ) : (
+            <Timer className="w-4 h-4 shrink-0" style={{ color: 'var(--color-text-secondary)' }} />
+          )}
+          <span className="text-sm truncate font-medium flex-1" style={{ color: 'var(--color-text-primary)' }}>{automation.name}</span>
+          <div className="relative z-10 shrink-0">
+            <StatusBadge status={automation.status} />
+          </div>
+        </div>
+
+        {/* Bottom row: schedule + next run */}
+        <div className="flex items-center gap-3 text-xs pl-6" style={{ color: 'var(--color-text-secondary)' }}>
+          <span className="truncate">{schedule}</span>
+          {automation.next_run_at && (
+            <>
+              <span style={{ color: 'var(--color-border-default)' }}>·</span>
+              <span className="shrink-0">{formatRelativeTime(automation.next_run_at)}</span>
+            </>
+          )}
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div

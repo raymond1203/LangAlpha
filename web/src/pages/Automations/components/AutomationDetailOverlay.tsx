@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import {
   X,
   Pause,
@@ -73,6 +74,7 @@ export default function AutomationDetailOverlay({
   const navigate = useNavigate();
   const { executions, loading: execLoading } = useExecutions(automation.automation_id as string);
   const isCron = automation.trigger_type === 'cron';
+  const isMobile = useIsMobile();
 
   const latestThreadExecution = useMemo(
     () => executions.find((e) => e.conversation_thread_id && (e.status === 'completed' || e.status === 'running')),
@@ -85,7 +87,7 @@ export default function AutomationDetailOverlay({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 10 }}
       transition={{ duration: 0.2 }}
-      className="absolute inset-0 z-20 rounded-xl border overflow-hidden flex flex-col"
+      className={isMobile ? "fixed inset-0 z-50 rounded-none border overflow-hidden flex flex-col" : "absolute inset-0 z-20 rounded-xl border overflow-hidden flex flex-col"}
       style={{
         backgroundColor: 'var(--color-bg-elevated)',
         borderColor: 'var(--color-border-elevated)',
@@ -185,7 +187,7 @@ export default function AutomationDetailOverlay({
           )}
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <StatCard
               label="Schedule"
               value={isCron ? cronToHuman(automation.cron_expression as string) : 'One-time'}
@@ -224,7 +226,7 @@ export default function AutomationDetailOverlay({
             <p className="text-[10px] uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
               Configuration
             </p>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
               <div className="flex justify-between">
                 <span style={{ color: 'var(--color-text-secondary)' }}>Agent Mode</span>
                 <span className="uppercase font-mono text-xs" style={{ color: 'var(--color-text-primary)' }}>{automation.agent_mode as string}</span>

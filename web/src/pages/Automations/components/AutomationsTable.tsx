@@ -45,7 +45,7 @@ export default function AutomationsTable({
     <div className="relative flex-1 min-h-0">
       {/* Column Headers */}
       <div
-        className="grid grid-cols-[1fr_1fr_0.6fr_0.8fr_0.5fr] gap-4 px-4 py-2 text-xs uppercase tracking-wider mb-2"
+        className="hidden sm:grid grid-cols-[1fr_1fr_0.6fr_0.8fr_0.5fr] gap-4 px-4 py-2 text-xs uppercase tracking-wider mb-2"
         style={{ color: 'var(--color-text-secondary)' }}
       >
         <span>{t('common.name')}</span>

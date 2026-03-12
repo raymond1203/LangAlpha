@@ -35,3 +35,8 @@
 .automations-card ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+@media (max-width: 767px) {
+  .automations-page { padding: 16px 12px; }
+  .automations-card { padding: 12px; border-radius: 8px; }
+}
