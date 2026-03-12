@@ -721,7 +721,7 @@ function UserConfigPanel({ isOpen, onClose, onModifyPreferences, onStartOnboardi
   return (
     <>
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center"
+        className="fixed inset-0 z-[1010] flex items-center justify-center"
         style={{ backgroundColor: 'var(--color-bg-overlay-strong)' }}
         onClick={handleClose}
       >

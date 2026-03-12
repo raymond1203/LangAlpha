@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Edit2, X } from 'lucide-react';
+import { Edit2 } from 'lucide-react';
 import { Input } from '../../../components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface RenameThreadModalProps {
   isOpen: boolean;
@@ -15,6 +20,7 @@ interface RenameThreadModalProps {
  * RenameThreadModal Component
  *
  * Modal for renaming a thread.
+ * Bottom-sheet on mobile, centered on desktop.
  */
 function RenameThreadModal({ isOpen, currentTitle, onConfirm, onCancel, isRenaming, error }: RenameThreadModalProps) {
   const [newTitle, setNewTitle] = useState('');
@@ -35,49 +41,26 @@ function RenameThreadModal({ isOpen, currentTitle, onConfirm, onCancel, isRenami
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      onCancel();
-    }
-  };
-
-  if (!isOpen) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: 'var(--color-bg-overlay-strong)' }}
-      onClick={onCancel}
-    >
-      <div
-        className="relative w-full max-w-md rounded-lg p-6"
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onCancel(); }}>
+      <DialogContent
+        aria-describedby={undefined}
         style={{
           backgroundColor: 'var(--color-bg-page)',
-          border: '1px solid var(--color-border-muted)',
+          borderColor: 'var(--color-border-muted)',
         }}
-        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div
-              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ backgroundColor: 'var(--color-accent-soft)' }}
-            >
-              <Edit2 className="h-5 w-5" style={{ color: 'var(--color-accent-primary)' }} />
-            </div>
-            <h2 className="text-xl font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-              Rename Thread
-            </h2>
-          </div>
-          <button
-            onClick={onCancel}
-            disabled={isRenaming}
-            className="p-1 rounded-full transition-colors hover:bg-foreground/10 disabled:opacity-50"
-            style={{ color: 'var(--color-text-primary)' }}
+        <div className="flex items-center gap-3">
+          <div
+            className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ backgroundColor: 'var(--color-accent-soft)' }}
           >
-            <X className="h-5 w-5" />
-          </button>
+            <Edit2 className="h-5 w-5" style={{ color: 'var(--color-accent-primary)' }} />
+          </div>
+          <DialogTitle className="text-xl font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+            Rename Thread
+          </DialogTitle>
         </div>
 
         {/* Form */}
@@ -90,7 +73,6 @@ function RenameThreadModal({ isOpen, currentTitle, onConfirm, onCancel, isRenami
               type="text"
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              onKeyDown={handleKeyDown}
               placeholder="Enter thread title"
               maxLength={255}
               disabled={isRenaming}
@@ -142,8 +124,8 @@ function RenameThreadModal({ isOpen, currentTitle, onConfirm, onCancel, isRenami
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

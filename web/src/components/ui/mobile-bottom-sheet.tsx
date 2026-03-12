@@ -190,7 +190,7 @@ function MobileBottomSheet({
               borderColor: 'var(--color-border-muted)',
               ...(sizing === 'fixed' ? { height } : { maxHeight: height }),
             }}
-            className={`fixed bottom-0 left-0 right-0 z-50 rounded-t-2xl border-t${sizing === 'fixed' ? ' flex flex-col' : ''}`}
+            className={`fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl border-t${sizing === 'fixed' ? ' flex flex-col' : ''}`}
           >
             {/* Drag handle */}
             <div
