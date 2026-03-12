@@ -490,9 +490,8 @@ function ThreadGallery({ workspaceId, onBack, onThreadSelect }: ThreadGalleryPro
     const onMouseMove = (moveEvent: MouseEvent) => {
       if (!isDraggingRef.current) return;
       const delta = startX - moveEvent.clientX;
-      const maxW = containerWidthRef.current > 0 ? containerWidthRef.current * 0.55 : window.innerWidth * 0.6;
-      const newWidth = Math.max(280, Math.min(startWidth + delta, maxW));
-      setFilePanelWidth(newWidth);
+      const containerW = containerWidthRef.current > 0 ? containerWidthRef.current : window.innerWidth;
+      setFilePanelWidth(clampPanelWidthUtil(startWidth + delta, containerW));
     };
 
     const onMouseUp = () => {

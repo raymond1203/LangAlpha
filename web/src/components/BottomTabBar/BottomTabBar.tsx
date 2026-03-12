@@ -48,6 +48,7 @@ export default function BottomTabBar() {
               className={`bottom-tab-item ${isActive ? 'active' : ''}`}
               onClick={() => handleItemClick(item.key)}
               aria-label={t(item.labelKey)}
+              aria-current={isActive ? 'page' : undefined}
             >
               <Icon className="bottom-tab-item-icon" />
             </button>

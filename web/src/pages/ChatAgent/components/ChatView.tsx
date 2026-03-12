@@ -779,9 +779,8 @@ function ChatView({ workspaceId, threadId, onBack, workspaceName: initialWorkspa
     const onMouseMove = (moveEvent: MouseEvent) => {
       if (!isDraggingRef.current) return;
       const delta = startX - moveEvent.clientX;
-      const maxW = contentAreaWidthRef.current > 0 ? contentAreaWidthRef.current * 0.55 : window.innerWidth * 0.6;
-      const newWidth = Math.max(280, Math.min(startWidth + delta, maxW));
-      setRightPanelWidth(newWidth);
+      const containerW = contentAreaWidthRef.current > 0 ? contentAreaWidthRef.current : window.innerWidth;
+      setRightPanelWidth(clampPanelWidthUtil(startWidth + delta, containerW));
     };
 
     const onMouseUp = () => {
