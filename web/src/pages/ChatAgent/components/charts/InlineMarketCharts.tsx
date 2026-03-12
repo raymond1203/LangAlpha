@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import { useTranslation } from 'react-i18next';
 import { utcMsToETDate } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 // ─── Constants ──────────────────────────────────────────────────────
 
@@ -67,6 +68,26 @@ const cardStyle: React.CSSProperties = {
   userSelect: 'none',
 };
 
+const mobileCardStyle: React.CSSProperties = {
+  ...cardStyle,
+  padding: '8px 10px',
+  borderRadius: 6,
+};
+
+/** Shared mobile / desktop sizing tokens for inline cards */
+const SIZES_MOBILE = {
+  gap: 6, listGap: 2, gridGap: '1px 12px',
+  headerFs: 12, rowFs: 11, labelFs: 10, badgeFs: 9,
+  rowPad: '2px 0', sectionMb: 4, filingMb: 6,
+  moreMt: 2, changeMinW: 48,
+} as const;
+const SIZES_DESKTOP = {
+  gap: 8, listGap: 4, gridGap: '2px 20px',
+  headerFs: 13, rowFs: 12, labelFs: 11, badgeFs: 10,
+  rowPad: '3px 0', sectionMb: 6, filingMb: 8,
+  moreMt: 4, changeMinW: 55,
+} as const;
+
 const ABBREVIATIONS: Record<string, string> = {
   'Consumer Cyclical': 'Cons. Cyclical',
   'Consumer Defensive': 'Cons. Defensive',
@@ -89,6 +110,8 @@ interface InlineCardProps {
 
 export function InlineStockPriceCard({ artifact, onClick }: InlineCardProps): React.ReactElement | null {
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
+  const sz = isMobile ? SIZES_MOBILE : SIZES_DESKTOP;
   const { symbol, ohlcv, stats } = (artifact || {}) as {
     symbol?: string;
     ohlcv?: Record<string, unknown>[];
@@ -119,29 +142,29 @@ export function InlineStockPriceCard({ artifact, onClick }: InlineCardProps): Re
 
   return (
     <div
-      style={cardStyle}
+      style={isMobile ? mobileCardStyle : cardStyle}
       onClick={onClick}
       onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-border-muted)')}
       onMouseLeave={(e) => (e.currentTarget.style.borderColor = CARD_BORDER)}
     >
       {/* Header row: symbol + price + change */}
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
-        <span style={{ fontWeight: 700, color: 'var(--color-text-primary)', fontSize: 15 }}>{symbol}</span>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: sz.gap, marginBottom: 2 }}>
+        <span style={{ fontWeight: 700, color: 'var(--color-text-primary)', fontSize: isMobile ? 13 : 15 }}>{symbol}</span>
         {lastClose != null && (
-          <span style={{ color: 'var(--color-text-primary)', fontSize: 15, fontWeight: 600 }}>${lastClose.toFixed(2)}</span>
+          <span style={{ color: 'var(--color-text-primary)', fontSize: isMobile ? 13 : 15, fontWeight: 600 }}>${lastClose.toFixed(2)}</span>
         )}
         {changePct != null && (
-          <span style={{ color, fontSize: 13, fontWeight: 600 }}>
+          <span style={{ color, fontSize: isMobile ? 11 : 13, fontWeight: 600 }}>
             {formatPct(changePct)}
           </span>
         )}
-        <span style={{ marginLeft: 'auto', fontSize: 11, color: TEXT_COLOR }}>
+        <span style={{ marginLeft: 'auto', fontSize: sz.labelFs, color: TEXT_COLOR }}>
           {periodLabel}
         </span>
       </div>
 
       {/* Sparkline */}
-      <div style={{ width: '100%', height: 64 }}>
+      <div style={{ width: '100%', height: isMobile ? 48 : 64 }}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={sparkData} margin={{ top: 4, right: 2, bottom: 2, left: 2 }}>
             <defs>
@@ -169,9 +192,9 @@ export function InlineStockPriceCard({ artifact, onClick }: InlineCardProps): Re
         <div
           style={{
             display: 'flex',
-            gap: 12,
-            marginTop: 4,
-            fontSize: 11,
+            gap: isMobile ? 8 : 12,
+            marginTop: sz.moreMt,
+            fontSize: sz.labelFs,
             color: TEXT_COLOR,
             flexWrap: 'wrap',
           }}
@@ -216,6 +239,8 @@ const MARKET_STATUS_COLORS: Record<string, string> = {
 
 export function InlineCompanyOverviewCard({ artifact, onClick }: InlineCardProps): React.ReactElement | null {
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
+  const sz = isMobile ? SIZES_MOBILE : SIZES_DESKTOP;
   const { symbol, name, quote } = (artifact || {}) as {
     symbol?: string;
     name?: string;
@@ -239,25 +264,25 @@ export function InlineCompanyOverviewCard({ artifact, onClick }: InlineCardProps
 
   return (
     <div
-      style={cardStyle}
+      style={isMobile ? mobileCardStyle : cardStyle}
       onClick={onClick}
       onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-border-muted)')}
       onMouseLeave={(e) => (e.currentTarget.style.borderColor = CARD_BORDER)}
     >
       {/* Company name + symbol + market status */}
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
-        <span style={{ fontWeight: 700, color: 'var(--color-text-primary)', fontSize: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: sz.gap, marginBottom: sz.sectionMb, flexWrap: 'wrap' }}>
+        <span style={{ fontWeight: 700, color: 'var(--color-text-primary)', fontSize: isMobile ? 14 : 16, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {name || symbol}
         </span>
         {name && (
-          <span style={{ fontSize: 13, color: TEXT_COLOR }}>{symbol}</span>
+          <span style={{ fontSize: isMobile ? 11 : 13, color: TEXT_COLOR, flexShrink: 0 }}>{symbol}</span>
         )}
         {marketStatus && (
           <span style={{
-            fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4,
+            fontSize: sz.badgeFs, fontWeight: 600, padding: '1px 6px', borderRadius: 4,
             color: MARKET_STATUS_COLORS[marketStatus] || TEXT_COLOR,
             border: `1px solid ${MARKET_STATUS_COLORS[marketStatus] || TEXT_COLOR}`,
-            marginLeft: 'auto', whiteSpace: 'nowrap',
+            whiteSpace: 'nowrap', flexShrink: 0,
           }}>
             {MARKET_STATUS_LABELS[marketStatus] || marketStatus}
           </span>
@@ -265,14 +290,14 @@ export function InlineCompanyOverviewCard({ artifact, onClick }: InlineCardProps
       </div>
 
       {/* Regular close price + change */}
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: hasExtPrice ? 2 : 10 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: isMobile ? 8 : 10, marginBottom: hasExtPrice ? 2 : sz.filingMb }}>
         {displayPrice != null && (
-          <span style={{ fontSize: 22, fontWeight: 700, color: 'var(--color-text-primary)' }}>
+          <span style={{ fontSize: isMobile ? 18 : 22, fontWeight: 700, color: 'var(--color-text-primary)' }}>
             ${displayPrice.toFixed(2)}
           </span>
         )}
         {displayChange != null && (
-          <span style={{ fontSize: 14, color: changeColor, fontWeight: 500 }}>
+          <span style={{ fontSize: isMobile ? 12 : 14, color: changeColor, fontWeight: 500 }}>
             {displayChange >= 0 ? '+' : ''}{displayChange.toFixed(2)} ({displayChangePct?.toFixed(2)}%)
           </span>
         )}
@@ -280,7 +305,7 @@ export function InlineCompanyOverviewCard({ artifact, onClick }: InlineCardProps
 
       {/* Extended-hours price */}
       {hasExtPrice && (
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10, fontSize: 13 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: sz.gap, marginBottom: sz.filingMb, fontSize: isMobile ? 11 : 13 }}>
           <span style={{ color: TEXT_COLOR }}>
             {marketStatus === 'early_trading' ? 'Pre-Mkt' : 'After-Hrs'}
           </span>
@@ -298,8 +323,8 @@ export function InlineCompanyOverviewCard({ artifact, onClick }: InlineCardProps
         style={{
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
-          gap: '2px 20px',
-          fontSize: 12,
+          gap: sz.gridGap,
+          fontSize: sz.rowFs,
           color: TEXT_COLOR,
         }}
       >
@@ -332,8 +357,9 @@ interface QuoteRowProps {
 }
 
 function QuoteRow({ label, value }: QuoteRowProps): React.ReactElement {
+  const isMobile = useIsMobile();
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: isMobile ? SIZES_MOBILE.rowPad : SIZES_DESKTOP.rowPad }}>
       <span style={{ opacity: 0.7 }}>{label}</span>
       <span style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>{value}</span>
     </div>
@@ -344,20 +370,22 @@ function QuoteRow({ label, value }: QuoteRowProps): React.ReactElement {
 
 export function InlineMarketIndicesCard({ artifact, onClick }: InlineCardProps): React.ReactElement | null {
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
+  const sz = isMobile ? SIZES_MOBILE : SIZES_DESKTOP;
   const indices = (artifact as Record<string, unknown> | undefined)?.indices as Record<string, Record<string, unknown>> | undefined;
   if (!indices || Object.keys(indices).length === 0) return null;
 
   return (
     <div
-      style={cardStyle}
+      style={isMobile ? mobileCardStyle : cardStyle}
       onClick={onClick}
       onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-border-muted)')}
       onMouseLeave={(e) => (e.currentTarget.style.borderColor = CARD_BORDER)}
     >
-      <div style={{ fontWeight: 600, color: 'var(--color-text-primary)', fontSize: 13, marginBottom: 8 }}>
+      <div style={{ fontWeight: 600, color: 'var(--color-text-primary)', fontSize: sz.headerFs, marginBottom: isMobile ? 4 : 8 }}>
         {t('toolArtifact.marketIndices')}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: sz.listGap }}>
         {Object.entries(indices).map(([sym, data]) => {
           const ohlcv = data.ohlcv as Record<string, unknown>[] | undefined;
           const lastClose = ohlcv?.[ohlcv.length - 1]?.close as number | undefined;
@@ -371,19 +399,19 @@ export function InlineMarketIndicesCard({ artifact, onClick }: InlineCardProps):
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '3px 0',
-                fontSize: 12,
+                padding: sz.rowPad,
+                fontSize: sz.rowFs,
               }}
             >
-              <span style={{ color: TEXT_COLOR }}>{(data.name as string) || sym}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ color: TEXT_COLOR, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{(data.name as string) || sym}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: sz.gap, flexShrink: 0 }}>
                 {lastClose != null && (
                   <span style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>
                     {lastClose.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 )}
                 {changePct != null && (
-                  <span style={{ color, fontWeight: 500, minWidth: 55, textAlign: 'right' }}>
+                  <span style={{ color, fontWeight: 500, minWidth: sz.changeMinW, textAlign: 'right' }}>
                     {formatPct(changePct)}
                   </span>
                 )}
@@ -400,6 +428,8 @@ export function InlineMarketIndicesCard({ artifact, onClick }: InlineCardProps):
 
 export function InlineSectorPerformanceCard({ artifact, onClick }: InlineCardProps): React.ReactElement | null {
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
+  const sz = isMobile ? SIZES_MOBILE : SIZES_DESKTOP;
   const sectors = (artifact as Record<string, unknown> | undefined)?.sectors as Record<string, unknown>[] | undefined;
   if (!sectors?.length) return null;
 
@@ -413,42 +443,42 @@ export function InlineSectorPerformanceCard({ artifact, onClick }: InlineCardPro
       label: formatPct((s.changesPercentage as number) || 0),
     }));
 
-  const barHeight = 22;
-  const chartHeight = Math.min(chartData.length * barHeight + 20, 280);
+  const barHeight = isMobile ? 18 : 22;
+  const chartHeight = Math.min(chartData.length * barHeight + 20, isMobile ? 220 : 280);
 
   return (
     <div
-      style={cardStyle}
+      style={isMobile ? mobileCardStyle : cardStyle}
       onClick={onClick}
       onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-border-muted)')}
       onMouseLeave={(e) => (e.currentTarget.style.borderColor = CARD_BORDER)}
     >
-      <div style={{ fontWeight: 600, color: 'var(--color-text-primary)', fontSize: 13, marginBottom: 6 }}>
+      <div style={{ fontWeight: 600, color: 'var(--color-text-primary)', fontSize: sz.headerFs, marginBottom: sz.sectionMb }}>
         {t('toolArtifact.sectorPerformance')}
       </div>
       <ResponsiveContainer width="100%" height={chartHeight}>
         <BarChart
           data={chartData}
           layout="vertical"
-          margin={{ left: 0, right: 50, top: 0, bottom: 0 }}
+          margin={{ left: 0, right: isMobile ? 40 : 50, top: 0, bottom: 0 }}
         >
           <XAxis type="number" hide />
           <YAxis
             type="category"
             dataKey="name"
-            width={100}
-            tick={{ fill: TEXT_COLOR, fontSize: 10 }}
+            width={isMobile ? 80 : 100}
+            tick={{ fill: TEXT_COLOR, fontSize: sz.badgeFs }}
             axisLine={false}
             tickLine={false}
           />
-          <Bar dataKey="value" radius={[0, 3, 3, 0]} barSize={14} isAnimationActive={false}>
+          <Bar dataKey="value" radius={[0, 3, 3, 0]} barSize={isMobile ? 11 : 14} isAnimationActive={false}>
             {chartData.map((entry, i) => (
               <Cell key={i} fill={entry.fill} />
             ))}
             <LabelList
               dataKey="label"
               position="right"
-              style={{ fill: TEXT_COLOR, fontSize: 10 }}
+              style={{ fill: TEXT_COLOR, fontSize: sz.badgeFs }}
             />
           </Bar>
         </BarChart>
@@ -461,6 +491,8 @@ export function InlineSectorPerformanceCard({ artifact, onClick }: InlineCardPro
 
 export function InlineStockScreenerCard({ artifact, onClick }: InlineCardProps): React.ReactElement | null {
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
+  const sz = isMobile ? SIZES_MOBILE : SIZES_DESKTOP;
   const { results = [], filters = {}, count = 0 } = (artifact || {}) as {
     results?: Record<string, unknown>[];
     filters?: Record<string, unknown>;
@@ -476,19 +508,19 @@ export function InlineStockScreenerCard({ artifact, onClick }: InlineCardProps):
 
   return (
     <div
-      style={cardStyle}
+      style={isMobile ? mobileCardStyle : cardStyle}
       onClick={onClick}
       onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-border-muted)')}
       onMouseLeave={(e) => (e.currentTarget.style.borderColor = CARD_BORDER)}
     >
       {/* Header: title + count badge */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <span style={{ fontWeight: 600, color: 'var(--color-text-primary)', fontSize: 13 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sz.gap, marginBottom: sz.sectionMb }}>
+        <span style={{ fontWeight: 600, color: 'var(--color-text-primary)', fontSize: sz.headerFs }}>
           {t('toolArtifact.stockScreener')}
         </span>
         <span
           style={{
-            fontSize: 11,
+            fontSize: sz.labelFs,
             color: TEXT_COLOR,
             backgroundColor: 'var(--color-bg-surface)',
             padding: '1px 6px',
@@ -501,12 +533,12 @@ export function InlineStockScreenerCard({ artifact, onClick }: InlineCardProps):
 
       {/* Filter tags */}
       {filterTags.length > 0 && (
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: sz.filingMb }}>
           {filterTags.slice(0, 4).map((tag, i) => (
             <span
               key={i}
               style={{
-                fontSize: 10,
+                fontSize: sz.badgeFs,
                 padding: '1px 6px',
                 borderRadius: 10,
                 backgroundColor: 'var(--color-accent-soft)',
@@ -519,13 +551,13 @@ export function InlineStockScreenerCard({ artifact, onClick }: InlineCardProps):
             </span>
           ))}
           {filterTags.length > 4 && (
-            <span style={{ fontSize: 10, color: TEXT_COLOR }}>+{filterTags.length - 4}</span>
+            <span style={{ fontSize: sz.badgeFs, color: TEXT_COLOR }}>+{filterTags.length - 4}</span>
           )}
         </div>
       )}
 
       {/* Top 5 results */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 1 : 3 }}>
         {top5.map((stock, i) => {
           const change = stock.changes as number | undefined;
           const changeColor = change != null ? (change >= 0 ? GREEN : RED) : TEXT_COLOR;
@@ -535,12 +567,12 @@ export function InlineStockScreenerCard({ artifact, onClick }: InlineCardProps):
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
-                fontSize: 12,
-                padding: '2px 0',
+                gap: sz.gap,
+                fontSize: sz.rowFs,
+                padding: isMobile ? '1px 0' : '2px 0',
               }}
             >
-              <span style={{ color: 'var(--color-text-primary)', fontWeight: 600, minWidth: 50, flexShrink: 0 }}>
+              <span style={{ color: 'var(--color-text-primary)', fontWeight: 600, flexShrink: 0 }}>
                 {stock.symbol as string}
               </span>
               <span
@@ -557,10 +589,12 @@ export function InlineStockScreenerCard({ artifact, onClick }: InlineCardProps):
               <span style={{ color: 'var(--color-text-primary)', fontWeight: 500, flexShrink: 0 }}>
                 {(stock.price as number | undefined) != null ? `$${(stock.price as number).toFixed(2)}` : 'N/A'}
               </span>
-              <span style={{ color: TEXT_COLOR, fontSize: 11, flexShrink: 0, minWidth: 42, textAlign: 'right' }}>
-                {(stock.marketCap as number | undefined) != null ? formatCompactNumber(stock.marketCap as number) : ''}
-              </span>
-              <span style={{ color: changeColor, fontWeight: 500, flexShrink: 0, minWidth: 55, textAlign: 'right' }}>
+              {!isMobile && (
+                <span style={{ color: TEXT_COLOR, fontSize: 11, flexShrink: 0, textAlign: 'right' }}>
+                  {(stock.marketCap as number | undefined) != null ? formatCompactNumber(stock.marketCap as number) : ''}
+                </span>
+              )}
+              <span style={{ color: changeColor, fontWeight: 500, flexShrink: 0, minWidth: sz.changeMinW, textAlign: 'right' }}>
                 {change != null ? formatPct(change) : ''}
               </span>
             </div>
@@ -570,7 +604,7 @@ export function InlineStockScreenerCard({ artifact, onClick }: InlineCardProps):
 
       {/* +N more */}
       {remaining > 0 && (
-        <div style={{ marginTop: 4, fontSize: 11, color: TEXT_COLOR }}>
+        <div style={{ marginTop: sz.moreMt, fontSize: sz.labelFs, color: TEXT_COLOR }}>
           {t('toolArtifact.nMoreStocks', { count: remaining })}
         </div>
       )}
@@ -600,6 +634,8 @@ interface InlineFilingCardProps {
 
 function InlineAnnualQuarterlyCard({ artifact, onClick }: InlineFilingCardProps): React.ReactElement {
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
+  const sz = isMobile ? SIZES_MOBILE : SIZES_DESKTOP;
   const { symbol, filing_type, filing_date, period_end, cik, sections_extracted, source_url, has_earnings_call, recent_8k_count } = artifact as {
     symbol?: string;
     filing_type?: string;
@@ -614,16 +650,16 @@ function InlineAnnualQuarterlyCard({ artifact, onClick }: InlineFilingCardProps)
 
   return (
     <div
-      style={cardStyle}
+      style={isMobile ? mobileCardStyle : cardStyle}
       onClick={onClick}
       onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-border-muted)')}
       onMouseLeave={(e) => (e.currentTarget.style.borderColor = CARD_BORDER)}
     >
       {/* Header: symbol badge + filing type */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sz.gap, marginBottom: sz.filingMb }}>
         <span
           style={{
-            fontSize: 11,
+            fontSize: sz.labelFs,
             fontWeight: 700,
             padding: '2px 6px',
             borderRadius: 4,
@@ -633,7 +669,7 @@ function InlineAnnualQuarterlyCard({ artifact, onClick }: InlineFilingCardProps)
         >
           {symbol}
         </span>
-        <span style={{ fontWeight: 700, color: 'var(--color-text-primary)', fontSize: 14 }}>
+        <span style={{ fontWeight: 700, color: 'var(--color-text-primary)', fontSize: isMobile ? 12 : 14 }}>
           {t('toolArtifact.filing', { type: filing_type })}
         </span>
       </div>
@@ -643,8 +679,8 @@ function InlineAnnualQuarterlyCard({ artifact, onClick }: InlineFilingCardProps)
         style={{
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
-          gap: '2px 20px',
-          fontSize: 12,
+          gap: sz.gridGap,
+          fontSize: sz.rowFs,
           color: TEXT_COLOR,
         }}
       >
@@ -658,13 +694,13 @@ function InlineAnnualQuarterlyCard({ artifact, onClick }: InlineFilingCardProps)
 
       {/* EDGAR link */}
       {source_url && (
-        <div style={{ marginTop: 8 }}>
+        <div style={{ marginTop: sz.filingMb }}>
           <a
             href={source_url}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            style={{ fontSize: 11, color: ACCENT, textDecoration: 'none' }}
+            style={{ fontSize: sz.labelFs, color: ACCENT, textDecoration: 'none' }}
           >
             {t('toolArtifact.viewOnEdgar')}
           </a>
@@ -676,6 +712,8 @@ function InlineAnnualQuarterlyCard({ artifact, onClick }: InlineFilingCardProps)
 
 function Inline8KCard({ artifact, onClick }: InlineFilingCardProps): React.ReactElement {
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
+  const sz = isMobile ? SIZES_MOBILE : SIZES_DESKTOP;
   const { symbol, filing_count, filings = [] } = artifact as {
     symbol?: string;
     filing_count?: number;
@@ -686,16 +724,16 @@ function Inline8KCard({ artifact, onClick }: InlineFilingCardProps): React.React
 
   return (
     <div
-      style={cardStyle}
+      style={isMobile ? mobileCardStyle : cardStyle}
       onClick={onClick}
       onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-border-muted)')}
       onMouseLeave={(e) => (e.currentTarget.style.borderColor = CARD_BORDER)}
     >
       {/* Header: symbol badge + title + count */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: sz.gap, marginBottom: sz.filingMb }}>
         <span
           style={{
-            fontSize: 11,
+            fontSize: sz.labelFs,
             fontWeight: 700,
             padding: '2px 6px',
             borderRadius: 4,
@@ -705,10 +743,10 @@ function Inline8KCard({ artifact, onClick }: InlineFilingCardProps): React.React
         >
           {symbol}
         </span>
-        <span style={{ fontWeight: 700, color: 'var(--color-text-primary)', fontSize: 14 }}>{t('toolArtifact.8kFilings')}</span>
+        <span style={{ fontWeight: 700, color: 'var(--color-text-primary)', fontSize: isMobile ? 12 : 14 }}>{t('toolArtifact.8kFilings')}</span>
         <span
           style={{
-            fontSize: 11,
+            fontSize: sz.labelFs,
             color: TEXT_COLOR,
             backgroundColor: 'var(--color-bg-surface)',
             padding: '1px 6px',
@@ -720,16 +758,16 @@ function Inline8KCard({ artifact, onClick }: InlineFilingCardProps): React.React
       </div>
 
       {/* Compact filing list */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: sz.listGap }}>
         {shown.map((f, i) => (
           <div
             key={i}
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 8,
-              fontSize: 12,
-              padding: '3px 0',
+              gap: sz.gap,
+              fontSize: sz.rowFs,
+              padding: sz.rowPad,
             }}
           >
             <span style={{ color: 'var(--color-text-primary)', fontWeight: 500, flexShrink: 0 }}>{f.filing_date as string}</span>
@@ -738,7 +776,7 @@ function Inline8KCard({ artifact, onClick }: InlineFilingCardProps): React.React
                 <span
                   key={j}
                   style={{
-                    fontSize: 10,
+                    fontSize: sz.badgeFs,
                     padding: '1px 6px',
                     borderRadius: 10,
                     backgroundColor: 'var(--color-accent-soft)',
@@ -751,11 +789,11 @@ function Inline8KCard({ artifact, onClick }: InlineFilingCardProps): React.React
                 </span>
               ))}
               {((f.items as string[]) || []).length > 2 && (
-                <span style={{ fontSize: 10, color: TEXT_COLOR }}>+{(f.items as string[]).length - 2}</span>
+                <span style={{ fontSize: sz.badgeFs, color: TEXT_COLOR }}>+{(f.items as string[]).length - 2}</span>
               )}
             </div>
             {!!f.has_press_release && (
-              <span style={{ fontSize: 10, color: GREEN, flexShrink: 0 }}>PR</span>
+              <span style={{ fontSize: sz.badgeFs, color: GREEN, flexShrink: 0 }}>PR</span>
             )}
           </div>
         ))}
@@ -763,7 +801,7 @@ function Inline8KCard({ artifact, onClick }: InlineFilingCardProps): React.React
 
       {/* +N more */}
       {remaining > 0 && (
-        <div style={{ marginTop: 4, fontSize: 11, color: TEXT_COLOR }}>
+        <div style={{ marginTop: sz.moreMt, fontSize: sz.labelFs, color: TEXT_COLOR }}>
           {t('toolArtifact.nMoreFilings', { count: remaining })}
         </div>
       )}

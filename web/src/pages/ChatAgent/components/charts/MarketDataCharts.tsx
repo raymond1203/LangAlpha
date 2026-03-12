@@ -380,7 +380,7 @@ export function StockPriceChart({ data }: DataProps): React.ReactElement {
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-2" style={{ fontSize: 13, color: TEXT_COLOR }}>
+      <div className="flex items-center gap-3 mb-2 flex-wrap" style={{ fontSize: 13, color: TEXT_COLOR }}>
         <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>{data.symbol as string}</span>
         {chartInterval && (
           <span style={{
@@ -442,7 +442,7 @@ function StockStatsCard({ stats }: StockStatsCardProps): React.ReactElement | nu
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
         gap: '8px 16px',
         marginTop: 12,
         padding: '10px 12px',
@@ -898,11 +898,11 @@ export function CompanyOverviewCard({ data }: DataProps): React.ReactElement {
       {/* Quote summary */}
       {quoteObj && (
         <div>
-          <div className="flex items-baseline gap-3 mb-3">
-            <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-text-primary)' }}>
+          <div className="flex items-baseline gap-3 mb-3 flex-wrap">
+            <span style={{ fontSize: 20, fontWeight: 700, color: 'var(--color-text-primary)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
               {(name as string) || (symbol as string)}
             </span>
-            <span style={{ fontSize: 14, color: TEXT_COLOR }}>{symbol as string}</span>
+            <span style={{ fontSize: 14, color: TEXT_COLOR, flexShrink: 0 }}>{symbol as string}</span>
             <OpenInMarketLink symbol={symbol as string} />
             {marketStatus && (() => {
               const StatusIcon = DETAIL_STATUS_ICONS[marketStatus];
@@ -912,7 +912,7 @@ export function CompanyOverviewCard({ data }: DataProps): React.ReactElement {
                   fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
                   color: DETAIL_STATUS_COLORS[marketStatus] || TEXT_COLOR,
                   border: `1px solid ${DETAIL_STATUS_COLORS[marketStatus] || TEXT_COLOR}`,
-                  whiteSpace: 'nowrap', marginLeft: 'auto',
+                  whiteSpace: 'nowrap',
                 }}>
                   {StatusIcon && <StatusIcon size={11} />}
                   {DETAIL_STATUS_LABELS[marketStatus] || marketStatus}
@@ -1076,11 +1076,11 @@ export function MarketIndicesChart({ data }: DataProps): React.ReactElement {
             }}
           >
             {/* Header: name + price/change + market link */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ color: 'var(--color-text-primary)', fontWeight: 600, fontSize: 13 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4, gap: 8 }}>
+              <span style={{ color: 'var(--color-text-primary)', fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                 {(indexData.name as string) || symbol}
               </span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, flexShrink: 0 }}>
                 {lastClose != null && (
                   <span style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>
                     {lastClose.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

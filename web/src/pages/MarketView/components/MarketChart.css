@@ -431,6 +431,32 @@
 }
 .compact-menu-view-grid { grid-template-columns: repeat(3, 1fr); }
 
+/* Mobile: compact menu stretches under toolbar, tighter spacing */
+@media (max-width: 767px) {
+  .chart--compact .toolbar-dropdown.toolbar--compact-only {
+    position: static;
+  }
+  .compact-menu-panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    min-width: 0;
+    width: 100%;
+    padding: 8px 12px;
+    gap: 6px;
+    border-radius: 0 0 8px 8px;
+  }
+  .compact-menu-panel .dropdown-tool-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+  }
+  .compact-menu-panel .compact-menu-view-grid {
+    grid-template-columns: repeat(6, 1fr);
+    gap: 4px;
+  }
+}
+
 /* Hide TradingView branding watermark */
 .chart-wrapper a[href*="tradingview.com"],
 .rsi-chart-wrapper a[href*="tradingview.com"],
