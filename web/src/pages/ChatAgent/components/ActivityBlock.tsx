@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Brain, ChevronDown, Wrench } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -94,31 +94,34 @@ interface ActivityBlockProps {
  * Uses framer-motion spring animations for smooth accordion expand/collapse,
  * item entrance/exit, and chevron rotation.
  */
-function ActivityBlock({ items, preparingToolCall, isStreaming, onToolCallClick, onOpenFile }: ActivityBlockProps): React.ReactElement | null {
+const ActivityBlock = memo(function ActivityBlock({ items, preparingToolCall, isStreaming, onToolCallClick, onOpenFile }: ActivityBlockProps): React.ReactElement | null {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
   const prevCompletedIdsRef = useRef<Set<string | undefined>>(new Set());
 
-  // Partition items into zones
-  const completedItems: ActivityItem[] = [];
-  const liveItems: ActivityItem[] = [];
-  const inlineChartItems: ActivityItem[] = [];
+  // Memoize partition of items into zones
+  const { completedItems, liveItems, inlineChartItems } = useMemo(() => {
+    const completed: ActivityItem[] = [];
+    const live: ActivityItem[] = [];
+    const inlineCharts: ActivityItem[] = [];
 
-  for (const item of items) {
-    if (item._liveState === 'completed') {
-      if (
-        item.type === 'tool_call' &&
-        INLINE_ARTIFACT_TOOLS.has(item.toolName || '') &&
-        item.toolCallResult?.artifact
-      ) {
-        inlineChartItems.push(item);
+    for (const item of items) {
+      if (item._liveState === 'completed') {
+        if (
+          item.type === 'tool_call' &&
+          INLINE_ARTIFACT_TOOLS.has(item.toolName || '') &&
+          item.toolCallResult?.artifact
+        ) {
+          inlineCharts.push(item);
+        } else {
+          completed.push(item);
+        }
       } else {
-        completedItems.push(item);
+        live.push(item);
       }
-    } else {
-      liveItems.push(item);
     }
-  }
+    return { completedItems: completed, liveItems: live, inlineChartItems: inlineCharts };
+  }, [items]);
 
   // Detect newly completed items for entrance animation
   const currentCompletedIds = new Set(completedItems.map(i => i.id || i.toolCallId));
@@ -178,9 +181,10 @@ function ActivityBlock({ items, preparingToolCall, isStreaming, onToolCallClick,
         {hasCompleted && (
           <motion.div
             key="accordion-zone"
-            initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
-            animate={{ opacity: 1, height: 'auto', overflow: 'visible' }}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
             transition={SPRING_SNAPPY}
+            style={{ overflow: 'hidden' }}
           >
             <button
               onClick={() => setIsExpanded(!isExpanded)}
@@ -205,14 +209,11 @@ function ActivityBlock({ items, preparingToolCall, isStreaming, onToolCallClick,
               {isExpanded && (
                 <motion.div
                   key="accordion-body"
-                  initial={{ height: 0, opacity: 0, '--mask-stop': '0%', overflow: 'hidden' } as any}
-                  animate={{ height: 'auto', opacity: 1, '--mask-stop': '100%', overflow: 'visible' } as any}
-                  exit={{ height: 0, opacity: 0, '--mask-stop': '0%', overflow: 'hidden' } as any}
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
                   transition={SPRING}
-                  style={{
-                    maskImage: 'linear-gradient(black var(--mask-stop), transparent var(--mask-stop))',
-                    WebkitMaskImage: 'linear-gradient(black var(--mask-stop), transparent var(--mask-stop))',
-                  }}
+                  style={{ overflow: 'hidden' }}
                 >
                   <div
                     className="mt-1 ml-2 space-y-0.5 rounded-md"
@@ -233,9 +234,10 @@ function ActivityBlock({ items, preparingToolCall, isStreaming, onToolCallClick,
                         return (
                           <motion.div
                             key={itemKey}
-                            initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
-                            animate={{ opacity: 1, height: 'auto', overflow: 'visible' }}
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
                             transition={SPRING_SNAPPY}
+                            style={{ overflow: 'hidden' }}
                           >
                             {content}
                           </motion.div>
@@ -260,8 +262,9 @@ function ActivityBlock({ items, preparingToolCall, isStreaming, onToolCallClick,
             className="mt-2 space-y-2"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0, height: 0, marginTop: 0, overflow: 'hidden' }}
+            exit={{ opacity: 0, height: 0, marginTop: 0 }}
             transition={SPRING_SNAPPY}
+            style={{ overflow: 'hidden' }}
           >
             {/* Live items in chronological order */}
             <AnimatePresence initial={false}>
@@ -270,12 +273,12 @@ function ActivityBlock({ items, preparingToolCall, isStreaming, onToolCallClick,
                   return (
                     <motion.div
                       key={`live-r-${item.id}`}
-                      initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
-                      animate={{ opacity: item._liveState === 'completing' ? 0.6 : 1, height: 'auto', overflow: 'visible' }}
-                      exit={{ opacity: 0, height: 0, overflow: 'hidden', paddingTop: 0, paddingBottom: 0 }}
-                      transition={SPRING}
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: item._liveState === 'completing' ? 0.6 : 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0, paddingTop: 0, paddingBottom: 0 }}
+                      transition={SPRING_SNAPPY}
+                      style={{ overflow: 'hidden', paddingTop: '8px', paddingBottom: '8px' }}
                       className="px-3"
-                      style={{ paddingTop: '8px', paddingBottom: '8px' }}
                     >
                       <div
                         className="flex items-center gap-2 mb-1"
@@ -310,10 +313,11 @@ function ActivityBlock({ items, preparingToolCall, isStreaming, onToolCallClick,
                   return (
                     <motion.div
                       key={`live-t-${item.id || item.toolCallId}`}
-                      initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
-                      animate={{ opacity: 1, height: 'auto', overflow: 'visible' }}
-                      exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
                       transition={SPRING_SNAPPY}
+                      style={{ overflow: 'hidden' }}
                     >
                       <ToolCallLiveRow tc={item} liveState={item._liveState} />
                     </motion.div>
@@ -328,10 +332,11 @@ function ActivityBlock({ items, preparingToolCall, isStreaming, onToolCallClick,
               {hasPreparingTools && (
                 <motion.div
                   key="preparing"
-                  initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
-                  animate={{ opacity: 1, height: 'auto', overflow: 'visible' }}
-                  exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
                   transition={SPRING_SNAPPY}
+                  style={{ overflow: 'hidden' }}
                 >
                   <PreparingToolCallRow tc={preparingToolCall!} />
                 </motion.div>
@@ -342,7 +347,7 @@ function ActivityBlock({ items, preparingToolCall, isStreaming, onToolCallClick,
       </AnimatePresence>
     </div>
   );
-}
+});
 
 /** Renders a single completed item (reasoning or tool_call) for the accordion body */
 function renderCompletedItem(
@@ -411,7 +416,7 @@ interface ToolCallLiveRowProps {
 }
 
 /** Live tool call row -- shows active or completing state */
-function ToolCallLiveRow({ tc, liveState }: ToolCallLiveRowProps): React.ReactElement {
+const ToolCallLiveRow = memo(function ToolCallLiveRow({ tc, liveState }: ToolCallLiveRowProps): React.ReactElement {
   const { t } = useTranslation();
   const toolName = tc.toolName || '';
   const displayName = getDisplayName(toolName, t);
@@ -475,7 +480,7 @@ function ToolCallLiveRow({ tc, liveState }: ToolCallLiveRowProps): React.ReactEl
       )}
     </motion.div>
   );
-}
+});
 
 interface PreparingToolCallRowProps {
   tc: PreparingToolCallData;
@@ -516,7 +521,7 @@ interface ReasoningRowProps {
   item: ActivityItem;
 }
 
-function ReasoningRow({ item }: ReasoningRowProps): React.ReactElement {
+const ReasoningRow = memo(function ReasoningRow({ item }: ReasoningRowProps): React.ReactElement {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
   const title = item.reasoningTitle ? t('toolArtifact.reasoningLabel', { title: item.reasoningTitle }) : t('toolArtifact.reasoning');
@@ -545,15 +550,11 @@ function ReasoningRow({ item }: ReasoningRowProps): React.ReactElement {
         {expanded && item.content && (
           <motion.div
             key="reasoning-content"
-            // CSS custom property in framer-motion animation requires `as any`
-            initial={{ height: 0, opacity: 0, '--mask-stop': '0%', overflow: 'hidden' } as any}
-            animate={{ height: 'auto', opacity: 1, '--mask-stop': '100%', overflow: 'visible' } as any}
-            exit={{ height: 0, opacity: 0, '--mask-stop': '0%', overflow: 'hidden' } as any}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
             transition={SPRING}
-            style={{
-              maskImage: 'linear-gradient(black var(--mask-stop), transparent var(--mask-stop))',
-              WebkitMaskImage: 'linear-gradient(black var(--mask-stop), transparent var(--mask-stop))',
-            }}
+            style={{ overflow: 'hidden' }}
           >
             <Markdown
               variant="compact"
@@ -566,14 +567,14 @@ function ReasoningRow({ item }: ReasoningRowProps): React.ReactElement {
       </AnimatePresence>
     </div>
   );
-}
+});
 
 interface ToolCallRowProps {
   item: ActivityItem;
   onClick?: () => void;
 }
 
-function ToolCallRow({ item, onClick }: ToolCallRowProps): React.ReactElement {
+const ToolCallRow = memo(function ToolCallRow({ item, onClick }: ToolCallRowProps): React.ReactElement {
   const { t } = useTranslation();
   const toolName = item.toolName || '';
   const displayName = getDisplayName(toolName, t);
@@ -598,14 +599,14 @@ function ToolCallRow({ item, onClick }: ToolCallRowProps): React.ReactElement {
       )}
     </button>
   );
-}
+});
 
 interface EditToolRowProps {
   item: ActivityItem;
   onOpenFile?: (path: string) => void;
 }
 
-function EditToolRow({ item, onOpenFile }: EditToolRowProps): React.ReactElement {
+const EditToolRow = memo(function EditToolRow({ item, onOpenFile }: EditToolRowProps): React.ReactElement {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const displayName = getDisplayName(item.toolName || 'Edit', t);
@@ -657,15 +658,11 @@ function EditToolRow({ item, onOpenFile }: EditToolRowProps): React.ReactElement
         {expanded && hasDiff && (
           <motion.div
             key="diff-content"
-            // CSS custom property in framer-motion animation requires `as any`
-            initial={{ height: 0, opacity: 0, '--mask-stop': '0%', overflow: 'hidden' } as any}
-            animate={{ height: 'auto', opacity: 1, '--mask-stop': '100%', overflow: 'visible' } as any}
-            exit={{ height: 0, opacity: 0, '--mask-stop': '0%', overflow: 'hidden' } as any}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
             transition={SPRING}
-            style={{
-              maskImage: 'linear-gradient(black var(--mask-stop), transparent var(--mask-stop))',
-              WebkitMaskImage: 'linear-gradient(black var(--mask-stop), transparent var(--mask-stop))',
-            }}
+            style={{ overflow: 'hidden' }}
           >
             <div className="ml-6 mr-2 mt-1 mb-1 rounded overflow-hidden" style={{ fontSize: '12px', border: '1px solid var(--color-border-muted)' }}>
               {oldStr && (
@@ -704,6 +701,6 @@ function EditToolRow({ item, onOpenFile }: EditToolRowProps): React.ReactElement
       </AnimatePresence>
     </div>
   );
-}
+});
 
 export default ActivityBlock;

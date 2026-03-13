@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { Bot, User, FileText, ImageIcon, Pencil, RefreshCw, RotateCcw, Copy, Check, Info, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { useIsMobile } from '@/hooks/useIsMobile';
 
@@ -30,6 +30,9 @@ import TextMessageContent from './TextMessageContent';
 import ToolCallMessageContent from './ToolCallMessageContent';
 import TodoListMessageContent from './TodoListMessageContent';
 import { TextShimmer } from '@/components/ui/text-shimmer';
+
+// Stable empty object to avoid defeating React.memo with fresh `|| {}` fallbacks
+const EMPTY_OBJ = {} as Record<string, never>;
 
 // --- Shared Types ---
 
@@ -406,8 +409,11 @@ interface MessageBubbleProps {
  *
  * Renders a single message bubble with appropriate styling
  * based on role (user/assistant) and state (streaming/error)
+ *
+ * Wrapped with React.memo — safe because updateMessage() in messageHelpers.ts
+ * returns the same object reference for unchanged messages.
  */
-function MessageBubble({ message, isLoading, hideAvatar, compactToolCalls, isSubagentView, readOnly, allowFiles, onOpenSubagentTask, onOpenFile, onOpenDir, onToolCallDetailClick, onApprovePlan, onRejectPlan, onPlanDetailClick, onAnswerQuestion, onSkipQuestion, onApproveCreateWorkspace, onRejectCreateWorkspace, onApproveStartQuestion, onRejectStartQuestion, onEditMessage, onRegenerate, onRetry, onThumbUp, onThumbDown, getFeedbackForMessage, onReportWithAgent, isMobile }: MessageBubbleProps): React.ReactElement {
+const MessageBubble = memo(function MessageBubble({ message, isLoading, hideAvatar, compactToolCalls, isSubagentView, readOnly, allowFiles, onOpenSubagentTask, onOpenFile, onOpenDir, onToolCallDetailClick, onApprovePlan, onRejectPlan, onPlanDetailClick, onAnswerQuestion, onSkipQuestion, onApproveCreateWorkspace, onRejectCreateWorkspace, onApproveStartQuestion, onRejectStartQuestion, onEditMessage, onRegenerate, onRetry, onThumbUp, onThumbDown, getFeedbackForMessage, onReportWithAgent, isMobile }: MessageBubbleProps): React.ReactElement {
   const { user } = useUser();
   const { theme } = useTheme();
   const logo = theme === 'light' ? logoDark : logoLight;
@@ -624,15 +630,15 @@ function MessageBubble({ message, isLoading, hideAvatar, compactToolCalls, isSub
           {(message.contentSegments as ContentSegmentRecord[] | undefined) && (message.contentSegments as ContentSegmentRecord[]).length > 0 ? (
             <MessageContentSegments
               segments={message.contentSegments as ContentSegmentRecord[]}
-              reasoningProcesses={(message.reasoningProcesses as Record<string, Record<string, unknown>>) || {}}
-              toolCallProcesses={(message.toolCallProcesses as Record<string, ToolCallProcessRecord>) || {}}
-              todoListProcesses={(message.todoListProcesses as Record<string, Record<string, unknown>>) || {}}
-              subagentTasks={(message.subagentTasks as Record<string, Record<string, unknown>>) || {}}
-              planApprovals={(message.planApprovals as Record<string, Record<string, unknown>>) || {}}
-              userQuestions={(message.userQuestions as Record<string, Record<string, unknown>>) || {}}
-              workspaceProposals={(message.workspaceProposals as Record<string, Record<string, unknown>>) || {}}
-              questionProposals={(message.questionProposals as Record<string, Record<string, unknown>>) || {}}
-              pendingToolCallChunks={(message.pendingToolCallChunks as Record<string, Record<string, unknown>>) || {}}
+              reasoningProcesses={(message.reasoningProcesses as Record<string, Record<string, unknown>>) || EMPTY_OBJ}
+              toolCallProcesses={(message.toolCallProcesses as Record<string, ToolCallProcessRecord>) || EMPTY_OBJ}
+              todoListProcesses={(message.todoListProcesses as Record<string, Record<string, unknown>>) || EMPTY_OBJ}
+              subagentTasks={(message.subagentTasks as Record<string, Record<string, unknown>>) || EMPTY_OBJ}
+              planApprovals={(message.planApprovals as Record<string, Record<string, unknown>>) || EMPTY_OBJ}
+              userQuestions={(message.userQuestions as Record<string, Record<string, unknown>>) || EMPTY_OBJ}
+              workspaceProposals={(message.workspaceProposals as Record<string, Record<string, unknown>>) || EMPTY_OBJ}
+              questionProposals={(message.questionProposals as Record<string, Record<string, unknown>>) || EMPTY_OBJ}
+              pendingToolCallChunks={(message.pendingToolCallChunks as Record<string, Record<string, unknown>>) || EMPTY_OBJ}
               isStreaming={message.isStreaming as boolean}
               hasError={message.error as boolean}
               isAssistant={isAssistant}
@@ -797,7 +803,7 @@ function MessageBubble({ message, isLoading, hideAvatar, compactToolCalls, isSub
       )}
     </div>
   );
-}
+});
 
 // --- MessageContentSegments ---
 
@@ -839,6 +845,8 @@ const MIN_LIVE_EXPOSURE_MS = 5000; // minimum time an item stays in the live zon
 const MAX_IN_PROGRESS_MS = 15000; // max time a tool call can stay in-progress in live view before archiving
 /** Tools that should stay in the live zone for their entire duration (no MAX_IN_PROGRESS_MS cap) */
 const ALWAYS_LIVE_TOOLS = new Set(['Wait']);
+/** Tool calls that are never rendered as visible activity items — they have dedicated UI or are internal */
+const HIDDEN_TOOL_CALL_NAMES = new Set(['TodoWrite', 'task', 'Task', 'SubmitPlan', 'AskUserQuestion', 'create_workspace', 'start_question']);
 
 /** Render block types for the textOnly activity grouping */
 interface ActivityRenderBlock {
@@ -899,12 +907,14 @@ type RenderBlock =
   | StartQuestionRenderBlock
   | NotificationRenderBlock;
 
-function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesses, todoListProcesses, subagentTasks, planApprovals = {}, userQuestions = {}, workspaceProposals = {}, questionProposals = {}, pendingToolCallChunks = {}, isStreaming, hasError, isAssistant = false, compactToolCalls = false, isSubagentView = false, readOnly = false, allowFiles = false, onOpenSubagentTask, onOpenFile, onOpenDir, onToolCallDetailClick, onApprovePlan, onRejectPlan, onPlanDetailClick, onAnswerQuestion, onSkipQuestion, onApproveCreateWorkspace, onRejectCreateWorkspace, onApproveStartQuestion, onRejectStartQuestion, textOnly = false }: MessageContentSegmentsProps): React.ReactElement {
+const MessageContentSegments = memo(function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesses, todoListProcesses, subagentTasks, planApprovals = EMPTY_OBJ, userQuestions = EMPTY_OBJ, workspaceProposals = EMPTY_OBJ, questionProposals = EMPTY_OBJ, pendingToolCallChunks = EMPTY_OBJ, isStreaming, hasError, isAssistant = false, compactToolCalls = false, isSubagentView = false, readOnly = false, allowFiles = false, onOpenSubagentTask, onOpenFile, onOpenDir, onToolCallDetailClick, onApprovePlan, onRejectPlan, onPlanDetailClick, onAnswerQuestion, onSkipQuestion, onApproveCreateWorkspace, onRejectCreateWorkspace, onApproveStartQuestion, onRejectStartQuestion, textOnly = false }: MessageContentSegmentsProps): React.ReactElement {
   // Force re-render timer for recently-completed tool calls that need minimum exposure
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
   const expiryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nextExpiryRef = useRef<number | null>(null);
 
+  // Schedule timer for next expiry — runs after every render since nextExpiryRef
+  // is set during render (from memoized renderBlocks or non-textOnly path).
   useEffect(() => {
     if (expiryTimerRef.current) clearTimeout(expiryTimerRef.current);
     expiryTimerRef.current = null;
@@ -919,226 +929,216 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
     return () => { if (expiryTimerRef.current) clearTimeout(expiryTimerRef.current); };
   });
 
-  // Reset for this render pass
+  // Memoize sorted + grouped segments
+  const groupedSegments = useMemo(() => {
+    const sorted = [...segments].sort((a, b) => a.order - b.order);
+    const groups: ContentSegmentRecord[] = [];
+    let currentTextGroup: ContentSegmentRecord | null = null;
+
+    for (const segment of sorted) {
+      if (segment.type === 'text') {
+        if (currentTextGroup) {
+          currentTextGroup = {
+            ...currentTextGroup,
+            content: (currentTextGroup.content || '') + (segment.content || ''),
+            lastOrder: segment.order,
+          };
+          // Replace the last entry (the current text group) with the updated one
+          groups[groups.length - 1] = currentTextGroup;
+        } else {
+          currentTextGroup = {
+            type: 'text',
+            content: segment.content,
+            order: segment.order,
+            lastOrder: segment.order,
+          };
+          groups.push(currentTextGroup);
+        }
+      } else {
+        currentTextGroup = null;
+        groups.push(segment);
+      }
+    }
+    return groups;
+  }, [segments]);
+
+  // Reset expiry for this render pass (set by memoized renderBlocks below)
   nextExpiryRef.current = null;
 
-  const sortedSegments = [...segments].sort((a, b) => a.order - b.order);
+  // Memoize the expensive renderBlocks construction (only meaningful in textOnly mode).
+  // Always call useMemo to satisfy rules-of-hooks; short-circuit when not textOnly.
+  // tick is included so timer-driven live→completed transitions recompute correctly.
+  const { blocks: renderBlocks, nextExpiry } = useMemo(() => {
+    if (!textOnly) return { blocks: [] as RenderBlock[], nextExpiry: null };
 
-  // Group consecutive text segments together for better rendering
-  const groupedSegments: ContentSegmentRecord[] = [];
-  let currentTextGroup: ContentSegmentRecord | null = null;
-
-  for (const segment of sortedSegments) {
-    if (segment.type === 'text') {
-      if (currentTextGroup) {
-        // Append to existing text group
-        currentTextGroup.content = (currentTextGroup.content || '') + (segment.content || '');
-        currentTextGroup.lastOrder = segment.order; // Track last order for streaming indicator
-      } else {
-        // Start new text group
-        currentTextGroup = {
-          type: 'text',
-          content: segment.content,
-          order: segment.order,
-          lastOrder: segment.order,
-        };
-        groupedSegments.push(currentTextGroup);
-      }
-    } else if (segment.type === 'reasoning') {
-      currentTextGroup = null;
-      groupedSegments.push(segment);
-    } else if (segment.type === 'tool_call') {
-      currentTextGroup = null;
-      groupedSegments.push(segment);
-    } else if (segment.type === 'todo_list') {
-      currentTextGroup = null;
-      groupedSegments.push(segment);
-    } else if (segment.type === 'subagent_task') {
-      currentTextGroup = null;
-      groupedSegments.push(segment);
-    } else if (segment.type === 'plan_approval') {
-      currentTextGroup = null;
-      groupedSegments.push(segment);
-    } else if (segment.type === 'user_question') {
-      currentTextGroup = null;
-      groupedSegments.push(segment);
-    } else if (segment.type === 'create_workspace') {
-      currentTextGroup = null;
-      groupedSegments.push(segment);
-    } else if (segment.type === 'start_question') {
-      currentTextGroup = null;
-      groupedSegments.push(segment);
-    } else if (segment.type === 'notification') {
-      currentTextGroup = null;
-      groupedSegments.push(segment);
-    }
-  }
-
-  // textOnly mode: use inline ActivityBlock groups
-  if (textOnly) {
     const filtered = groupedSegments.filter((s) => {
-      if (s.type === 'text' || s.type === 'reasoning') return true;
-      if (s.type === 'notification') return true;
-      if (s.type === 'subagent_task') return true;
-      if (s.type === 'plan_approval') return true;
-      if (s.type === 'user_question') return true;
-      if (s.type === 'create_workspace') return true;
-      if (s.type === 'start_question') return true;
-      if (s.type === 'tool_call') {
-        const toolName = toolCallProcesses[s.toolCallId!]?.toolName as string | undefined;
-        if (toolName === 'TodoWrite') return false;
-        if (toolName === 'task' || toolName === 'Task') return false;
-        if (toolName === 'SubmitPlan' || toolName === 'AskUserQuestion') return false;
-        if (toolName === 'create_workspace' || toolName === 'start_question') return false;
-        return true;
-      }
-      return false;
-    });
+        if (s.type === 'text' || s.type === 'reasoning') return true;
+        if (s.type === 'notification') return true;
+        if (s.type === 'subagent_task') return true;
+        if (s.type === 'plan_approval') return true;
+        if (s.type === 'user_question') return true;
+        if (s.type === 'create_workspace') return true;
+        if (s.type === 'start_question') return true;
+        if (s.type === 'tool_call') {
+          const toolName = toolCallProcesses[s.toolCallId!]?.toolName as string | undefined;
+          if (HIDDEN_TOOL_CALL_NAMES.has(toolName || '')) return false;
+          return true;
+        }
+        return false;
+      });
 
-    const renderBlocks: RenderBlock[] = [];
-    let pendingItems: Array<Record<string, unknown>> = [];
-    let activityCounter = 0;
+      const blocks: RenderBlock[] = [];
+      let pendingItems: Array<Record<string, unknown>> = [];
+      let activityCounter = 0;
+      let computedNextExpiry: number | null = null;
 
-    const now = Date.now();
+      const now = Date.now();
 
-    const flushActivity = () => {
-      if (pendingItems.length > 0) {
-        renderBlocks.push({
-          type: 'activity',
-          key: `activity-${activityCounter++}`,
-          items: pendingItems,
-        });
-        pendingItems = [];
-      }
-    };
-
-    for (const seg of filtered) {
-      if (seg.type === 'reasoning') {
-        const proc = reasoningProcesses[seg.reasoningId!];
-        if (!proc) continue;
-        const rawContent = (proc.content as string) || '';
-        const reasoningContent = isSubagentView ? normalizeSubagentText(rawContent) : rawContent;
-
-        if (proc.isReasoning) {
-          pendingItems.push({
-            type: 'reasoning',
-            id: seg.reasoningId,
-            reasoningTitle: proc.reasoningTitle || null,
-            content: reasoningContent,
-            _liveState: 'active',
+      const flushActivity = () => {
+        if (pendingItems.length > 0) {
+          blocks.push({
+            type: 'activity',
+            key: `activity-${activityCounter++}`,
+            items: pendingItems,
           });
-        } else {
-          const completedAt = proc._completedAt as number | undefined;
-          const completedAge = completedAt ? now - completedAt : Infinity;
+          pendingItems = [];
+        }
+      };
 
-          if (completedAge < MIN_LIVE_EXPOSURE_MS) {
+      for (const seg of filtered) {
+        if (seg.type === 'reasoning') {
+          const proc = reasoningProcesses[seg.reasoningId!];
+          if (!proc) continue;
+          const rawContent = (proc.content as string) || '';
+          const reasoningContent = isSubagentView ? normalizeSubagentText(rawContent) : rawContent;
+
+          if (proc.isReasoning) {
             pendingItems.push({
               type: 'reasoning',
               id: seg.reasoningId,
               reasoningTitle: proc.reasoningTitle || null,
               content: reasoningContent,
-              reasoningComplete: proc.reasoningComplete,
+              _liveState: 'active',
+            });
+          } else {
+            const completedAt = proc._completedAt as number | undefined;
+            const completedAge = completedAt ? now - completedAt : Infinity;
+
+            if (completedAge < MIN_LIVE_EXPOSURE_MS) {
+              pendingItems.push({
+                type: 'reasoning',
+                id: seg.reasoningId,
+                reasoningTitle: proc.reasoningTitle || null,
+                content: reasoningContent,
+                reasoningComplete: proc.reasoningComplete,
+                _liveState: 'completing',
+              });
+              const expiry = completedAt! + MIN_LIVE_EXPOSURE_MS;
+              if (computedNextExpiry === null || expiry < computedNextExpiry) {
+                computedNextExpiry = expiry;
+              }
+            } else {
+              pendingItems.push({
+                type: 'reasoning',
+                id: seg.reasoningId,
+                reasoningTitle: proc.reasoningTitle || null,
+                content: reasoningContent,
+                reasoningComplete: proc.reasoningComplete,
+                _liveState: 'completed',
+              });
+            }
+          }
+        } else if (seg.type === 'tool_call') {
+          const proc = toolCallProcesses[seg.toolCallId!];
+          if (!proc) continue;
+
+          const createdAt = proc._createdAt as number | undefined;
+          const age = createdAt ? now - createdAt : Infinity;
+
+          const artifactResult = (proc.toolCallResult as Record<string, unknown> | undefined)?.artifact as Record<string, unknown> | undefined;
+          const isArtifactReady = INLINE_ARTIFACT_TOOLS.has(proc.toolName as string) && artifactResult;
+
+          const isAlwaysLive = ALWAYS_LIVE_TOOLS.has(proc.toolName as string);
+
+          if ((proc.isInProgress as boolean) && isStreaming && (isAlwaysLive || age < MAX_IN_PROGRESS_MS)) {
+            pendingItems.push({
+              type: 'tool_call',
+              id: seg.toolCallId,
+              toolCallId: seg.toolCallId,
+              ...proc,
+              _liveState: 'active',
+            });
+            if (!isAlwaysLive) {
+              const expiry = createdAt! + MAX_IN_PROGRESS_MS;
+              if (computedNextExpiry === null || expiry < computedNextExpiry) {
+                computedNextExpiry = expiry;
+              }
+            }
+          } else if (isArtifactReady) {
+            flushActivity();
+            blocks.push({
+              type: 'compact_artifact',
+              key: `compact-${seg.toolCallId}`,
+              toolCallId: seg.toolCallId!,
+              proc,
+            });
+          } else if (age < MIN_LIVE_EXPOSURE_MS && !INLINE_ARTIFACT_TOOLS.has(proc.toolName as string)) {
+            pendingItems.push({
+              type: 'tool_call',
+              id: seg.toolCallId,
+              toolCallId: seg.toolCallId,
+              ...proc,
+              _recentlyCompleted: true,
               _liveState: 'completing',
             });
-            const expiry = completedAt! + MIN_LIVE_EXPOSURE_MS;
-            if (nextExpiryRef.current === null || expiry < nextExpiryRef.current) {
-              nextExpiryRef.current = expiry;
+            const expiry = createdAt! + MIN_LIVE_EXPOSURE_MS;
+            if (computedNextExpiry === null || expiry < computedNextExpiry) {
+              computedNextExpiry = expiry;
             }
           } else {
             pendingItems.push({
-              type: 'reasoning',
-              id: seg.reasoningId,
-              reasoningTitle: proc.reasoningTitle || null,
-              content: reasoningContent,
-              reasoningComplete: proc.reasoningComplete,
+              type: 'tool_call',
+              id: seg.toolCallId,
+              toolCallId: seg.toolCallId,
+              ...proc,
               _liveState: 'completed',
             });
           }
-        }
-      } else if (seg.type === 'tool_call') {
-        const proc = toolCallProcesses[seg.toolCallId!];
-        if (!proc || (proc.toolName as string) === 'TodoWrite') continue;
-        if ((proc.toolName as string) === 'task' || (proc.toolName as string) === 'Task') continue;
-        if ((proc.toolName as string) === 'SubmitPlan' || (proc.toolName as string) === 'AskUserQuestion') continue;
-
-        const createdAt = proc._createdAt as number | undefined;
-        const age = createdAt ? now - createdAt : Infinity;
-
-        const artifactResult = (proc.toolCallResult as Record<string, unknown> | undefined)?.artifact as Record<string, unknown> | undefined;
-        const isArtifactReady = INLINE_ARTIFACT_TOOLS.has(proc.toolName as string) && artifactResult;
-
-        const isAlwaysLive = ALWAYS_LIVE_TOOLS.has(proc.toolName as string);
-
-        if ((proc.isInProgress as boolean) && isStreaming && (isAlwaysLive || age < MAX_IN_PROGRESS_MS)) {
-          pendingItems.push({
-            type: 'tool_call',
-            id: seg.toolCallId,
-            toolCallId: seg.toolCallId,
-            ...proc,
-            _liveState: 'active',
-          });
-          if (!isAlwaysLive) {
-            const expiry = createdAt! + MAX_IN_PROGRESS_MS;
-            if (nextExpiryRef.current === null || expiry < nextExpiryRef.current) {
-              nextExpiryRef.current = expiry;
-            }
-          }
-        } else if (isArtifactReady) {
+        } else if (seg.type === 'subagent_task') {
           flushActivity();
-          renderBlocks.push({
-            type: 'compact_artifact',
-            key: `compact-${seg.toolCallId}`,
-            toolCallId: seg.toolCallId!,
-            proc,
-          });
-        } else if (age < MIN_LIVE_EXPOSURE_MS && !INLINE_ARTIFACT_TOOLS.has(proc.toolName as string)) {
-          pendingItems.push({
-            type: 'tool_call',
-            id: seg.toolCallId,
-            toolCallId: seg.toolCallId,
-            ...proc,
-            _recentlyCompleted: true,
-            _liveState: 'completing',
-          });
-          const expiry = createdAt! + MIN_LIVE_EXPOSURE_MS;
-          if (nextExpiryRef.current === null || expiry < nextExpiryRef.current) {
-            nextExpiryRef.current = expiry;
-          }
-        } else {
-          pendingItems.push({
-            type: 'tool_call',
-            id: seg.toolCallId,
-            toolCallId: seg.toolCallId,
-            ...proc,
-            _liveState: 'completed',
-          });
+          blocks.push({ type: 'subagent_task', key: `subagent-${seg.subagentId}`, segment: seg });
+        } else if (seg.type === 'plan_approval') {
+          flushActivity();
+          blocks.push({ type: 'plan_approval', key: `plan-${seg.planApprovalId}`, segment: seg });
+        } else if (seg.type === 'user_question') {
+          flushActivity();
+          blocks.push({ type: 'user_question', key: `question-${seg.questionId}`, segment: seg });
+        } else if (seg.type === 'create_workspace') {
+          flushActivity();
+          blocks.push({ type: 'create_workspace', key: `workspace-${seg.proposalId}`, segment: seg });
+        } else if (seg.type === 'start_question') {
+          flushActivity();
+          blocks.push({ type: 'start_question', key: `start-question-${seg.proposalId}`, segment: seg });
+        } else if (seg.type === 'notification') {
+          flushActivity();
+          blocks.push({ type: 'notification', key: `notification-${seg.order}`, segment: seg });
+        } else if (seg.type === 'text') {
+          flushActivity();
+          blocks.push({ type: 'text', key: `text-${seg.order}`, segment: seg });
         }
-      } else if (seg.type === 'subagent_task') {
-        flushActivity();
-        renderBlocks.push({ type: 'subagent_task', key: `subagent-${seg.subagentId}`, segment: seg });
-      } else if (seg.type === 'plan_approval') {
-        flushActivity();
-        renderBlocks.push({ type: 'plan_approval', key: `plan-${seg.planApprovalId}`, segment: seg });
-      } else if (seg.type === 'user_question') {
-        flushActivity();
-        renderBlocks.push({ type: 'user_question', key: `question-${seg.questionId}`, segment: seg });
-      } else if (seg.type === 'create_workspace') {
-        flushActivity();
-        renderBlocks.push({ type: 'create_workspace', key: `workspace-${seg.proposalId}`, segment: seg });
-      } else if (seg.type === 'start_question') {
-        flushActivity();
-        renderBlocks.push({ type: 'start_question', key: `start-question-${seg.proposalId}`, segment: seg });
-      } else if (seg.type === 'notification') {
-        flushActivity();
-        renderBlocks.push({ type: 'notification', key: `notification-${seg.order}`, segment: seg });
-      } else if (seg.type === 'text') {
-        flushActivity();
-        renderBlocks.push({ type: 'text', key: `text-${seg.order}`, segment: seg });
       }
-    }
-    // Flush trailing activity items
-    flushActivity();
+      // Flush trailing activity items
+      flushActivity();
 
+      return { blocks, nextExpiry: computedNextExpiry };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tick is a semantic dep: forces recomputation when timer fires for live→completed transitions
+    }, [groupedSegments, tick, reasoningProcesses, toolCallProcesses, isStreaming, isSubagentView, textOnly]);
+
+  // Apply side effect: schedule timer for next expiry transition
+  nextExpiryRef.current = nextExpiry;
+
+  // textOnly mode: use inline ActivityBlock groups
+  if (textOnly) {
     // Derived values
     const chunkEntries = Object.values(pendingToolCallChunks);
     const preparingToolCall = chunkEntries.length > 0 ? {
@@ -1380,7 +1380,7 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
           );
         } else if (segment.type === 'tool_call') {
           const proc = toolCallProcesses[segment.toolCallId!];
-          if (!proc || (proc.toolName as string) === 'TodoWrite' || (proc.toolName as string) === 'SubmitPlan' || (proc.toolName as string) === 'AskUserQuestion') return null;
+          if (!proc || HIDDEN_TOOL_CALL_NAMES.has(proc.toolName as string)) return null;
           return (
             <ToolCallMessageContent
               key={`tool-call-${segment.toolCallId}`}
@@ -1488,7 +1488,7 @@ function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesse
       })}
     </div>
   );
-}
+});
 
 export default MessageList;
 export { MessageContentSegments };

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useMemo, useCallback, useState } from 'react';
+import React, { useEffect, useRef, useMemo, useCallback, useState, memo } from 'react';
 import { createChart, ColorType } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -368,7 +368,10 @@ export function StockPriceChart({ data }: DataProps): React.ReactElement {
       ro.disconnect();
       if (rangeTimerRef.current) clearTimeout(rangeTimerRef.current);
       if (rangeUnsubRef.current) { rangeUnsubRef.current(); rangeUnsubRef.current = null; }
-      if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; }
+      if (chartRef.current) {
+        chartRef.current.remove();
+        chartRef.current = null;
+      }
     };
   }, [initialOhlcv, chartInterval, updateAllSeries, handleScrollLoadMore]);
 
@@ -497,7 +500,7 @@ export function SectorPerformanceChart({ data }: DataProps): React.ReactElement 
       <h4 style={{ color: 'var(--color-text-primary)', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>
         {t('toolArtifact.sectorPerformance')}
       </h4>
-      <ResponsiveContainer width="100%" height={Math.max(chartData.length * 36, 200)}>
+      <ResponsiveContainer width="100%" minWidth={1} height={Math.max(chartData.length * 36, 200)}>
         <BarChart data={chartData} layout="vertical" margin={{ left: 10, right: 50 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} horizontal={false} />
           <XAxis
@@ -536,27 +539,30 @@ interface PerformanceBarChartProps {
   performance: Record<string, number> | undefined;
 }
 
-export function PerformanceBarChart({ performance }: PerformanceBarChartProps): React.ReactElement | null {
+const PERF_LABELS: Record<string, string> = { '1D': '1D', '5D': '5D', '1M': '1M', '3M': '3M', '6M': '6M', 'ytd': 'YTD', '1Y': '1Y', '3Y': '3Y', '5Y': '5Y' };
+
+export const PerformanceBarChart = memo(function PerformanceBarChart({ performance }: PerformanceBarChartProps): React.ReactElement | null {
   const { t } = useTranslation();
-  if (!performance || Object.keys(performance).length === 0) return null;
 
-  const labels: Record<string, string> = { '1D': '1D', '5D': '5D', '1M': '1M', '3M': '3M', '6M': '6M', 'ytd': 'YTD', '1Y': '1Y', '3Y': '3Y', '5Y': '5Y' };
-  const chartData = Object.entries(labels)
-    .filter(([key]) => performance[key] != null)
-    .map(([key, label]) => ({
-      name: label,
-      value: performance[key],
-      fill: performance[key] >= 0 ? GREEN : RED,
-    }));
+  const chartData = useMemo(() => {
+    if (!performance) return [];
+    return Object.entries(PERF_LABELS)
+      .filter(([key]) => performance[key] != null)
+      .map(([key, label]) => ({
+        name: label,
+        value: performance[key],
+        fill: performance[key] >= 0 ? GREEN : RED,
+      }));
+  }, [performance]);
 
-  if (chartData.length === 0) return null;
+  if (!performance || chartData.length === 0) return null;
 
   return (
     <div>
       <h4 style={{ color: 'var(--color-text-primary)', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
         {t('toolArtifact.pricePerformance')}
       </h4>
-      <ResponsiveContainer width="100%" height={180}>
+      <ResponsiveContainer width="100%" minWidth={1} height={180}>
         <BarChart data={chartData} margin={{ left: -20, right: 10 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} vertical={false} />
           <XAxis
@@ -579,7 +585,7 @@ export function PerformanceBarChart({ performance }: PerformanceBarChartProps): 
       </ResponsiveContainer>
     </div>
   );
-}
+});
 
 // ─── AnalystRatingsChart ────────────────────────────────────────────
 
@@ -587,20 +593,22 @@ interface AnalystRatingsChartProps {
   ratings: Record<string, unknown> | undefined;
 }
 
-export function AnalystRatingsChart({ ratings }: AnalystRatingsChartProps): React.ReactElement | null {
+export const AnalystRatingsChart = memo(function AnalystRatingsChart({ ratings }: AnalystRatingsChartProps): React.ReactElement | null {
   const { t } = useTranslation();
-  if (!ratings) return null;
 
-  const chartData = [
-    { name: 'Strong Buy', value: (ratings.strongBuy as number) || 0 },
-    { name: 'Buy', value: (ratings.buy as number) || 0 },
-    { name: 'Hold', value: (ratings.hold as number) || 0 },
-    { name: 'Sell', value: (ratings.sell as number) || 0 },
-    { name: 'Strong Sell', value: (ratings.strongSell as number) || 0 },
-  ].filter((d) => d.value > 0);
+  const { chartData, total } = useMemo(() => {
+    if (!ratings) return { chartData: [], total: 0 };
+    const cd = [
+      { name: 'Strong Buy', value: (ratings.strongBuy as number) || 0 },
+      { name: 'Buy', value: (ratings.buy as number) || 0 },
+      { name: 'Hold', value: (ratings.hold as number) || 0 },
+      { name: 'Sell', value: (ratings.sell as number) || 0 },
+      { name: 'Strong Sell', value: (ratings.strongSell as number) || 0 },
+    ].filter((d) => d.value > 0);
+    return { chartData: cd, total: cd.reduce((s, d) => s + d.value, 0) };
+  }, [ratings]);
 
-  if (chartData.length === 0) return null;
-  const total = chartData.reduce((s, d) => s + d.value, 0);
+  if (!ratings || chartData.length === 0) return null;
 
   return (
     <div>
@@ -608,7 +616,7 @@ export function AnalystRatingsChart({ ratings }: AnalystRatingsChartProps): Reac
         {t('toolArtifact.analystRatings')}
       </h4>
       <div style={{ position: 'relative' }}>
-        <ResponsiveContainer width="100%" height={200}>
+        <ResponsiveContainer width="100%" minWidth={1} height={200}>
           <PieChart>
             <Pie
               data={chartData}
@@ -648,7 +656,7 @@ export function AnalystRatingsChart({ ratings }: AnalystRatingsChartProps): Reac
       </div>
     </div>
   );
-}
+});
 
 // ─── RevenueBreakdownChart ──────────────────────────────────────────
 
@@ -657,18 +665,18 @@ interface RevenueBreakdownChartProps {
   revenueByGeo: Record<string, number> | undefined;
 }
 
-export function RevenueBreakdownChart({ revenueByProduct, revenueByGeo }: RevenueBreakdownChartProps): React.ReactElement | null {
+const buildPieData = (obj: Record<string, number>) => {
+  return Object.entries(obj)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+};
+
+export const RevenueBreakdownChart = memo(function RevenueBreakdownChart({ revenueByProduct, revenueByGeo }: RevenueBreakdownChartProps): React.ReactElement | null {
   const { t } = useTranslation();
   const hasProduct = revenueByProduct && Object.keys(revenueByProduct).length > 0;
   const hasGeo = revenueByGeo && Object.keys(revenueByGeo).length > 0;
 
   if (!hasProduct && !hasGeo) return null;
-
-  const buildPieData = (obj: Record<string, number>) => {
-    return Object.entries(obj)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
-  };
 
   const renderPie = (data: Array<{ name: string; value: number }>, title: string) => {
     const total = data.reduce((s, d) => s + d.value, 0);
@@ -677,7 +685,7 @@ export function RevenueBreakdownChart({ revenueByProduct, revenueByGeo }: Revenu
         <h5 style={{ color: TEXT_COLOR, fontSize: 12, fontWeight: 500, marginBottom: 4 }}>
           {title}
         </h5>
-        <ResponsiveContainer width="100%" height={180}>
+        <ResponsiveContainer width="100%" minWidth={1} height={180}>
           <PieChart>
             <Pie
               data={data}
@@ -716,7 +724,7 @@ export function RevenueBreakdownChart({ revenueByProduct, revenueByGeo }: Revenu
       </div>
     </div>
   );
-}
+});
 
 // ─── QuarterlyRevenueChart ───────────────────────────────────────────
 
@@ -724,7 +732,7 @@ interface ChartArrayDataProps {
   data: Record<string, unknown>[] | undefined;
 }
 
-export function QuarterlyRevenueChart({ data }: ChartArrayDataProps): React.ReactElement | null {
+export const QuarterlyRevenueChart = memo(function QuarterlyRevenueChart({ data }: ChartArrayDataProps): React.ReactElement | null {
   const { t } = useTranslation();
   if (!data?.length) return null;
 
@@ -733,7 +741,7 @@ export function QuarterlyRevenueChart({ data }: ChartArrayDataProps): React.Reac
       <h4 style={{ color: 'var(--color-text-primary)', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
         {t('toolArtifact.quarterlyRevenue')}
       </h4>
-      <ResponsiveContainer width="100%" height={220}>
+      <ResponsiveContainer width="100%" minWidth={1} height={220}>
         <BarChart data={data} margin={{ left: -10, right: 10 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} vertical={false} />
           <XAxis dataKey="period" tick={{ fill: TEXT_COLOR, fontSize: 10 }} axisLine={{ stroke: GRID_COLOR }} />
@@ -746,27 +754,31 @@ export function QuarterlyRevenueChart({ data }: ChartArrayDataProps): React.Reac
       </ResponsiveContainer>
     </div>
   );
-}
+});
 
 // ─── MarginsChart ───────────────────────────────────────────────────
 
-export function MarginsChart({ data }: ChartArrayDataProps): React.ReactElement | null {
+export const MarginsChart = memo(function MarginsChart({ data }: ChartArrayDataProps): React.ReactElement | null {
   const { t } = useTranslation();
-  if (!data?.length) return null;
 
-  const chartData = data.map((d) => ({
-    period: d.period as string,
-    grossMargin: (d.grossMargin as number | undefined) != null ? (d.grossMargin as number) * 100 : null,
-    operatingMargin: (d.operatingMargin as number | undefined) != null ? (d.operatingMargin as number) * 100 : null,
-    netMargin: (d.netMargin as number | undefined) != null ? (d.netMargin as number) * 100 : null,
-  }));
+  const chartData = useMemo(() => {
+    if (!data?.length) return [];
+    return data.map((d) => ({
+      period: d.period as string,
+      grossMargin: (d.grossMargin as number | undefined) != null ? (d.grossMargin as number) * 100 : null,
+      operatingMargin: (d.operatingMargin as number | undefined) != null ? (d.operatingMargin as number) * 100 : null,
+      netMargin: (d.netMargin as number | undefined) != null ? (d.netMargin as number) * 100 : null,
+    }));
+  }, [data]);
+
+  if (!data?.length) return null;
 
   return (
     <div>
       <h4 style={{ color: 'var(--color-text-primary)', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
         {t('toolArtifact.profitMargins')}
       </h4>
-      <ResponsiveContainer width="100%" height={220}>
+      <ResponsiveContainer width="100%" minWidth={1} height={220}>
         <LineChart data={chartData} margin={{ left: -10, right: 10 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} vertical={false} />
           <XAxis dataKey="period" tick={{ fill: TEXT_COLOR, fontSize: 10 }} axisLine={{ stroke: GRID_COLOR }} />
@@ -780,11 +792,11 @@ export function MarginsChart({ data }: ChartArrayDataProps): React.ReactElement 
       </ResponsiveContainer>
     </div>
   );
-}
+});
 
 // ─── EarningsSurpriseChart ──────────────────────────────────────────
 
-export function EarningsSurpriseChart({ data }: ChartArrayDataProps): React.ReactElement | null {
+export const EarningsSurpriseChart = memo(function EarningsSurpriseChart({ data }: ChartArrayDataProps): React.ReactElement | null {
   const { t } = useTranslation();
   if (!data?.length) return null;
 
@@ -793,7 +805,7 @@ export function EarningsSurpriseChart({ data }: ChartArrayDataProps): React.Reac
       <h4 style={{ color: 'var(--color-text-primary)', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
         {t('toolArtifact.epsActualVsEstimate')}
       </h4>
-      <ResponsiveContainer width="100%" height={220}>
+      <ResponsiveContainer width="100%" minWidth={1} height={220}>
         <BarChart data={data} margin={{ left: -10, right: 10 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} vertical={false} />
           <XAxis dataKey="period" tick={{ fill: TEXT_COLOR, fontSize: 10 }} axisLine={{ stroke: GRID_COLOR }} />
@@ -806,11 +818,11 @@ export function EarningsSurpriseChart({ data }: ChartArrayDataProps): React.Reac
       </ResponsiveContainer>
     </div>
   );
-}
+});
 
 // ─── CashFlowChart ──────────────────────────────────────────────────
 
-export function CashFlowChart({ data }: ChartArrayDataProps): React.ReactElement | null {
+export const CashFlowChart = memo(function CashFlowChart({ data }: ChartArrayDataProps): React.ReactElement | null {
   const { t } = useTranslation();
   if (!data?.length) return null;
 
@@ -819,7 +831,7 @@ export function CashFlowChart({ data }: ChartArrayDataProps): React.ReactElement
       <h4 style={{ color: 'var(--color-text-primary)', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
         {t('toolArtifact.cashFlowQuarterly')}
       </h4>
-      <ResponsiveContainer width="100%" height={220}>
+      <ResponsiveContainer width="100%" minWidth={1} height={220}>
         <BarChart data={data} margin={{ left: -10, right: 10 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} vertical={false} />
           <XAxis dataKey="period" tick={{ fill: TEXT_COLOR, fontSize: 10 }} axisLine={{ stroke: GRID_COLOR }} />
@@ -834,7 +846,7 @@ export function CashFlowChart({ data }: ChartArrayDataProps): React.ReactElement
       </ResponsiveContainer>
     </div>
   );
-}
+});
 
 // ─── CompanyOverviewCard ────────────────────────────────────────────
 
@@ -855,7 +867,27 @@ const DETAIL_STATUS_COLORS: Record<string, string> = {
   closed: TEXT_COLOR,
 };
 
-export function CompanyOverviewCard({ data }: DataProps): React.ReactElement {
+/** Defers rendering until the element scrolls into view (with 200px pre-load margin) */
+function LazyChart({ height, children }: { height: number; children: React.ReactNode }): React.ReactElement {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setVisible(true); observer.disconnect(); } },
+      { rootMargin: '200px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  if (!visible) return <div ref={ref} style={{ minHeight: height, width: '100%' }} />;
+  return <>{children}</>;
+}
+
+export const CompanyOverviewCard = memo(function CompanyOverviewCard({ data }: DataProps): React.ReactElement {
   const { t } = useTranslation();
   const {
     symbol, name, quote, performance, analystRatings,
@@ -1015,23 +1047,42 @@ export function CompanyOverviewCard({ data }: DataProps): React.ReactElement {
       {/* Analyst Ratings */}
       <AnalystRatingsChart ratings={analystRatings as Record<string, unknown> | undefined} />
 
-      {/* Quarterly Revenue & Net Income */}
-      <QuarterlyRevenueChart data={quarterlyFundamentals as Record<string, unknown>[] | undefined} />
-
-      {/* Profit Margins */}
-      <MarginsChart data={quarterlyFundamentals as Record<string, unknown>[] | undefined} />
+      {/* Quarterly Revenue & Net Income + Profit Margins (same data source) */}
+      {(quarterlyFundamentals as unknown[])?.length > 0 && (
+        <>
+          <LazyChart height={250}>
+            <QuarterlyRevenueChart data={quarterlyFundamentals as Record<string, unknown>[] | undefined} />
+          </LazyChart>
+          <LazyChart height={250}>
+            <MarginsChart data={quarterlyFundamentals as Record<string, unknown>[] | undefined} />
+          </LazyChart>
+        </>
+      )}
 
       {/* EPS Actual vs Estimate */}
-      <EarningsSurpriseChart data={earningsSurprises as Record<string, unknown>[] | undefined} />
+      {(earningsSurprises as unknown[])?.length > 0 && (
+        <LazyChart height={250}>
+          <EarningsSurpriseChart data={earningsSurprises as Record<string, unknown>[] | undefined} />
+        </LazyChart>
+      )}
 
       {/* Cash Flow */}
-      <CashFlowChart data={cashFlow as Record<string, unknown>[] | undefined} />
+      {(cashFlow as unknown[])?.length > 0 && (
+        <LazyChart height={250}>
+          <CashFlowChart data={cashFlow as Record<string, unknown>[] | undefined} />
+        </LazyChart>
+      )}
 
       {/* Revenue Breakdown */}
-      <RevenueBreakdownChart revenueByProduct={revenueByProduct as Record<string, number> | undefined} revenueByGeo={revenueByGeo as Record<string, number> | undefined} />
+      {((revenueByProduct as Record<string, number> | undefined) && Object.keys(revenueByProduct as Record<string, number>).length > 0) ||
+       ((revenueByGeo as Record<string, number> | undefined) && Object.keys(revenueByGeo as Record<string, number>).length > 0) ? (
+        <LazyChart height={220}>
+          <RevenueBreakdownChart revenueByProduct={revenueByProduct as Record<string, number> | undefined} revenueByGeo={revenueByGeo as Record<string, number> | undefined} />
+        </LazyChart>
+      ) : null}
     </div>
   );
-}
+});
 
 interface QuoteStatProps {
   label: string;

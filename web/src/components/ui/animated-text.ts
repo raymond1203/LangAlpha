@@ -18,6 +18,7 @@ export function useAnimatedText(text: string, { enabled = false }: UseAnimatedTe
   const animatingRef = useRef(false);
   const controlsRef = useRef<AnimationPlaybackControls | null>(null);
   const mountedRef = useRef(false);  // tracks first effect run
+  const lastUpdateTimeRef = useRef(0); // throttle onUpdate to ~30fps
 
   const startChain = useCallback(() => {
     const from = cursorRef.current;
@@ -42,6 +43,9 @@ export function useAnimatedText(text: string, { enabled = false }: UseAnimatedTe
       onUpdate(latest) {
         const idx = Math.round(latest);
         cursorRef.current = idx;
+        const now = Date.now();
+        if (now - lastUpdateTimeRef.current < 32) return;
+        lastUpdateTimeRef.current = now;
         setDisplayText(target.slice(0, idx));
       },
       onComplete() {
