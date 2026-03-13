@@ -3350,7 +3350,7 @@ export function useChatMessages(
     const collected = collectedHitlResponsesRef.current;
     if (pending.size > 0 && [...pending].every((id) => collected[id])) {
       const batchedResponse = { ...collected };
-      resumeWithHitlResponse(batchedResponse, false);
+      resumeWithHitlResponse(batchedResponse, currentPlanModeRef.current);
     }
   }, [resumeWithHitlResponse]);
 
@@ -3384,7 +3384,7 @@ export function useChatMessages(
     const collected = collectedHitlResponsesRef.current;
     if (pending.size > 0 && [...pending].every((id) => collected[id])) {
       const batchedResponse = { ...collected };
-      resumeWithHitlResponse(batchedResponse, false);
+      resumeWithHitlResponse(batchedResponse, currentPlanModeRef.current);
     }
   }, [resumeWithHitlResponse]);
 
