@@ -146,6 +146,7 @@ interface WorkspaceRecord {
 interface ChatViewProps {
   workspaceId: string;
   threadId: string;
+  initialTaskId?: string;
   onBack: () => void;
   workspaceName?: string;
 }
@@ -253,7 +254,7 @@ function SubagentStatusIndicator({ status, currentTool, toolCalls = 0, messages 
  * @param {string} threadId - The thread ID to chat in
  * @param {Function} onBack - Callback to navigate back to thread gallery
  */
-function ChatView({ workspaceId, threadId, onBack, workspaceName: initialWorkspaceName }: ChatViewProps): React.ReactElement | null {
+function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName: initialWorkspaceName }: ChatViewProps): React.ReactElement | null {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -282,8 +283,10 @@ function ChatView({ workspaceId, threadId, onBack, workspaceName: initialWorkspa
   const [rightPanelType, setRightPanelType] = useState<'file' | 'detail' | null>(null);
   const [rightPanelWidth, setRightPanelWidth] = useState(750);
   const DIVIDER_WIDTH = 4; // px – matches .chat-split-divider
-  // Active agent in main view (default: 'main')
-  const [activeAgentId, setActiveAgentId] = useState('main');
+  // Active agent in main view (default: 'main', or from URL taskId)
+  const [activeAgentId, setActiveAgentId] = useState(
+    initialTaskId ? `task:${initialTaskId}` : 'main'
+  );
   // Navigation panel visibility (hover-triggered overlay)
   // Initialize from module-level state to survive remounts on thread navigation
   const [navPanelVisible, setNavPanelVisible] = useState(_navPanelVisible);
@@ -354,16 +357,33 @@ function ChatView({ workspaceId, threadId, onBack, workspaceName: initialWorkspa
     }
   }, [getScrollContainer]);
 
+  // Ref for resolved thread ID — updated after useChatMessages, used in switchAgent
+  // to avoid referencing currentThreadId (defined later) in useCallback closure.
+  const resolvedThreadIdRef = useRef(threadId);
+
   // Switch agent tab with scroll position preservation
   const switchAgent = useCallback((newAgentId: string) => {
     if (newAgentId === activeAgentIdRef.current) return;
+    const wasMain = activeAgentIdRef.current === 'main';
     saveScrollPosition();
     // If destination has a saved position, skip auto-scroll so restore wins
     if (scrollPositionsRef.current[newAgentId] != null) {
       skipSubagentAutoScrollRef.current = true;
     }
     setActiveAgentId(newAgentId);
-  }, [saveScrollPosition]);
+
+    // Sync URL with active agent
+    const tid = resolvedThreadIdRef.current || threadId;
+    if (newAgentId === 'main') {
+      // Replace: removes the subagent entry so browser back goes to thread gallery
+      navigate(`/chat/t/${tid}`, { replace: true, state: { workspaceId } });
+    } else {
+      const taskSlug = newAgentId.replace('task:', '');
+      // Push from main → subagent (back returns to main)
+      // Replace from subagent → subagent (back still returns to main)
+      navigate(`/chat/t/${tid}/${taskSlug}`, { replace: !wasMain, state: { workspaceId } });
+    }
+  }, [saveScrollPosition, threadId, workspaceId, navigate]);
 
   // Restore scroll position after the new tab mounts
   useEffect(() => {
@@ -524,6 +544,8 @@ function ChatView({ workspaceId, threadId, onBack, workspaceName: initialWorkspa
   // Ref to avoid stale closure in unmount cleanup
   const currentThreadIdRef = useRef(currentThreadId);
   currentThreadIdRef.current = currentThreadId;
+  // Keep resolvedThreadIdRef in sync with the resolved thread ID from useChatMessages
+  resolvedThreadIdRef.current = currentThreadId || threadId;
 
   // Save chat session on unmount for cross-tab restoration.
   // If user clicked back, save workspace-level only (no threadId) so tab
@@ -1136,14 +1158,44 @@ function ChatView({ workspaceId, threadId, onBack, workspaceName: initialWorkspa
     }
   }, [switchAgent]);
 
+  // Sync activeAgentId with URL-derived initialTaskId (browser back/forward)
+  useEffect(() => {
+    const urlAgentId = initialTaskId ? `task:${initialTaskId}` : 'main';
+    if (urlAgentId !== activeAgentIdRef.current) {
+      saveScrollPosition();
+      if (scrollPositionsRef.current[urlAgentId] != null) {
+        skipSubagentAutoScrollRef.current = true;
+      }
+      setActiveAgentId(urlAgentId);
+    }
+  }, [initialTaskId, saveScrollPosition]);
+
+  // Refresh subagent card data on deep link / browser forward (guarded to run once per taskId)
+  const lastRefreshedTaskRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!initialTaskId || isLoadingHistory) {
+      lastRefreshedTaskRef.current = undefined;
+      return;
+    }
+    if (lastRefreshedTaskRef.current === initialTaskId) return;
+    lastRefreshedTaskRef.current = initialTaskId;
+    refreshSubagentCard(`task:${initialTaskId}`);
+  }, [initialTaskId, isLoadingHistory, refreshSubagentCard]);
+
   // Update URL when thread ID changes (e.g., when __default__ becomes actual thread ID)
   // This triggers a re-render with the new threadId, which will then load history
   useEffect(() => {
     if (currentThreadId && currentThreadId !== '__default__' && currentThreadId !== threadId && workspaceId) {
       console.log('[ChatView] Thread ID changed from', threadId, 'to', currentThreadId, '- updating URL');
-      // Update URL to reflect the actual thread ID
+      // Update URL to reflect the actual thread ID, preserving any active subagent taskId
       // This will cause ChatAgent to re-render with new threadId prop, triggering history load
-      navigate(`/chat/t/${currentThreadId}`, { replace: true, state: { workspaceId } });
+      const activeTid = activeAgentIdRef.current !== 'main'
+        ? activeAgentIdRef.current.replace('task:', '')
+        : null;
+      const path = activeTid
+        ? `/chat/t/${currentThreadId}/${activeTid}`
+        : `/chat/t/${currentThreadId}`;
+      navigate(path, { replace: true, state: { workspaceId } });
       // Invalidate thread cache so navigation panel picks up the new thread
       queryClient.invalidateQueries({ queryKey: queryKeys.threads.byWorkspace(workspaceId) });
     }
@@ -1330,10 +1382,17 @@ function ChatView({ workspaceId, threadId, onBack, workspaceName: initialWorkspa
               </button>
             )}
             <button
-              onClick={() => { intentionalExitRef.current = true; onBack(); }}
+              onClick={() => {
+                if (activeAgentId !== 'main') {
+                  switchAgent('main');
+                } else {
+                  intentionalExitRef.current = true;
+                  onBack();
+                }
+              }}
               className="p-2 rounded-md transition-colors flex-shrink-0"
               style={{ color: 'var(--color-text-primary)' }}
-              title={t('workspace.backToThreads')}
+              title={activeAgentId !== 'main' ? t('chat.backToMain', 'Back to main') : t('workspace.backToThreads')}
               onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--color-border-muted)'; }}
               onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = ''; }}
             >

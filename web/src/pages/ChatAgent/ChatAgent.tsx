@@ -50,7 +50,7 @@ interface ThreadErrorResponse {
  * Uses React Router to determine which view to display.
  */
 function ChatAgent(): React.ReactElement | null {
-  const { workspaceId: urlWorkspaceId, threadId } = useParams<{ workspaceId?: string; threadId?: string }>();
+  const { workspaceId: urlWorkspaceId, threadId, taskId } = useParams<{ workspaceId?: string; threadId?: string; taskId?: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
@@ -255,7 +255,7 @@ function ChatAgent(): React.ReactElement | null {
     } else {
       const cached = queryClient.getQueryData(queryKeys.workspaces.detail(workspaceId)) as Record<string, unknown> | undefined;
       const cachedWorkspaceName = (cached?.name as string) || state?.workspaceName || '';
-      content = <ChatView key={chatViewKeyRef.current} workspaceId={workspaceId} threadId={threadId} onBack={handleBackToThreadGallery} workspaceName={cachedWorkspaceName} />;
+      content = <ChatView key={chatViewKeyRef.current} workspaceId={workspaceId} threadId={threadId} initialTaskId={taskId} onBack={handleBackToThreadGallery} workspaceName={cachedWorkspaceName} />;
     }
   } else if (urlWorkspaceId) {
     content = (
