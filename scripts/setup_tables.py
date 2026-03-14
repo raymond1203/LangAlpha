@@ -712,6 +712,7 @@ async def setup_tables_async():
                             completed_at        TIMESTAMPTZ,
                             error_message       TEXT,
                             server_id           VARCHAR(100),
+                            delivery_result     JSONB,
                             created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
                         );
                     """)

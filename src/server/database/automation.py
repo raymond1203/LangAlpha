@@ -384,6 +384,7 @@ async def update_execution_status(
     error_message: Optional[str] = None,
     started_at: Optional[datetime] = None,
     completed_at: Optional[datetime] = None,
+    delivery_result: Optional[list] = None,
 ) -> None:
     """Update an execution record's status and optional fields."""
     builder = UpdateQueryBuilder()
@@ -392,6 +393,7 @@ async def update_execution_status(
     builder.add_field("error_message", error_message)
     builder.add_field("started_at", started_at)
     builder.add_field("completed_at", completed_at)
+    builder.add_field("delivery_result", delivery_result, is_json=True)
 
     query, params = builder.build(
         table="automation_executions",

@@ -13,6 +13,19 @@ from pydantic import BaseModel, Field, field_validator
 
 
 # =============================================================================
+# Delivery Config
+# =============================================================================
+
+
+class DeliveryConfig(BaseModel):
+    """Delivery configuration — which methods to use for result delivery."""
+    methods: List[str] = Field(
+        default_factory=list,
+        description="Delivery methods to enable: 'slack', etc."
+    )
+
+
+# =============================================================================
 # Request Models
 # =============================================================================
 
@@ -75,8 +88,9 @@ class AutomationCreate(BaseModel):
     )
 
     # Future extensibility
-    delivery_config: Optional[Dict[str, Any]] = Field(
-        default=None, description="Future: delivery method config"
+    delivery_config: Optional[DeliveryConfig] = Field(
+        default=None,
+        description="Delivery configuration: { methods: ['slack', ...] }",
     )
     metadata: Optional[Dict[str, Any]] = Field(
         default=None, description="Arbitrary metadata"
@@ -116,7 +130,10 @@ class AutomationUpdate(BaseModel):
     max_failures: Optional[int] = Field(None, ge=1, le=100)
 
     # Future
-    delivery_config: Optional[Dict[str, Any]] = None
+    delivery_config: Optional[DeliveryConfig] = Field(
+        default=None,
+        description="Delivery configuration: { methods: ['slack', ...] }",
+    )
     metadata: Optional[Dict[str, Any]] = None
 
 
@@ -154,7 +171,7 @@ class AutomationResponse(BaseModel):
     max_failures: int
     failure_count: int
 
-    delivery_config: Optional[Dict[str, Any]] = None
+    delivery_config: Optional[DeliveryConfig] = None
     metadata: Optional[Dict[str, Any]] = None
 
     created_at: datetime
@@ -182,6 +199,7 @@ class AutomationExecutionResponse(BaseModel):
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
     server_id: Optional[str] = None
+    delivery_result: Optional[List[Dict[str, Any]]] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

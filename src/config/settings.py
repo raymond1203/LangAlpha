@@ -225,6 +225,10 @@ GINLIX_DATA_WS_URL: str = os.getenv("GINLIX_DATA_WS_URL", "") or (
 )
 GINLIX_DATA_ENABLED: bool = bool(GINLIX_DATA_URL)
 
+# Automation webhook delivery (ginlix-integration)
+AUTOMATION_WEBHOOK_URL: str = os.getenv("AUTOMATION_WEBHOOK_URL", "")
+AUTOMATION_WEBHOOK_SECRET: str = os.getenv("AUTOMATION_WEBHOOK_SECRET", "")
+
 # =============================================================================
 # Feature Flags
 # =============================================================================

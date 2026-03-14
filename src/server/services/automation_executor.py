@@ -14,6 +14,7 @@ from uuid import uuid4
 from src.server.database import automation as auto_db
 from src.server.database.workspace import get_or_create_flash_workspace
 from src.server.models.chat import ChatMessage, ChatRequest
+from src.server.services.webhook_client import WebhookClient
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,24 @@ class AutomationExecutor:
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
+
+    async def _fire_webhook(
+        self,
+        event: str,
+        automation: Dict[str, Any],
+        execution_id: str,
+        thread_id: str | None,
+        workspace_id: str | None,
+        error: str | None = None,
+    ) -> list[dict] | None:
+        """Fire webhook event. Never raises. Returns per-method results."""
+        try:
+            return await WebhookClient().fire_event(
+                event, automation, execution_id, thread_id, workspace_id, error=error
+            )
+        except Exception as e:
+            logger.error(f"[AUTOMATION_EXEC] Webhook fire failed: {e}")
+            return None
 
     async def execute(
         self,
@@ -132,6 +151,9 @@ class AutomationExecutor:
                     workspace_id=workspace_id,
                 )
 
+            # Notify webhooks: started
+            await self._fire_webhook("automation.started", automation, execution_id, thread_id, workspace_id)
+
             # Drain the async generator — no HTTP client to consume SSE
             event_count = 0
             async for _event in generator:
@@ -152,6 +174,13 @@ class AutomationExecutor:
 
             # Reset failure count on success
             await auto_db.reset_failure_count(automation_id)
+
+            # Notify webhooks: completed
+            delivery_result = await self._fire_webhook("automation.completed", automation, execution_id, thread_id, workspace_id)
+            if delivery_result is not None:
+                await auto_db.update_execution_status(
+                    execution_id, "completed", delivery_result=delivery_result,
+                )
 
             # Mark one-time automations as completed
             if automation["trigger_type"] == "once":
@@ -177,3 +206,12 @@ class AutomationExecutor:
 
             # Increment failure count (may auto-disable)
             await auto_db.increment_failure_count(automation_id)
+
+            # Notify webhooks: failed
+            delivery_result = await self._fire_webhook(
+                "automation.failed", automation, execution_id, thread_id, workspace_id, error=error_msg
+            )
+            if delivery_result is not None:
+                await auto_db.update_execution_status(
+                    execution_id, "failed", delivery_result=delivery_result,
+                )
