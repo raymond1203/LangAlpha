@@ -254,7 +254,7 @@ async def trigger_automation(
     if not current:
         raise ValueError("Automation not found")
 
-    if current["status"] not in ("active", "paused"):
+    if current["status"] not in ("active", "paused", "completed"):
         raise ValueError(
             f"Cannot trigger automation in '{current['status']}' status"
         )
