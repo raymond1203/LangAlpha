@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { searchStocks } from '@/lib/marketUtils';
 import { useNavigate } from 'react-router-dom';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import './DashboardHeader.css';
 
 interface StockResult {
@@ -14,10 +15,12 @@ interface StockResult {
 
 interface DashboardHeaderProps {
   onStockSearch?: (symbol: string, stock: StockResult | null) => void;
+  onScrollToTop?: () => void;
 }
 
-const DashboardHeader: React.FC<DashboardHeaderProps> = ({ onStockSearch }) => {
+const DashboardHeader: React.FC<DashboardHeaderProps> = ({ onStockSearch, onScrollToTop }) => {
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const { t } = useTranslation();
   const [showHelpPopover, setShowHelpPopover] = useState(false);
   const helpRef = useRef<HTMLDivElement>(null);
@@ -138,6 +141,12 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({ onStockSearch }) => {
           borderBottom: '1px solid var(--color-border-muted)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
+          cursor: isMobile ? 'pointer' : undefined,
+        }}
+        onClick={(e) => {
+          if (!isMobile) return;
+          if ((e.target as HTMLElement).closest('button, a, input, form')) return;
+          onScrollToTop?.();
         }}
       >
         {/* Search */}

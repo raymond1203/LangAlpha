@@ -1054,6 +1054,15 @@ function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName:
     setNavPanelVisible(false);
   }, []);
 
+  // Mobile: tap top bar to scroll chat to top
+  const handleTopBarTap = useCallback((e: React.MouseEvent) => {
+    if (!isMobile) return;
+    if ((e.target as HTMLElement).closest('button, a')) return;
+    const ref = activeAgentId === 'main' ? scrollAreaRef : subagentScrollAreaRef;
+    const container = getScrollContainer(ref);
+    container?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [isMobile, activeAgentId, getScrollContainer]);
+
   // Expand button explicitly unlocks and opens the panel
   const handleNavExpand = useCallback(() => {
     navLockedRef.current = false;
@@ -1369,7 +1378,7 @@ function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName:
       {/* Left Side: Topbar + Sidebar + Chat Window */}
       <div className="flex flex-col flex-1 min-w-0">
         {/* Top bar */}
-        <div className="flex items-center justify-between px-4 py-2 border-b min-w-0 flex-shrink-0" style={{ borderColor: 'var(--color-border-muted)' }}>
+        <div className="flex items-center justify-between px-4 py-2 border-b min-w-0 flex-shrink-0" style={{ borderColor: 'var(--color-border-muted)', cursor: isMobile ? 'pointer' : undefined }} onClick={handleTopBarTap}>
           <div className="flex items-center gap-4 min-w-0 flex-shrink">
             {isMobile && (
               <button

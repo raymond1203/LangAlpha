@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ListFilter } from 'lucide-react';
 import { MobileBottomSheet } from '../../components/ui/mobile-bottom-sheet';
@@ -34,6 +34,10 @@ interface DeleteConfirmState {
 function Dashboard() {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
+  const mainRef = useRef<HTMLElement>(null);
+  const handleScrollToTop = useCallback(() => {
+    mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
   // News modal state
   const [selectedNewsId, setSelectedNewsId] = useState<string | null>(null);
 
@@ -100,8 +104,8 @@ function Dashboard() {
   return (
     <div className="dashboard-container min-h-screen">
       {/* Main content area */}
-      <main className="flex-1 flex flex-col min-h-0 overflow-y-auto overflow-x-hidden">
-        <DashboardHeader />
+      <main ref={mainRef} className="flex-1 flex flex-col min-h-0 overflow-y-auto overflow-x-hidden">
+        <DashboardHeader onScrollToTop={handleScrollToTop} />
 
         <div className="mx-auto max-w-[1920px] w-full p-3 sm:p-6 pb-32">
           {/* Market Overview heading + mobile watchlist tab */}
