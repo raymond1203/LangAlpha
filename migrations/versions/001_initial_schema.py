@@ -552,7 +552,9 @@ def upgrade() -> None:
         WHERE expires_at IS NOT NULL
     """)
 
-    # Track migrations so LangGraph's store.setup() knows they're applied
+    # Track migrations so LangGraph's store.setup() knows they're applied.
+    # Versions 0-3 match langgraph-checkpoint-postgres 3.0.4 store schema.
+    # If LangGraph adds new store migrations, store.setup() will apply only the new ones.
     op.execute("""
         CREATE TABLE IF NOT EXISTS store_migrations (
             v INTEGER PRIMARY KEY
