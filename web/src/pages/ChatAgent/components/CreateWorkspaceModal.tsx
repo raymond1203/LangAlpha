@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, Upload, FileText, CheckCircle2, Loader2, Circle, AlertCircle } from 'lucide-react';
 import { Input } from '../../../components/ui/input';
@@ -42,6 +42,15 @@ type DescMode = 'agent' | 'manual';
  */
 function CreateWorkspaceModal({ isOpen, onClose, onCreate, onComplete }: CreateWorkspaceModalProps) {
   const { t } = useTranslation();
+
+  // Lock body scroll while modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [isOpen]);
+
   // Form state
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');

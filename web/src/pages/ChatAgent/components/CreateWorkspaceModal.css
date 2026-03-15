@@ -3,7 +3,7 @@
 .cwm-overlay {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 1010;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -16,6 +16,8 @@
   max-width: 512px;
   max-height: 90dvh;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
   border-radius: 16px 16px 0 0;
   padding: 24px;
   background-color: var(--color-bg-elevated);
