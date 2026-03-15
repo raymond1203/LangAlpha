@@ -52,6 +52,7 @@ Thumbs.db
 
 # Node
 node_modules/
+.pnpm-store/
 
 # Testing
 .pytest_cache/

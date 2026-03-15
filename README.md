@@ -279,84 +279,118 @@ The web UI is more than a chat interface — it's a full research workbench:
 
 ## Getting Started
 
-### Prerequisites
+### Quick Start (Docker)
+
+The fastest way to get LangAlpha running — just Docker and an API key:
+
+```bash
+git clone https://github.com/ginlix-ai/langalpha.git
+cd langalpha
+cp .env.example .env
+```
+
+Edit `.env` and set the required keys:
+
+- `DAYTONA_API_KEY` — cloud sandboxes for code execution ([daytona.io](https://www.daytona.io/))
+- `FMP_API_KEY` — financial data for tools and MCP servers ([free tier available](https://site.financialmodelingprep.com/))
+
+For LLM access, either set an API key (e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY`) or connect your existing AI subscription (ChatGPT, Claude) via OAuth in the UI.
+
+```bash
+docker compose up
+```
+
+This starts PostgreSQL, Redis, the backend, and the frontend. Database tables are initialized automatically on first run.
+
+- **Frontend:** http://localhost:5173
+- **Backend API:** http://localhost:8000 (interactive docs at `/docs`)
+- **Verify:** `curl http://localhost:8000/health`
+
+> [!TIP]
+> **Optional keys for more capabilities:**
+> - `SERPER_API_KEY` or `TAVILY_API_KEY` — web search
+> - `LANGSMITH_API_KEY` — tracing and observability
+
+Run `make help` to see all available commands.
+
+### Manual Setup (Advanced)
+
+If you prefer running services directly on your machine instead of Docker:
+
+<details>
+<summary>Expand manual setup instructions</summary>
+
+#### Prerequisites
 
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/) package manager
 - Docker (for PostgreSQL and Redis)
-- Node.js 24+ and pnpm (optional, for the web UI)
+- Node.js 22+ and pnpm (for the web UI)
 
-### 1. Clone and install
+#### 1. Clone and install
 
 ```bash
 git clone https://github.com/ginlix-ai/langalpha.git
 cd langalpha
 
-# Install Python dependencies
-uv sync
+# Install Python dependencies (includes dev + test deps)
+uv sync --group dev --extra test
+
+# Install frontend dependencies
+cd web && pnpm install && cd ..
 
 # Optional: install browser dependencies for web crawling
 source .venv/bin/activate
 crawl4ai-setup
 ```
 
-### 2. Configure environment
-
-Copy `.env.example` to `.env` and fill in your keys:
+#### 2. Configure environment
 
 ```bash
 cp .env.example .env
 ```
 
-**Required:**
+Edit `.env` — set `DAYTONA_API_KEY` and `FMP_API_KEY` at minimum, plus an LLM API key (or use OAuth). Database and Redis defaults work with `make setup-db`.
 
-| Variable | Purpose |
-|----------|---------|
-| `GEMINI_API_KEY` | Gemini API key |
-| `DAYTONA_API_KEY` | Cloud sandbox access ([daytona.io](https://www.daytona.io/)) |
-| `FMP_API_KEY` | Financial data ([financialmodelingprep.com](https://site.financialmodelingprep.com/)) |
-
-**Database** (defaults work with `make setup-db`):
-
-| Variable | Default |
-|----------|---------|
-| `DB_HOST` | `localhost` |
-| `DB_PORT` | `5432` |
-| `DB_USER` | `ptc_admin` |
-| `REDIS_URL` | `redis://localhost:6379/0` |
-
-**Optional:**  `SERPER_API_KEY`, `TAVILY_API_KEY`, `LANGSMITH_API_KEY`
-
-### 3. Start infrastructure
+#### 3. Start infrastructure
 
 ```bash
 make setup-db
 ```
 
-This starts PostgreSQL and Redis in Docker and initializes the database tables.
+This starts PostgreSQL and Redis in Docker containers and initializes the database tables.
 
-### 4. Run the backend
+#### 4. Run the backend
 
 ```bash
-uv run server.py
+make dev
 ```
 
 API available at **http://localhost:8000** (interactive docs at `/docs`).
 
-### 5. Run the frontend (optional)
+#### 5. Run the frontend
 
 ```bash
-cd web && pnpm install && pnpm dev
+make dev-web
 ```
 
-Open **http://localhost:5173** for the full workspace UI: Chat Agent, Dashboard, and Market View.
+Open **http://localhost:5173** for the full workspace UI.
 
-### 6. Or use the CLI
+#### 6. Or use the CLI
 
 ```bash
 ptc-agent              # interactive session
 ptc-agent --plan-mode  # with plan approval
 ```
+
+#### Verify your setup
+
+```bash
+curl http://localhost:8000/health
+# → {"status": "healthy"}
+```
+
+</details>
 
 ## Documentation
 

@@ -1,0 +1,44 @@
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1
+
+# Install system deps (curl for healthcheck, postgresql-client for DB init)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+WORKDIR /app
+
+# Copy dependency files first for layer caching
+COPY pyproject.toml uv.lock README.md ./
+COPY libs/ptc-cli/ libs/ptc-cli/
+
+# Install dependencies (frozen = use lockfile exactly)
+RUN uv sync --frozen --no-dev
+
+# Install Chromium for crawl4ai web crawling (--with-deps pulls OS libraries)
+RUN uv run playwright install --with-deps chromium \
+    && uv run patchright install --with-deps chromium
+
+# Copy application source (will be overridden by volume mounts in dev)
+COPY src/ src/
+COPY server.py .
+COPY scripts/ scripts/
+COPY config.yaml .
+COPY agent_config.yaml .
+COPY alembic.ini .
+COPY migrations/ migrations/
+COPY mcp_servers/ mcp_servers/
+COPY skills/ skills/
+
+# DB init + server start entrypoint
+COPY scripts/docker_entrypoint.sh /docker_entrypoint.sh
+RUN chmod +x /docker_entrypoint.sh
+
+EXPOSE 8000
+
+ENTRYPOINT ["/docker_entrypoint.sh"]
