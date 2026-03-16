@@ -37,10 +37,10 @@ from ptc_agent.config.agent import (
 from ptc_agent.config.core import CoreConfig, create_default_security_config
 from ptc_agent.config.utils import (
     configure_structlog,
-    create_daytona_config,
     create_filesystem_config,
     create_logging_config,
     create_mcp_config,
+    create_sandbox_config,
     load_dotenv_async,
     validate_required_sections,
 )
@@ -185,17 +185,24 @@ async def load_core_from_files(
         context=context,
     )
 
-    required_sections = ["daytona", "mcp", "logging", "filesystem"]
+    # Accept either "sandbox" or "daytona" as the sandbox config key
+    has_sandbox_key = "sandbox" in config_data or "daytona" in config_data
+    required_sections = ["mcp", "logging", "filesystem"]
     validate_required_sections(config_data, required_sections)
+    if not has_sandbox_key:
+        raise ValueError(
+            "Missing required sections in agent_config.yaml: sandbox (or daytona)\n"
+            "Please add these sections to your agent_config.yaml file."
+        )
 
-    daytona_config = create_daytona_config(config_data["daytona"])
+    sandbox_config = create_sandbox_config(config_data)
     security_config = create_default_security_config()
     mcp_config = create_mcp_config(config_data["mcp"])
     logging_config = create_logging_config(config_data["logging"])
     filesystem_config = create_filesystem_config(config_data["filesystem"])
 
     core_config = CoreConfig(
-        daytona=daytona_config,
+        sandbox=sandbox_config,
         security=security_config,
         mcp=mcp_config,
         logging=logging_config,
@@ -225,8 +232,15 @@ def load_from_dict(
         ValueError: If required configuration is missing or invalid
     """
     # Validate that all required sections exist
-    required_sections = ["llm", "daytona", "mcp", "logging", "filesystem"]
+    # Accept either "sandbox" or "daytona" as the sandbox config key
+    has_sandbox_key = "sandbox" in config_data or "daytona" in config_data
+    required_sections = ["llm", "mcp", "logging", "filesystem"]
     validate_required_sections(config_data, required_sections)
+    if not has_sandbox_key:
+        raise ValueError(
+            "Missing required sections in agent_config.yaml: sandbox (or daytona)\n"
+            "Please add these sections to your agent_config.yaml file."
+        )
 
     # Load LLM configuration - extract name and flash LLM
     llm_data = config_data["llm"]
@@ -262,7 +276,7 @@ def load_from_dict(
     )
 
     # Load configurations using shared factory functions
-    daytona_config = create_daytona_config(config_data["daytona"])
+    sandbox_config = create_sandbox_config(config_data)
     security_config = create_default_security_config()
     mcp_config = create_mcp_config(config_data["mcp"])
     logging_config = create_logging_config(config_data["logging"])
@@ -334,7 +348,7 @@ def load_from_dict(
         llm=llm_config,
         security=security_config,
         logging=logging_config,
-        daytona=daytona_config,
+        sandbox=sandbox_config,
         mcp=mcp_config,
         filesystem=filesystem_config,
         skills=skills_config,
@@ -381,6 +395,8 @@ daytona:
   # api_key: set DAYTONA_API_KEY in environment or .env file
   python_version: "3.12"
   auto_stop_interval: 3600  # 1 hour
+  auto_archive_interval: 86400  # 24 hours
+  auto_delete_interval: 604800  # 7 days
 
 # MCP Servers (optional)
 # ----------------------

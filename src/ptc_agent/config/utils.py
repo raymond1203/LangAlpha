@@ -19,6 +19,7 @@ if TYPE_CHECKING:
         FilesystemConfig,
         LoggingConfig,
         MCPConfig,
+        SandboxConfig,
     )
 
 
@@ -122,6 +123,56 @@ def create_daytona_config(data: dict[str, Any]) -> DaytonaConfig:
         snapshot_enabled=data.get("snapshot_enabled", True),
         snapshot_name=data.get("snapshot_name"),
         snapshot_auto_create=data.get("snapshot_auto_create", True),
+    )
+
+
+def create_sandbox_config(config_data: dict[str, Any]) -> SandboxConfig:
+    """Create SandboxConfig from top-level config data.
+
+    Supports both new "sandbox:" key and legacy "daytona:" key for backward compat.
+    SANDBOX_PROVIDER env var can override the provider.
+
+    Args:
+        config_data: Top-level parsed config dictionary (entire agent_config.yaml)
+
+    Returns:
+        Configured SandboxConfig object
+    """
+    import os
+
+    from ptc_agent.config.core import DaytonaConfig, DockerConfig, SandboxConfig
+
+    if "sandbox" in config_data:
+        sandbox_data = config_data["sandbox"]
+        provider = sandbox_data.get("provider", "daytona")
+        daytona_cfg = (
+            create_daytona_config(sandbox_data["daytona"])
+            if "daytona" in sandbox_data
+            else DaytonaConfig()
+        )
+        docker_cfg = (
+            DockerConfig(**sandbox_data["docker"])
+            if "docker" in sandbox_data
+            else DockerConfig()
+        )
+    elif "daytona" in config_data:
+        # Backward compat: top-level "daytona:" key
+        provider = "daytona"
+        daytona_cfg = create_daytona_config(config_data["daytona"])
+        docker_cfg = DockerConfig()
+    else:
+        raise ValueError(
+            "Missing required section: either 'sandbox' or 'daytona' must be present "
+            "in agent_config.yaml"
+        )
+
+    # Allow SANDBOX_PROVIDER env var to override
+    provider = os.getenv("SANDBOX_PROVIDER", provider)
+
+    return SandboxConfig(
+        provider=provider,
+        daytona=daytona_cfg,
+        docker=docker_cfg,
     )
 
 

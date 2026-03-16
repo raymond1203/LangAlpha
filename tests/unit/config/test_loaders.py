@@ -115,11 +115,18 @@ class TestLoadFromDictLLM:
 
 
 class TestLoadFromDictRequiredSections:
-    @pytest.mark.parametrize("missing_key", ["llm", "daytona", "mcp", "logging", "filesystem"])
+    @pytest.mark.parametrize("missing_key", ["llm", "mcp", "logging", "filesystem"])
     def test_missing_required_section(self, missing_key):
         data = _full_config_dict()
         del data[missing_key]
         with pytest.raises(ValueError, match=f"Missing required sections.*{missing_key}"):
+            load_from_dict(data)
+
+    def test_missing_sandbox_and_daytona(self):
+        """Missing both 'sandbox' and 'daytona' keys should raise."""
+        data = _full_config_dict()
+        del data["daytona"]
+        with pytest.raises(ValueError, match="sandbox.*daytona"):
             load_from_dict(data)
 
 

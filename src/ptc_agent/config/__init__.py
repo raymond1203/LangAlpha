@@ -35,10 +35,12 @@ from ptc_agent.config.agent import (
 from ptc_agent.config.core import (
     CoreConfig,
     DaytonaConfig,
+    DockerConfig,
     FilesystemConfig,
     LoggingConfig,
     MCPConfig,
     MCPServerConfig,
+    SandboxConfig,
     SecurityConfig,
 )
 
@@ -73,12 +75,14 @@ __all__ = [
     # Core data classes
     "CoreConfig",
     "DaytonaConfig",
+    "DockerConfig",
     "FilesystemConfig",
     "LLMConfig",
     "LLMDefinition",
     "LoggingConfig",
     "MCPConfig",
     "MCPServerConfig",
+    "SandboxConfig",
     "SecurityConfig",
     "SummarizationConfig",
     # Utilities

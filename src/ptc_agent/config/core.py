@@ -127,6 +127,24 @@ def validate_daytona_api_key(daytona: DaytonaConfig) -> None:
         )
 
 
+class DockerConfig(BaseModel):
+    """Placeholder for follow-up Docker provider task."""
+
+    image: str = "langalpha-sandbox:latest"
+    working_dir: str = "/home/daytona"
+    memory_limit: str = "4g"
+    cpu_count: float = 2.0
+    dev_mode: bool = False
+
+
+class SandboxConfig(BaseModel):
+    """Provider-agnostic sandbox configuration wrapper."""
+
+    provider: Literal["daytona", "docker"] = "daytona"
+    daytona: DaytonaConfig = Field(default_factory=DaytonaConfig)
+    docker: DockerConfig = Field(default_factory=DockerConfig)
+
+
 class CoreConfig(BaseModel):
     """Core infrastructure configuration.
 
@@ -137,12 +155,17 @@ class CoreConfig(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     # Sub-configurations
-    daytona: DaytonaConfig
+    sandbox: SandboxConfig
     security: SecurityConfig
     mcp: MCPConfig
     logging: LoggingConfig
     filesystem: FilesystemConfig
     config_file_dir: Path | None = Field(default=None, exclude=True)
+
+    @property
+    def daytona(self) -> DaytonaConfig:
+        """Backward-compat shim: config.daytona -> config.sandbox.daytona."""
+        return self.sandbox.daytona
 
     def validate_api_keys(self) -> None:
         """Validate that required API keys are present.
@@ -150,7 +173,8 @@ class CoreConfig(BaseModel):
         Raises:
             ValueError: If required API keys are missing
         """
-        validate_daytona_api_key(self.daytona)
+        if self.sandbox.provider == "daytona":
+            validate_daytona_api_key(self.sandbox.daytona)
 
 
 def create_default_security_config() -> SecurityConfig:

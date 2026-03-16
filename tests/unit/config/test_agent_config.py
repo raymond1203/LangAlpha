@@ -35,6 +35,7 @@ from ptc_agent.config.core import (
     LoggingConfig,
     MCPConfig,
     MCPServerConfig,
+    SandboxConfig,
     SecurityConfig,
 )
 
@@ -50,7 +51,7 @@ def _minimal_config(**overrides) -> AgentConfig:
         llm=LLMConfig(name="test-model"),
         security=SecurityConfig(),
         logging=LoggingConfig(),
-        daytona=DaytonaConfig(api_key="test-key"),
+        sandbox=SandboxConfig(daytona=DaytonaConfig(api_key="test-key")),
         mcp=MCPConfig(),
         filesystem=FilesystemConfig(),
     )
@@ -169,9 +170,18 @@ class TestAgentConfigValidateApiKeys:
         config.validate_api_keys()  # Should not raise
 
     def test_missing_daytona_key(self):
-        config = _minimal_config(daytona=DaytonaConfig(api_key=""))
+        config = _minimal_config(
+            sandbox=SandboxConfig(daytona=DaytonaConfig(api_key=""))
+        )
         with pytest.raises(ValueError, match="DAYTONA_API_KEY"):
             config.validate_api_keys()
+
+    def test_docker_provider_skips_daytona_key(self):
+        """Docker provider should not require DAYTONA_API_KEY."""
+        config = _minimal_config(
+            sandbox=SandboxConfig(provider="docker", daytona=DaytonaConfig(api_key=""))
+        )
+        config.validate_api_keys()  # Should not raise
 
 
 # ---------------------------------------------------------------------------

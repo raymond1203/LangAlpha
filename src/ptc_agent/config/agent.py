@@ -19,6 +19,7 @@ from ptc_agent.config.core import (
     LoggingConfig,
     MCPConfig,
     MCPServerConfig,
+    SandboxConfig,
     SecurityConfig,
     create_default_security_config,
     validate_daytona_api_key,
@@ -156,7 +157,7 @@ class AgentConfig(BaseModel):
     logging: LoggingConfig
 
     # Reference to core config (sandbox, MCP, filesystem)
-    daytona: DaytonaConfig
+    sandbox: SandboxConfig
     mcp: MCPConfig
     filesystem: FilesystemConfig
 
@@ -187,6 +188,11 @@ class AgentConfig(BaseModel):
     # Note: deep-agent automatically enables middlewares (TodoList, Summarization, etc.)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    @property
+    def daytona(self) -> DaytonaConfig:
+        """Backward-compat shim: config.daytona -> config.sandbox.daytona."""
+        return self.sandbox.daytona
 
     # Runtime data (not from config files)
     llm_definition: LLMDefinition | None = Field(default=None, exclude=True)
@@ -333,10 +339,16 @@ class AgentConfig(BaseModel):
             ),
         )
 
+        # Wrap DaytonaConfig in SandboxConfig
+        sandbox_config = SandboxConfig(
+            provider="daytona",
+            daytona=daytona_config,
+        )
+
         # Create the config
         config = cls(
             llm=llm_config,
-            daytona=daytona_config,
+            sandbox=sandbox_config,
             security=security_config,
             mcp=mcp_config,
             logging=logging_config,
@@ -367,7 +379,8 @@ class AgentConfig(BaseModel):
         Raises:
             ValueError: If required API keys are missing
         """
-        validate_daytona_api_key(self.daytona)
+        if self.sandbox.provider == "daytona":
+            validate_daytona_api_key(self.sandbox.daytona)
 
     def get_llm_client(self) -> "BaseChatModel":
         """Return the LLM client instance.
@@ -397,7 +410,7 @@ class AgentConfig(BaseModel):
             CoreConfig instance with sandbox/MCP settings
         """
         core_config = CoreConfig(
-            daytona=self.daytona,
+            sandbox=self.sandbox,
             security=self.security,
             mcp=self.mcp,
             logging=self.logging,
