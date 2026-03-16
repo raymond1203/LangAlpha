@@ -9,7 +9,7 @@ This module defines pure data classes for core configuration:
 """
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -102,15 +102,23 @@ class LoggingConfig(BaseModel):
 class FilesystemConfig(BaseModel):
     """Filesystem access configuration for first-class filesystem tools.
 
-    Defaults to the standard Daytona sandbox directories.
+    ``allowed_directories`` and ``denied_directories`` are derived from
+    ``working_directory`` by default so you only need to set one value.
 
     Note: this validation is enforced for first-class filesystem tools only.
     """
 
-    working_directory: str = "/home/daytona"
-    allowed_directories: list[str] = Field(default_factory=lambda: ["/home/daytona", "/tmp"])
-    denied_directories: list[str] = Field(default_factory=list)
+    working_directory: str = "/home/workspace"
+    allowed_directories: list[str] | None = None
+    denied_directories: list[str] | None = None
     enable_path_validation: bool = True
+
+    def model_post_init(self, __context: Any) -> None:
+        """Derive allowed/denied directories from working_directory when not set."""
+        if self.allowed_directories is None:
+            self.allowed_directories = [self.working_directory, "/tmp"]
+        if self.denied_directories is None:
+            self.denied_directories = [f"{self.working_directory}/_internal"]
 
 
 def validate_daytona_api_key(daytona: DaytonaConfig) -> None:
@@ -128,19 +136,51 @@ def validate_daytona_api_key(daytona: DaytonaConfig) -> None:
 
 
 class DockerConfig(BaseModel):
-    """Placeholder for follow-up Docker provider task."""
+    """Docker sandbox provider configuration.
+
+    Mount options (combined freely):
+
+    * **dev_mode + host_work_dir** — bind-mount a host directory as the
+      sandbox working directory.  Files appear on both sides instantly.
+    * **volumes** — arbitrary extra mounts in Docker bind format
+      (``"host_path:container_path[:ro]"``).  Useful for datasets, models,
+      or credentials that should be available inside the sandbox.
+
+    Examples::
+
+        # Dev mode — edit files on host, see changes in sandbox
+        docker:
+          dev_mode: true
+          host_work_dir: "/Users/me/project/sandbox-work"
+
+        # Extra read-only data mount
+        docker:
+          volumes:
+            - "/data/datasets:/mnt/datasets:ro"
+
+        # Both
+        docker:
+          dev_mode: true
+          host_work_dir: "/Users/me/work"
+          volumes:
+            - "/data/models:/mnt/models:ro"
+            - "/secrets/keys:/run/secrets:ro"
+    """
 
     image: str = "langalpha-sandbox:latest"
-    working_dir: str = "/home/daytona"
+    working_dir: str = "/home/workspace"  # fallback; filesystem.working_directory is authoritative
     memory_limit: str = "4g"
     cpu_count: float = 2.0
     dev_mode: bool = False
+    host_work_dir: str | None = None
+    volumes: list[str] = Field(default_factory=list)
+    network_mode: str = "bridge"
 
 
 class SandboxConfig(BaseModel):
     """Provider-agnostic sandbox configuration wrapper."""
 
-    provider: Literal["daytona", "docker"] = "daytona"
+    provider: Literal["daytona", "docker", "memory"] = "daytona"
     daytona: DaytonaConfig = Field(default_factory=DaytonaConfig)
     docker: DockerConfig = Field(default_factory=DockerConfig)
 

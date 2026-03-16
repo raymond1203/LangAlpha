@@ -199,6 +199,7 @@ async def load_core_from_files(
     security_config = create_default_security_config()
     mcp_config = create_mcp_config(config_data["mcp"])
     logging_config = create_logging_config(config_data["logging"])
+
     filesystem_config = create_filesystem_config(config_data["filesystem"])
 
     core_config = CoreConfig(
@@ -280,6 +281,7 @@ def load_from_dict(
     security_config = create_default_security_config()
     mcp_config = create_mcp_config(config_data["mcp"])
     logging_config = create_logging_config(config_data["logging"])
+
     filesystem_config = create_filesystem_config(config_data["filesystem"])
 
     # Configure structlog to respect the log level from config
@@ -325,7 +327,7 @@ def load_from_dict(
         user_skills_dir=skills_data.get("user_skills_dir", "~/.ptc-agent/skills"),
         project_skills_dir=skills_data.get("project_skills_dir", "skills"),
         sandbox_skills_base=skills_data.get(
-            "sandbox_skills_base", "/home/daytona/skills"
+            "sandbox_skills_base", f"{filesystem_config.working_directory}/skills"
         ),
     )
 
@@ -426,14 +428,12 @@ filesystem:
 
   # Working directory for the sandbox - used as the root for virtual path normalization
   # Agent sees virtual paths like /results/file.txt which map to {working_directory}/results/file.txt
-  working_directory: "/home/daytona"
+  working_directory: "/home/workspace"
 
-  allowed_directories:
-    - "/home/daytona"
-    - "/tmp"
-
-  # Denylist takes priority over allowlist (useful for hiding internal SDKs).
-  denied_directories: []
+  # allowed_directories and denied_directories are auto-derived from working_directory:
+  #   allowed: [working_directory, "/tmp"]
+  #   denied:  [working_directory/_internal]
+  # Override only if you need custom values.
 
   enable_path_validation: true
 

@@ -112,14 +112,12 @@ filesystem:
 
   # Working directory for the sandbox - used as the root for virtual path normalization
   # Agent sees virtual paths like /results/file.txt which map to {working_directory}/results/file.txt
-  working_directory: "/home/daytona"
+  working_directory: "/home/workspace"
 
-  allowed_directories:
-    - "/home/daytona"
-    - "/tmp"
-
-  denied_directories:
-    - "/home/daytona/_internal" # Internal SDKs/packages uploaded to sandbox
+  # allowed_directories and denied_directories are auto-derived from working_directory:
+  #   allowed: [working_directory, "/tmp"]
+  #   denied:  [working_directory/_internal]
+  # Override only if you need custom values.
 
   enable_path_validation: true # Validate paths against allowed_directories
 
@@ -178,7 +176,7 @@ summarization:
   truncate_args_max_length: 2000 # Per-arg-value max chars before truncation
 
 # =============================================================================
-# TOOL CONFIGURATION (moved from conf.yaml)
+# TOOL CONFIGURATION
 # =============================================================================
 
 # Search API Configuration

@@ -65,7 +65,7 @@ class SkillsConfig(BaseModel):
     project_skills_dir: str = (
         "skills"  # Project skills directory (relative to project root)
     )
-    sandbox_skills_base: str = "/home/daytona/skills"  # Where skills live in sandbox
+    sandbox_skills_base: str = "/home/workspace/skills"  # Where skills live in sandbox
 
     def local_skill_dirs_with_sandbox(
         self, *, cwd: Path | None = None
@@ -205,6 +205,7 @@ class AgentConfig(BaseModel):
     def create(
         cls,
         llm: "BaseChatModel",
+        provider: str | None = None,
         daytona_api_key: str | None = None,
         daytona_base_url: str = "https://app.daytona.io/api",
         mcp_servers: list[MCPServerConfig] | None = None,
@@ -216,7 +217,7 @@ class AgentConfig(BaseModel):
         Required:
             llm: A LangChain chat model instance (e.g., ChatAnthropic, ChatOpenAI)
 
-        Required Environment Variables:
+        Required Environment Variables (Daytona provider only):
             DAYTONA_API_KEY: Your Daytona API key (get from https://app.daytona.io)
                             Or pass daytona_api_key directly.
 
@@ -237,7 +238,7 @@ class AgentConfig(BaseModel):
 
         Optional - Other:
             log_level: Logging level (default: "INFO")
-            allowed_directories: Sandbox paths (default: ["/home/daytona", "/tmp"])
+            allowed_directories: Sandbox paths (default: ["/home/workspace", "/tmp"])
             subagents: SubagentsConfig or use subagents_enabled for backward compat
             enable_view_image: Enable image viewing (default: True)
             background_auto_wait: Wait for background tasks (default: False)
@@ -271,21 +272,28 @@ class AgentConfig(BaseModel):
         # Create LLM config (placeholder for file-based loading compatibility)
         llm_config = LLMConfig(name="custom")
 
-        # Create Daytona config with defaults
-        api_key = daytona_api_key or os.getenv("DAYTONA_API_KEY", "")
-        if not api_key:
-            raise ValueError("DAYTONA_API_KEY must be provided or set in environment")
-        daytona_config = DaytonaConfig(
-            api_key=api_key,
-            base_url=daytona_base_url,
-            auto_stop_interval=kwargs.pop("auto_stop_interval", 3600),
-            auto_archive_interval=kwargs.pop("auto_archive_interval", 86400),
-            auto_delete_interval=kwargs.pop("auto_delete_interval", 604800),
-            python_version=kwargs.pop("python_version", "3.12"),
-            snapshot_enabled=kwargs.pop("snapshot_enabled", True),
-            snapshot_name=kwargs.pop("snapshot_name", None),
-            snapshot_auto_create=kwargs.pop("snapshot_auto_create", True),
-        )
+        # Resolve provider
+        resolved_provider = provider or os.getenv("SANDBOX_PROVIDER", "daytona")
+
+        # Create Daytona config (required for daytona provider, defaults for others)
+        if resolved_provider == "daytona":
+            api_key = daytona_api_key or os.getenv("DAYTONA_API_KEY", "")
+            if not api_key:
+                raise ValueError("DAYTONA_API_KEY must be provided or set in environment")
+            daytona_config = DaytonaConfig(
+                api_key=api_key,
+                base_url=daytona_base_url,
+                auto_stop_interval=kwargs.pop("auto_stop_interval", 3600),
+                auto_archive_interval=kwargs.pop("auto_archive_interval", 86400),
+                auto_delete_interval=kwargs.pop("auto_delete_interval", 604800),
+                python_version=kwargs.pop("python_version", "3.12"),
+                snapshot_enabled=kwargs.pop("snapshot_enabled", True),
+                snapshot_name=kwargs.pop("snapshot_name", None),
+                snapshot_auto_create=kwargs.pop("snapshot_auto_create", True),
+            )
+        else:
+            # Non-Daytona providers don't need Daytona config; use defaults
+            daytona_config = DaytonaConfig()
 
         # Create Security config with defaults
         security_defaults = create_default_security_config()
@@ -322,26 +330,28 @@ class AgentConfig(BaseModel):
             file=kwargs.pop("log_file", "logs/ptc.log"),
         )
 
-        # Create Filesystem config
+        # Create Filesystem config — allowed/denied dirs derive from working_directory
+        _fs_defaults = FilesystemConfig()
         filesystem_config = FilesystemConfig(
-            working_directory=kwargs.pop("working_directory", "/home/daytona"),
-            allowed_directories=allowed_directories or ["/home/daytona", "/tmp"],
+            working_directory=kwargs.pop("working_directory", _fs_defaults.working_directory),
+            allowed_directories=allowed_directories or None,  # None → derived from working_directory
             enable_path_validation=kwargs.pop("enable_path_validation", True),
         )
 
-        # Create Skills config
+        # Create Skills config (derive sandbox_skills_base from filesystem working_directory)
         skills_config = SkillsConfig(
             enabled=kwargs.pop("skills_enabled", True),
             user_skills_dir=kwargs.pop("user_skills_dir", "~/.ptc-agent/skills"),
             project_skills_dir=kwargs.pop("project_skills_dir", "skills"),
             sandbox_skills_base=kwargs.pop(
-                "sandbox_skills_base", "/home/daytona/skills"
+                "sandbox_skills_base",
+                f"{filesystem_config.working_directory}/skills",
             ),
         )
 
-        # Wrap DaytonaConfig in SandboxConfig
+        # Wrap in SandboxConfig with resolved provider
         sandbox_config = SandboxConfig(
-            provider="daytona",
+            provider=resolved_provider,
             daytona=daytona_config,
         )
 
