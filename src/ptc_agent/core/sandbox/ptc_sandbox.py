@@ -1586,12 +1586,19 @@ class PTCSandbox:
 
         try:
             assert self.runtime is not None
-            _result = await self._runtime_call(
+            result = await self._runtime_call(
                 self.runtime.exec,
                 install_cmd,
                 retry_policy=RetryPolicy.SAFE,
             )
-            logger.info("Dependencies installed")
+            if result.exit_code != 0:
+                logger.warning(
+                    "Dependency install exited with non-zero code",
+                    exit_code=result.exit_code,
+                    output=result.stdout[:500],
+                )
+            else:
+                logger.info("Dependencies installed")
         except OSError as e:
             logger.error(f"Failed to install dependencies: {e}")
             raise

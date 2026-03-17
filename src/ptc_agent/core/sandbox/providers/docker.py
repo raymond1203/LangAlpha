@@ -194,7 +194,8 @@ class DockerRuntime(SandboxRuntime):
             exports = " ".join(f"{k}={_shell_escape(v)}" for k, v in env.items())
             env_prefix = f"export {exports} && "
 
-        run_cmd = f"{env_prefix}python3 {script_path}"
+        stderr_path = f"{self._working_dir}/_stderr_{uuid.uuid4().hex[:8]}.txt"
+        run_cmd = f"{env_prefix}python3 {script_path} 2>{stderr_path}"
 
         # Run the code — we parse combined stdout for artifacts
         exec_result = await self.exec(run_cmd, timeout=timeout)
@@ -202,15 +203,26 @@ class DockerRuntime(SandboxRuntime):
         # Extract chart artifacts from stdout markers
         artifacts, clean_stdout = extract_artifacts(exec_result.stdout)
 
-        # Cleanup temp script (best-effort)
+        # Read stderr from temp file only on failure (avoids extra exec round-trip
+        # on the happy path — the consumer only needs stderr for auto-install detection)
+        stderr = ""
+        if exec_result.exit_code != 0:
+            try:
+                cat_result = await self.exec(f"cat {stderr_path} 2>/dev/null", timeout=5)
+                if cat_result.exit_code == 0:
+                    stderr = cat_result.stdout
+            except Exception:
+                pass
+
+        # Cleanup temp files (best-effort)
         try:
-            await self.exec(f"rm -f {script_path}", timeout=5)
+            await self.exec(f"rm -f {script_path} {stderr_path}", timeout=5)
         except Exception:
             pass
 
         return CodeRunResult(
             stdout=clean_stdout,
-            stderr=exec_result.stderr,
+            stderr=stderr,
             exit_code=exec_result.exit_code,
             artifacts=artifacts,
         )

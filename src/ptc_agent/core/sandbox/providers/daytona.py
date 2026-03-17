@@ -136,7 +136,9 @@ class DaytonaRuntime(SandboxRuntime):
         else:
             stderr = ""
 
-        exit_code = getattr(result, "exit_code", 1)
+        exit_code = getattr(result, "exit_code", None)
+        if exit_code is None:
+            exit_code = 0
 
         # Parse chart artifacts
         artifacts: list[Artifact] = []
