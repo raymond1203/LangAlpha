@@ -14,18 +14,35 @@ llm:
     - "kimi-k2.5"
     - "doubao-seed-2.0-lite-anthropic"
 
-daytona:
-  # Daytona sandbox configuration
-  base_url: "https://app.daytona.io/api"
-  auto_stop_interval: 3600 # 1 hour in seconds
-  auto_archive_interval: 86400 # 24 hours in seconds
-  auto_delete_interval: 604800 # 7 days in seconds
-  python_version: "3.12"
+sandbox:
+  # Provider selection: "daytona" (cloud) or "docker" (local)
+  # Override at runtime with SANDBOX_PROVIDER env var.
+  provider: "daytona"
 
-  # Hash will be automatically appended based on dependencies
-  snapshot_enabled: true # Recommended: Enable snapshot-based sandbox creation
-  snapshot_name: "open-ptc-v1" # Base name for snapshot (hash will be appended)
-  snapshot_auto_create: true # Automatically create snapshot if it doesn't exist
+  # Daytona cloud sandbox configuration
+  daytona:
+    base_url: "https://app.daytona.io/api"
+    auto_stop_interval: 3600 # 1 hour in seconds
+    auto_archive_interval: 86400 # 24 hours in seconds
+    auto_delete_interval: 604800 # 7 days in seconds
+    python_version: "3.12"
+
+    # Hash will be automatically appended based on dependencies
+    snapshot_enabled: true # Recommended: Enable snapshot-based sandbox creation
+    snapshot_name: "open-ptc-v1" # Base name for snapshot (hash will be appended)
+    snapshot_auto_create: true # Automatically create snapshot if it doesn't exist
+
+  # Docker local sandbox configuration
+  # Ignored when provider is "daytona". Override with DOCKER_SANDBOX_* env vars.
+  docker:
+    image: "langalpha-sandbox:latest" # Build with: docker build -f Dockerfile.sandbox -t langalpha-sandbox:latest .
+    memory_limit: "4g"
+    cpu_count: 2.0
+    network_mode: "bridge" # "bridge" (default) or "none" for full isolation
+    dev_mode: false # true = bind-mount host dir (fast local dev, files shared instantly)
+    # host_work_dir: "/tmp/langalpha-sandbox-work"  # Required when dev_mode is true
+    # volumes:  # Extra mounts in "host:container[:ro]" format
+    #   - "/data/datasets:/mnt/datasets:ro"
 
 mcp:
   # MCP server configurations
