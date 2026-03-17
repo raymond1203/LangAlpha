@@ -49,11 +49,8 @@ from ptc_agent.core.sandbox.runtime import SandboxProvider, SandboxRuntime
 
 from .memory_provider import MemoryProvider, MemoryRuntime
 
-# ---------------------------------------------------------------------------
 # Metrics plugin registration -- ensures --sandbox-metrics flag is available
 # even though metrics/ has no test files for auto-discovery.
-# ---------------------------------------------------------------------------
-
 pytest_plugins = ["tests.integration.sandbox.metrics.conftest"]
 
 # Prevent pytest from descending into metrics/ during collection (it has no
@@ -136,6 +133,7 @@ def _make_core_config(
 
 
 @pytest.fixture(
+    scope="class",
     params=[
         pytest.param(
             p,
@@ -151,7 +149,12 @@ def _make_core_config(
     ],
 )
 def provider_name(request) -> str:
-    """The name of the sandbox provider under test (parameterized)."""
+    """The name of the sandbox provider under test (parameterized).
+
+    Class-scoped so that class-scoped fixtures (shared_sandbox,
+    shared_runtime) can depend on it.  Function-scoped fixtures
+    like sandbox_runtime can still use it (narrower scope is OK).
+    """
     return request.param
 
 
@@ -168,10 +171,23 @@ def sandbox_base_dir(tmp_path):
     return str(d)
 
 
+@pytest.fixture(scope="class")
+def class_sandbox_base_dir(tmp_path_factory):
+    """Class-scoped temp directory for sandbox working dirs."""
+    d = tmp_path_factory.mktemp("sandboxes")
+    return str(d)
+
+
 @pytest.fixture
 def memory_provider(sandbox_base_dir) -> MemoryProvider:
     """Fresh MemoryProvider -- always available for memory-only runtime tests."""
     return MemoryProvider(base_dir=sandbox_base_dir)
+
+
+@pytest.fixture(scope="class")
+def class_memory_provider(class_sandbox_base_dir) -> MemoryProvider:
+    """Class-scoped MemoryProvider for shared fixtures."""
+    return MemoryProvider(base_dir=class_sandbox_base_dir)
 
 
 @pytest_asyncio.fixture
@@ -235,12 +251,10 @@ async def sandbox_provider(provider_name, sandbox_base_dir) -> SandboxProvider:
 
 
 @pytest_asyncio.fixture(scope="class", loop_scope="class")
-async def class_sandbox_provider(tmp_path_factory, request) -> SandboxProvider:
+async def class_sandbox_provider(tmp_path_factory, provider_name) -> SandboxProvider:
     """Class-scoped provider -- shared across all tests in a class."""
-    # Resolve provider_name: from parametrize or from env (first requested)
-    p_name = getattr(request, "param", None) or REQUESTED_PROVIDERS[0]
     base_dir = str(tmp_path_factory.mktemp("sandboxes"))
-    async for provider in _make_provider(p_name, base_dir):
+    async for provider in _make_provider(provider_name, base_dir):
         yield provider
 
 
@@ -285,9 +299,8 @@ async def shared_runtime(class_sandbox_provider) -> SandboxRuntime:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def core_config(provider_name, sandbox_base_dir) -> CoreConfig:
-    """CoreConfig adapted to the active test provider."""
+def _build_core_config(provider_name: str, base_dir: str) -> CoreConfig:
+    """Build a CoreConfig for the given provider (shared helper)."""
     if provider_name == "daytona":
         api_key = os.environ.get("DAYTONA_API_KEY", "")
         if not api_key:
@@ -315,10 +328,22 @@ def core_config(provider_name, sandbox_base_dir) -> CoreConfig:
 
     # memory provider -- use temp dir as working directory
     return _make_core_config(
-        working_directory=sandbox_base_dir,
+        working_directory=base_dir,
         provider="daytona",  # value ignored since create_provider is patched
         api_key="test-key",
     )
+
+
+@pytest.fixture
+def core_config(provider_name, sandbox_base_dir) -> CoreConfig:
+    """CoreConfig adapted to the active test provider."""
+    return _build_core_config(provider_name, sandbox_base_dir)
+
+
+@pytest.fixture(scope="class")
+def class_core_config(provider_name, class_sandbox_base_dir) -> CoreConfig:
+    """Class-scoped CoreConfig adapted to the active test provider."""
+    return _build_core_config(provider_name, class_sandbox_base_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -338,6 +363,20 @@ def _patch_create_provider(memory_provider, provider_name):
         return_value=memory_provider,
     ):
         yield memory_provider
+
+
+@pytest.fixture(scope="class")
+def _class_patch_create_provider(class_memory_provider, provider_name):
+    """Class-scoped create_provider patch -- for memory provider only."""
+    if provider_name != "memory":
+        yield None
+        return
+
+    with patch(
+        "ptc_agent.core.sandbox.ptc_sandbox.create_provider",
+        return_value=class_memory_provider,
+    ):
+        yield class_memory_provider
 
 
 # ---------------------------------------------------------------------------

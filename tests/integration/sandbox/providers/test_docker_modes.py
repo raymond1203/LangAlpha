@@ -35,7 +35,7 @@ pytestmark = [
 class TestTarMode:
     """Test Docker sandbox in default tar-based file I/O mode."""
 
-    @pytest_asyncio.fixture
+    @pytest_asyncio.fixture(scope="class", loop_scope="class")
     async def runtime(self):
         provider = DockerProvider(DockerConfig(
             image=os.environ.get("DOCKER_SANDBOX_IMAGE", "langalpha-sandbox:latest"),
@@ -113,9 +113,9 @@ class TestTarMode:
 class TestBindMountMode:
     """Test Docker sandbox with bind-mounted host directory."""
 
-    @pytest_asyncio.fixture
-    async def runtime_and_dir(self, tmp_path):
-        host_dir = str(tmp_path / "bind_sandbox")
+    @pytest_asyncio.fixture(scope="class", loop_scope="class")
+    async def runtime_and_dir(self, tmp_path_factory):
+        host_dir = str(tmp_path_factory.mktemp("bind_sandbox"))
         provider = DockerProvider(DockerConfig(
             image=os.environ.get("DOCKER_SANDBOX_IMAGE", "langalpha-sandbox:latest"),
             dev_mode=True,
@@ -178,7 +178,7 @@ class TestChartCapture:
     Requires the sandbox image to have matplotlib installed.
     """
 
-    @pytest_asyncio.fixture
+    @pytest_asyncio.fixture(scope="class", loop_scope="class")
     async def runtime(self):
         provider = DockerProvider(DockerConfig(
             image=os.environ.get("DOCKER_SANDBOX_IMAGE", "langalpha-sandbox:latest"),

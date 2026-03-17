@@ -78,7 +78,7 @@ class DaytonaRuntime(SandboxRuntime):
     async def start(self, timeout: int = 120) -> None:
         await self._sandbox.start(timeout=timeout)
 
-    async def stop(self, timeout: int = 60) -> None:
+    async def stop(self, timeout: int = 120) -> None:
         await self._sandbox.stop(timeout=timeout)
 
     async def delete(self) -> None:
