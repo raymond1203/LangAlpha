@@ -12,7 +12,7 @@ import time
 from typing import Any
 
 from langchain_core.messages import HumanMessage
-from langgraph.config import get_config, get_stream_writer
+from langchain_core.runnables import RunnableConfig
 from langgraph.runtime import Runtime
 
 from langchain.agents.middleware.types import AgentMiddleware, AgentState
@@ -32,13 +32,13 @@ class MessageQueueMiddleware(AgentMiddleware):
     """
 
     async def abefore_model(
-        self, state: AgentState, runtime: Runtime
+        self, state: AgentState, runtime: Runtime, *, config: RunnableConfig
     ) -> dict[str, Any] | None:
         """Check Redis for queued messages and inject them before model call."""
         try:
-            config = get_config()
             thread_id = config.get("configurable", {}).get("thread_id")
             if not thread_id:
+                logger.debug("[MessageQueue] No thread_id in config, skipping")
                 return None
 
             # Import here to avoid circular imports
@@ -60,14 +60,19 @@ class MessageQueueMiddleware(AgentMiddleware):
             if not raw_messages:
                 return None
 
-            # Parse queued messages
-            queued = []
+            # Parse queued messages (handle both str and dict payloads)
+            queued: list[dict] = []
             for raw in raw_messages:
                 try:
                     data = json.loads(
                         raw.decode("utf-8") if isinstance(raw, bytes) else raw
                     )
-                    queued.append(data)
+                    if isinstance(data, str):
+                        queued.append({"content": data})
+                    elif isinstance(data, dict):
+                        queued.append(data)
+                    else:
+                        queued.append({"content": str(data)})
                 except (json.JSONDecodeError, UnicodeDecodeError) as e:
                     logger.warning(f"[MessageQueue] Failed to parse queued message: {e}")
 
@@ -76,10 +81,11 @@ class MessageQueueMiddleware(AgentMiddleware):
 
             # Build combined message content
             if len(queued) == 1:
-                content = queued[0]["content"]
+                content = queued[0].get("content", str(queued[0]))
             else:
                 lines = [
-                    f"{i + 1}. {msg['content']}" for i, msg in enumerate(queued)
+                    f"{i + 1}. {msg.get('content', str(msg))}"
+                    for i, msg in enumerate(queued)
                 ]
                 content = "\n".join(lines)
 
@@ -94,15 +100,14 @@ class MessageQueueMiddleware(AgentMiddleware):
 
             # Emit SSE custom event so frontend knows the message was delivered
             try:
-                writer = get_stream_writer()
-                writer(
+                runtime.stream_writer(
                     {
                         "type": "queued_message_injected",
                         "thread_id": thread_id,
                         "count": len(queued),
                         "messages": [
                             {
-                                "content": q["content"],
+                                "content": q.get("content", ""),
                                 "user_id": q.get("user_id"),
                                 "timestamp": q.get("timestamp"),
                             }
@@ -113,7 +118,7 @@ class MessageQueueMiddleware(AgentMiddleware):
                 )
             except Exception:
                 # Stream writer may not be available in all contexts
-                pass
+                logger.debug("[MessageQueue] stream_writer unavailable, skipping SSE event")
 
             return {"messages": [human_msg]}
 
