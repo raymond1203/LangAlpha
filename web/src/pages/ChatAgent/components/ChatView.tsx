@@ -496,8 +496,8 @@ function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName:
     isLoadingHistory,
     isReconnecting: _isReconnecting,
     messageError,
-    returnedQueuedMessage,
-    clearReturnedQueuedMessage,
+    returnedSteering,
+    clearReturnedSteering,
     handleSendMessage,
     pendingInterrupt,
     pendingRejection,
@@ -533,13 +533,13 @@ function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName:
     return t('chat.placeholderDefault');
   }, [pendingRejection, wasInterrupted, isLoading, pendingInterrupt, hasActiveSubagents, t]);
 
-  // Restore queued message text to input when agent finishes without consuming it
+  // Restore steering text to input when agent finishes without consuming it
   useEffect(() => {
-    if (returnedQueuedMessage) {
-      chatInputRef.current?.setValue(returnedQueuedMessage);
-      clearReturnedQueuedMessage();
+    if (returnedSteering) {
+      chatInputRef.current?.setValue(returnedSteering);
+      clearReturnedSteering();
     }
-  }, [returnedQueuedMessage, clearReturnedQueuedMessage]);
+  }, [returnedSteering, clearReturnedSteering]);
 
   // Ref to avoid stale closure in unmount cleanup
   const currentThreadIdRef = useRef(currentThreadId);

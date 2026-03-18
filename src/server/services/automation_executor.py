@@ -130,7 +130,7 @@ class AutomationExecutor:
             )
 
             # ─── Invoke agent workflow ─────────────────────────────
-            from src.server.handlers.chat_handler import (
+            from src.server.handlers.chat import (
                 astream_flash_workflow,
                 astream_ptc_workflow,
             )

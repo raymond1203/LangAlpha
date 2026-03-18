@@ -283,7 +283,7 @@
     "placeholderDefault": "Type / for skills, @ for files",
     "placeholderPendingRejection": "Describe how to revise the plan...",
     "placeholderInterrupted": "Send new instructions to the agent...",
-    "placeholderLoading": "Type a follow-up — it will be queued...",
+    "placeholderLoading": "Type a follow-up to steer the agent...",
     "placeholderSubagentsRunning": "Workers still running. Send a message or click a worker to instruct it.",
     "slashCommand": {
       "subagentName": "subagent",

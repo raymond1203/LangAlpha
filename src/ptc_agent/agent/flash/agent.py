@@ -219,10 +219,10 @@ class FlashAgent:
         # Main middleware stack (minimal)
         main_middleware: list[Any] = []
 
-        # Message queue middleware (allows injecting queued user messages)
-        from src.ptc_agent.agent.middleware.message_queue import MessageQueueMiddleware
+        # Steering middleware (allows injecting steering messages from user)
+        from src.ptc_agent.agent.middleware.steering import SteeringMiddleware
 
-        main_middleware.append(MessageQueueMiddleware())
+        main_middleware.append(SteeringMiddleware())
 
         # AskUserQuestion middleware (needed for onboarding and preference updates)
         ask_user_middleware = AskUserMiddleware()

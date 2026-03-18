@@ -43,10 +43,10 @@ from ptc_agent.agent.middleware import (
     SummarizationMiddleware,
     # Large result eviction middleware
     LargeResultEvictionMiddleware,
-    # Message queue middleware
-    MessageQueueMiddleware,
-    # Subagent message queue middleware
-    SubagentMessageQueueMiddleware,
+    # Steering middleware
+    SteeringMiddleware,
+    # Subagent steering middleware
+    SubagentSteeringMiddleware,
     # Workspace context middleware
     WorkspaceContextMiddleware,
 )
@@ -416,10 +416,10 @@ class PTCAgent:
         # --- Build main-only middleware (NOT passed to subagents) ---
         main_only_middleware: list[Any] = []
 
-        # Message queue middleware - checks Redis for queued user messages
-        # before each LLM call (must be first so queued context is visible
+        # Steering middleware - checks Redis for steering messages from the user
+        # before each LLM call (must be first so steering context is visible
         # before any other middleware runs)
-        main_only_middleware.append(MessageQueueMiddleware())
+        main_only_middleware.append(SteeringMiddleware())
 
         # Create counter middleware for tracking subagent tool calls
         # (Created early so it can be passed to BackgroundSubagentMiddleware)
@@ -554,12 +554,12 @@ class PTCAgent:
         model_resilience = self._build_model_resilience_middleware()
 
         # Subagent middleware (shared only, no SubAgentMiddleware/BackgroundSubagentMiddleware/HITL)
-        # SubagentMessageQueueMiddleware is first so follow-up messages are
+        # SubagentSteeringMiddleware is first so follow-up messages are
         # visible before any other middleware runs.
         subagent_middleware = [
             m
             for m in [
-                SubagentMessageQueueMiddleware(registry=background_middleware.registry),
+                SubagentSteeringMiddleware(registry=background_middleware.registry),
                 LargeResultEvictionMiddleware(
                     backend=backend, eviction_dir=eviction_dir
                 ),
