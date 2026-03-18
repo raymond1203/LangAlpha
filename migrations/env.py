@@ -35,7 +35,8 @@ if not current_url or current_url == _PLACEHOLDER:
         f"postgresql+psycopg://{quote_plus(db_user)}:{quote_plus(db_password)}"
         f"@{db_host}:{db_port}/{db_name}?sslmode={sslmode}"
     )
-    config.set_main_option("sqlalchemy.url", database_url)
+    # Escape % as %% for configparser (which treats % as interpolation syntax)
+    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 # Python logging
 if config.config_file_name is not None:
@@ -44,7 +45,6 @@ if config.config_file_name is not None:
 # No ORM metadata — langalpha uses raw psycopg3, not SQLAlchemy models.
 # Migrations are written as raw SQL via op.execute().
 target_metadata = None
-
 
 
 def run_migrations_offline() -> None:
@@ -56,7 +56,6 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
-
 
     with context.begin_transaction():
         context.run_migrations()
