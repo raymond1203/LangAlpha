@@ -19,19 +19,23 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 # Alembic Config object
 config = context.config
 
-# Build database URL from DB_* env vars
-db_host = os.getenv("DB_HOST", "localhost")
-db_port = os.getenv("DB_PORT", "5432")
-db_name = os.getenv("DB_NAME", "langalpha")
-db_user = os.getenv("DB_USER", "postgres")
-db_password = os.getenv("DB_PASSWORD", "postgres")
-sslmode = "require" if "supabase.com" in db_host else "disable"
+# Only build from DB_* env vars when the URL hasn't been set programmatically
+# (e.g. by the integration test fixture via set_main_option).
+_PLACEHOLDER = "driver://user:pass@localhost/dbname"
+current_url = config.get_main_option("sqlalchemy.url")
+if not current_url or current_url == _PLACEHOLDER:
+    db_host = os.getenv("DB_HOST", "localhost")
+    db_port = os.getenv("DB_PORT", "5432")
+    db_name = os.getenv("DB_NAME", "langalpha")
+    db_user = os.getenv("DB_USER", "postgres")
+    db_password = os.getenv("DB_PASSWORD", "postgres")
+    sslmode = "require" if "supabase.com" in db_host else "disable"
 
-database_url = (
-    f"postgresql+psycopg://{quote_plus(db_user)}:{quote_plus(db_password)}"
-    f"@{db_host}:{db_port}/{db_name}?sslmode={sslmode}"
-)
-config.set_main_option("sqlalchemy.url", database_url)
+    database_url = (
+        f"postgresql+psycopg://{quote_plus(db_user)}:{quote_plus(db_password)}"
+        f"@{db_host}:{db_port}/{db_name}?sslmode={sslmode}"
+    )
+    config.set_main_option("sqlalchemy.url", database_url)
 
 # Python logging
 if config.config_file_name is not None:

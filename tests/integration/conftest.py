@@ -80,12 +80,17 @@ _EXTRA_TABLES = [
 
 
 def _build_db_uri() -> str:
-    """Build PostgreSQL connection string from env vars (CI-compatible defaults)."""
-    host = os.getenv("DB_HOST", "localhost")
-    port = os.getenv("DB_PORT", "5432")
-    name = os.getenv("DB_NAME", "langalpha_test")
-    user = os.getenv("DB_USER", "postgres")
-    password = os.getenv("DB_PASSWORD", "postgres")
+    """Build PostgreSQL connection string from env vars (CI-compatible defaults).
+
+    Uses TEST_DB_* env vars so the app's .env (which sets DB_HOST to
+    host.docker.internal for Docker networking) does not bleed into tests
+    that run on the host machine.
+    """
+    host = os.getenv("TEST_DB_HOST", "localhost")
+    port = os.getenv("TEST_DB_PORT", "5432")
+    name = os.getenv("TEST_DB_NAME", "langalpha_test")
+    user = os.getenv("TEST_DB_USER", "postgres")
+    password = os.getenv("TEST_DB_PASSWORD", "postgres")
     sslmode = "require" if "supabase.com" in host else "disable"
     return f"postgresql://{user}:{password}@{host}:{port}/{name}?sslmode={sslmode}"
 
@@ -105,7 +110,7 @@ async def _run_alembic_upgrade(db_uri: str) -> None:
     from alembic import command
     from alembic.config import Config
 
-    project_root = Path(__file__).resolve().parent.parent
+    project_root = Path(__file__).resolve().parent.parent.parent
     alembic_cfg = Config(str(project_root / "alembic.ini"))
     alembic_cfg.set_main_option("script_location", str(project_root / "migrations"))
 
