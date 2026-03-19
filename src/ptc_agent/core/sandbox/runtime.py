@@ -43,6 +43,16 @@ class PreviewInfo:
 
 
 @dataclass
+class SessionCommandResult:
+    """Result of a command executed in a background session."""
+
+    cmd_id: str
+    exit_code: int | None  # None = still running
+    stdout: str
+    stderr: str
+
+
+@dataclass
 class Artifact:
     """An artifact produced by code execution (e.g. a chart image)."""
 
@@ -162,6 +172,38 @@ class SandboxRuntime(ABC):
         Not all providers support this; the default raises NotImplementedError.
         """
         raise NotImplementedError
+
+    # -- Sessions (background processes) --
+
+    async def create_session(self, session_id: str) -> None:
+        """Create a named session for background command execution."""
+        raise NotImplementedError("Sessions not supported by this runtime")
+
+    async def session_execute(
+        self,
+        session_id: str,
+        command: str,
+        *,
+        run_async: bool = False,
+        timeout: int | None = None,
+    ) -> SessionCommandResult:
+        """Execute a command in a session. Use run_async=True for background execution."""
+        raise NotImplementedError("Sessions not supported by this runtime")
+
+    async def session_command_status(
+        self, session_id: str, command_id: str
+    ) -> SessionCommandResult:
+        """Get the status and exit code of a session command."""
+        raise NotImplementedError("Sessions not supported by this runtime")
+
+    async def session_command_logs(
+        self, session_id: str, command_id: str
+    ) -> SessionCommandResult:
+        """Get stdout/stderr logs of a session command."""
+        raise NotImplementedError("Sessions not supported by this runtime")
+
+    async def delete_session(self, session_id: str) -> None:
+        """Delete a session. Default is no-op for providers without session support."""
 
     async def get_preview_url(self, port: int, expires_in: int = 3600) -> PreviewInfo:
         """Get a signed preview URL for a service running on the given port.

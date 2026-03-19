@@ -66,6 +66,7 @@ from ptc_agent.agent.subagents import (
     create_subagents,
 )
 from ptc_agent.agent.tools import (
+    create_bash_output_tool,
     create_execute_bash_tool,
     create_execute_code_tool,
     create_filesystem_tools,
@@ -309,12 +310,13 @@ class PTCAgent:
 
         # Create the Bash tool for shell command execution
         bash_tool = create_execute_bash_tool(sandbox, thread_id=short_thread_id)
+        bash_output_tool = create_bash_output_tool(sandbox)
 
         # Create the preview URL tool for sandbox service previews
         preview_url_tool = create_preview_url_tool(sandbox)
 
         # Start with base tools
-        tools: list[Any] = [execute_code_tool, bash_tool, preview_url_tool, TodoWrite]
+        tools: list[Any] = [execute_code_tool, bash_tool, bash_output_tool, preview_url_tool, TodoWrite]
 
         # Create backend for SkillsMiddleware and LargeResultEvictionMiddleware
         backend = SandboxBackend(sandbox, operation_callback=operation_callback)

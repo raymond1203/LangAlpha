@@ -24,6 +24,7 @@ from ptc_agent.core.sandbox.runtime import (
     RuntimeState,
     SandboxRuntime,
     SandboxTransientError,
+    SessionCommandResult,
 )
 
 from ..mcp_registry import MCPRegistry
@@ -141,6 +142,9 @@ class PTCSandbox:
 
         # Track per-thread code dirs that have been created (avoids repeated mkdir)
         self._thread_dirs_created: set[str] = set()
+
+        # Background session for long-running commands (lazy-created)
+        self._bg_session_id: str | None = None
 
         # Lazy initialization support
         self._ready_event: asyncio.Event | None = None
@@ -2068,6 +2072,68 @@ class PTCSandbox:
             retry_policy=RetryPolicy.SAFE,
         )
 
+    async def _ensure_bg_session(self) -> str:
+        """Lazily create a background session for long-running commands."""
+        if self._bg_session_id is not None:
+            return self._bg_session_id
+
+        await self._wait_ready()
+        assert self.runtime is not None
+        session_id = f"bg-{self.runtime.id[:12]}"
+        try:
+            await self._runtime_call(
+                self.runtime.create_session,
+                session_id,
+                retry_policy=RetryPolicy.SAFE,
+            )
+        except Exception as e:
+            # Session may already exist from a previous sandbox reconnect
+            if "already exists" in str(e).lower():
+                logger.debug("Background session already exists", session_id=session_id)
+            else:
+                raise
+        self._bg_session_id = session_id
+        logger.info("Background session ready", session_id=session_id)
+        return session_id
+
+    async def get_background_command_status(self, cmd_id: str) -> dict[str, Any]:
+        """Get status and logs for a background command.
+
+        Args:
+            cmd_id: Command ID returned when the background command was started.
+
+        Returns:
+            Dict with keys: success, is_running, exit_code, stdout, stderr, cmd_id.
+        """
+        await self._wait_ready()
+        assert self.runtime is not None
+
+        if not self._bg_session_id:
+            return {
+                "success": False,
+                "is_running": False,
+                "exit_code": None,
+                "stdout": "",
+                "stderr": "No background session exists",
+                "cmd_id": cmd_id,
+            }
+
+        result: SessionCommandResult = await self._runtime_call(
+            self.runtime.session_command_logs,
+            self._bg_session_id,
+            cmd_id,
+            retry_policy=RetryPolicy.SAFE,
+        )
+        is_running = result.exit_code is None
+        return {
+            "success": not is_running and result.exit_code == 0,
+            "is_running": is_running,
+            "exit_code": result.exit_code,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "cmd_id": cmd_id,
+        }
+
     async def execute_bash_command(
         self,
         command: str,
@@ -2155,31 +2221,30 @@ class PTCSandbox:
                     error=str(upload_err),
                 )
 
-            # Background execution: launch with nohup and return PID immediately
+            # Background execution via Daytona session
             if background:
-                bg_log = f"/tmp/.bg_{bash_id}.log"
-                # Escape single quotes for safe embedding in bash -c '...'
-                escaped_command = full_command.replace("'", "'\\''")
-                bg_command = (
-                    f"nohup bash -c '{escaped_command}' > {bg_log} 2>&1 & echo $!"
-                )
+                session_id = await self._ensure_bg_session()
                 assert self.runtime is not None
-                exec_result = await self._runtime_call(
-                    self.runtime.exec,
-                    bg_command,
-                    timeout=10,
+                result = await self._runtime_call(
+                    self.runtime.session_execute,
+                    session_id,
+                    full_command,
+                    run_async=True,
                     retry_policy=RetryPolicy.UNSAFE,
-                    total_timeout=40,
+                    total_timeout=30,
                 )
-                pid = exec_result.stdout.strip()
                 logger.info(
-                    "Background process started",
+                    "Background command started",
                     bash_id=bash_id,
-                    pid=pid,
+                    cmd_id=result.cmd_id,
+                    session_id=session_id,
                 )
                 return {
                     "success": True,
-                    "stdout": f"Background process started (PID: {pid})\nLog file: {bg_log}",
+                    "stdout": (
+                        f"Background command started (command_id: {result.cmd_id})\n"
+                        f"Use BashOutput tool with command_id=\"{result.cmd_id}\" to check output and status."
+                    ),
                     "stderr": "",
                     "exit_code": 0,
                     "bash_id": bash_id,
@@ -2848,6 +2913,18 @@ class PTCSandbox:
 
         try:
             if self.runtime:
+                # Clean up background session if one was created
+                if self._bg_session_id:
+                    try:
+                        await self._runtime_call(
+                            self.runtime.delete_session,
+                            self._bg_session_id,
+                            retry_policy=RetryPolicy.SAFE,
+                        )
+                    except Exception as e:
+                        logger.debug("Failed to delete background session", error=str(e))
+                    self._bg_session_id = None
+
                 try:
                     await self._runtime_call(
                         self.runtime.delete,

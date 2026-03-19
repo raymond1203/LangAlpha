@@ -13,7 +13,7 @@ from daytona_sdk.common.daytona import (
     CreateSandboxFromSnapshotParams,
     Image,
 )
-from daytona_sdk.common.process import CodeRunParams
+from daytona_sdk.common.process import CodeRunParams, SessionExecuteRequest
 from daytona_sdk.common.snapshot import CreateSnapshotParams
 
 from ptc_agent.config.core import DaytonaConfig
@@ -26,6 +26,7 @@ from ptc_agent.core.sandbox.runtime import (
     RuntimeState,
     SandboxProvider,
     SandboxRuntime,
+    SessionCommandResult,
 )
 
 logger = structlog.get_logger(__name__)
@@ -191,6 +192,63 @@ class DaytonaRuntime(SandboxRuntime):
             return [vars(f) for f in result]
         return result
 
+    # -- Sessions (background processes) --
+
+    async def create_session(self, session_id: str) -> None:
+        await self._sandbox.process.create_session(session_id)
+
+    async def session_execute(
+        self,
+        session_id: str,
+        command: str,
+        *,
+        run_async: bool = False,
+        timeout: int | None = None,
+    ) -> SessionCommandResult:
+        req = SessionExecuteRequest(command=command, run_async=run_async)
+        result = await self._sandbox.process.execute_session_command(
+            session_id, req, timeout=timeout
+        )
+        return SessionCommandResult(
+            cmd_id=result.cmd_id,
+            exit_code=result.exit_code,
+            stdout=result.stdout or "",
+            stderr=result.stderr or "",
+        )
+
+    async def session_command_status(
+        self, session_id: str, command_id: str
+    ) -> SessionCommandResult:
+        cmd = await self._sandbox.process.get_session_command(
+            session_id, command_id
+        )
+        return SessionCommandResult(
+            cmd_id=cmd.id,
+            exit_code=cmd.exit_code,
+            stdout="",
+            stderr="",
+        )
+
+    async def session_command_logs(
+        self, session_id: str, command_id: str
+    ) -> SessionCommandResult:
+        # Get status for exit_code
+        cmd = await self._sandbox.process.get_session_command(
+            session_id, command_id
+        )
+        logs = await self._sandbox.process.get_session_command_logs(
+            session_id, command_id
+        )
+        return SessionCommandResult(
+            cmd_id=command_id,
+            exit_code=cmd.exit_code,
+            stdout=logs.stdout or "",
+            stderr=logs.stderr or "",
+        )
+
+    async def delete_session(self, session_id: str) -> None:
+        await self._sandbox.process.delete_session(session_id)
+
     # -- Preview URLs --
 
     async def get_preview_url(self, port: int, expires_in: int = 3600) -> PreviewInfo:
@@ -202,7 +260,7 @@ class DaytonaRuntime(SandboxRuntime):
 
     @property
     def capabilities(self) -> set[str]:
-        return {"exec", "code_run", "file_io", "archive", "snapshot", "preview_url"}
+        return {"exec", "code_run", "file_io", "archive", "snapshot", "preview_url", "sessions"}
 
     async def archive(self) -> None:
         await self._sandbox.archive()
