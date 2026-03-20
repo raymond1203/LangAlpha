@@ -2,9 +2,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   X, Cpu, MemoryStick, HardDrive, MonitorCog, Play, Square,
   Package, Search, RefreshCw, ChevronDown, ChevronRight,
-  Server, Loader2, BookOpen, Archive,
+  Server, Loader2, BookOpen, Archive, KeyRound,
+  Plus, Trash2, Pencil,
 } from 'lucide-react';
-import { getSandboxStats, installSandboxPackages, refreshWorkspace } from '../utils/api';
+import { getSandboxStats, installSandboxPackages, refreshWorkspace, getVaultSecrets, createVaultSecret, updateVaultSecret, deleteVaultSecret } from '../utils/api';
 import { api } from '@/api/client';
 
 interface SandboxSettingsPanelProps {
@@ -185,6 +186,7 @@ export default function SandboxSettingsPanel({ onClose, workspaceId }: SandboxSe
     { key: 'storage', label: 'Storage' },
     { key: 'packages', label: 'Packages' },
     { key: 'tools', label: 'Tools & Skills' },
+    { key: 'secrets', label: 'Secrets' },
   ];
 
   const isRunning = stats?.state === 'started';
@@ -294,6 +296,9 @@ export default function SandboxSettingsPanel({ onClose, workspaceId }: SandboxSe
               ) : (
                 <OfflineTabPlaceholder tabName="tools & skills" />
               )
+            )}
+            {activeTab === 'secrets' && (
+              <SecretsTab workspaceId={workspaceId} />
             )}
           </>
         )}
@@ -795,6 +800,355 @@ function ToolsTab({ stats, refreshing, refreshResult, onRefresh }: ToolsTabProps
             )}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Secrets Tab
+// ---------------------------------------------------------------------------
+
+const MAX_SECRETS = 20;
+const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+
+interface VaultSecret {
+  workspace_vault_secret_id: string;
+  name: string;
+  description: string;
+  masked_value: string;
+  created_at: string;
+  updated_at: string;
+}
+
+function SecretsTab({ workspaceId }: { workspaceId: string }) {
+  const [secrets, setSecrets] = useState<VaultSecret[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Add form
+  const [showAdd, setShowAdd] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newValue, setNewValue] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Edit state
+  const [editingName, setEditingName] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+
+  // Delete confirmation
+  const [deletingName, setDeletingName] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getVaultSecrets(workspaceId);
+      setSecrets(data);
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err.message || 'Failed to load secrets');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); }, [workspaceId]);
+
+  async function handleCreate() {
+    if (!newName || !newValue) return;
+    if (!NAME_RE.test(newName)) {
+      setError('Name must use letters, digits, underscores; start with letter or underscore');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await createVaultSecret(workspaceId, {
+        name: newName,
+        value: newValue,
+        description: newDesc,
+      });
+      setNewName('');
+      setNewValue('');
+      setNewDesc('');
+      setShowAdd(false);
+      await load();
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err.message || 'Failed to create secret');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleUpdate(name: string) {
+    setEditSaving(true);
+    setError(null);
+    try {
+      const body: { value?: string; description?: string } = {};
+      if (editValue) body.value = editValue;
+      body.description = editDesc;
+      await updateVaultSecret(workspaceId, name, body);
+      setEditingName(null);
+      setEditValue('');
+      setEditDesc('');
+      await load();
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err.message || 'Failed to update secret');
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  async function handleDelete(name: string) {
+    setDeleteLoading(true);
+    setError(null);
+    try {
+      await deleteVaultSecret(workspaceId, name);
+      setDeletingName(null);
+      await load();
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err.message || 'Failed to delete secret');
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-3">
+        {[1, 2].map(i => (
+          <div key={i} className="h-14 rounded-lg animate-pulse" style={{ backgroundColor: 'var(--color-bg-card)' }} />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Header + counter */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <KeyRound className="h-4 w-4" style={{ color: 'var(--color-accent-primary)' }} />
+          <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>
+            Vault Secrets
+          </span>
+          <span className="text-xs px-1.5 py-0.5 rounded" style={{ color: 'var(--color-text-tertiary)', backgroundColor: 'var(--color-bg-card)' }}>
+            {secrets.length} / {MAX_SECRETS}
+          </span>
+        </div>
+        {secrets.length < MAX_SECRETS && (
+          <button
+            onClick={() => { setShowAdd(!showAdd); setError(null); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-colors"
+            style={{
+              color: 'var(--color-text-on-accent)',
+              backgroundColor: 'var(--color-accent-primary)',
+            }}
+          >
+            <Plus className="h-3 w-3" />
+            Add Secret
+          </button>
+        )}
+      </div>
+
+      {error && (
+        <div className="text-xs p-2 rounded" style={{ backgroundColor: 'var(--color-bg-card)', color: 'var(--color-loss)' }}>
+          {error}
+        </div>
+      )}
+
+      {/* Add form */}
+      {showAdd && (
+        <div
+          className="flex flex-col gap-2 p-3 rounded-lg"
+          style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-muted)' }}
+        >
+          <input
+            type="text"
+            value={newName}
+            onChange={e => setNewName(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ''))}
+            placeholder="SECRET_NAME"
+            className="w-full px-3 py-2 text-sm rounded-md bg-transparent outline-none font-mono"
+            style={{ color: 'var(--color-text-primary)', border: '1px solid var(--color-border-muted)' }}
+            maxLength={64}
+          />
+          <input
+            type="password"
+            value={newValue}
+            onChange={e => setNewValue(e.target.value)}
+            placeholder="Secret value"
+            className="w-full px-3 py-2 text-sm rounded-md bg-transparent outline-none"
+            style={{ color: 'var(--color-text-primary)', border: '1px solid var(--color-border-muted)' }}
+            maxLength={4096}
+          />
+          <input
+            type="text"
+            value={newDesc}
+            onChange={e => setNewDesc(e.target.value)}
+            placeholder="Description (optional)"
+            className="w-full px-3 py-2 text-sm rounded-md bg-transparent outline-none"
+            style={{ color: 'var(--color-text-primary)', border: '1px solid var(--color-border-muted)' }}
+            maxLength={256}
+          />
+          <div className="flex justify-end gap-2 mt-1">
+            <button
+              onClick={() => { setShowAdd(false); setNewName(''); setNewValue(''); setNewDesc(''); }}
+              className="px-3 py-1.5 text-xs rounded-md transition-colors hover:bg-foreground/10"
+              style={{ color: 'var(--color-text-tertiary)' }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleCreate}
+              disabled={saving || !newName || !newValue}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-colors disabled:opacity-50"
+              style={{ color: 'var(--color-text-on-accent)', backgroundColor: 'var(--color-accent-primary)' }}
+            >
+              {saving && <Loader2 className="h-3 w-3 animate-spin" />}
+              Save
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Secret list */}
+      {secrets.length === 0 ? (
+        <div className="py-8 text-center text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
+          No secrets stored. Add API keys or credentials for agent code to use.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1">
+          {secrets.map(secret => (
+            <div key={secret.workspace_vault_secret_id}>
+              {editingName === secret.name ? (
+                /* Edit form */
+                <div
+                  className="flex flex-col gap-2 p-3 rounded-lg"
+                  style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-accent-primary)' }}
+                >
+                  <div className="text-sm font-mono font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                    {secret.name}
+                  </div>
+                  <input
+                    type="password"
+                    value={editValue}
+                    onChange={e => setEditValue(e.target.value)}
+                    placeholder="New value (leave empty to keep current)"
+                    className="w-full px-3 py-2 text-sm rounded-md bg-transparent outline-none"
+                    style={{ color: 'var(--color-text-primary)', border: '1px solid var(--color-border-muted)' }}
+                    maxLength={4096}
+                  />
+                  <input
+                    type="text"
+                    value={editDesc}
+                    onChange={e => setEditDesc(e.target.value)}
+                    placeholder="Description"
+                    className="w-full px-3 py-2 text-sm rounded-md bg-transparent outline-none"
+                    style={{ color: 'var(--color-text-primary)', border: '1px solid var(--color-border-muted)' }}
+                    maxLength={256}
+                  />
+                  <div className="flex justify-end gap-2 mt-1">
+                    <button
+                      onClick={() => { setEditingName(null); setEditValue(''); setEditDesc(''); }}
+                      className="px-3 py-1.5 text-xs rounded-md transition-colors hover:bg-foreground/10"
+                      style={{ color: 'var(--color-text-tertiary)' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => handleUpdate(secret.name)}
+                      disabled={editSaving}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-colors disabled:opacity-50"
+                      style={{ color: 'var(--color-text-on-accent)', backgroundColor: 'var(--color-accent-primary)' }}
+                    >
+                      {editSaving && <Loader2 className="h-3 w-3 animate-spin" />}
+                      Update
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Display row */
+                <div
+                  className="flex items-center justify-between py-2.5 px-3 rounded-lg"
+                  style={{ backgroundColor: 'var(--color-bg-card)' }}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-mono font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                        {secret.name}
+                      </span>
+                      <span className="text-xs font-mono" style={{ color: 'var(--color-text-tertiary)' }}>
+                        {secret.masked_value}
+                      </span>
+                    </div>
+                    {secret.description && (
+                      <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--color-text-tertiary)' }}>
+                        {secret.description}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                    <button
+                      onClick={() => {
+                        setEditingName(secret.name);
+                        setEditValue('');
+                        setEditDesc(secret.description);
+                        setError(null);
+                      }}
+                      className="p-1.5 rounded transition-colors hover:bg-foreground/10"
+                      style={{ color: 'var(--color-text-tertiary)' }}
+                      title="Edit"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    {deletingName === secret.name ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleDelete(secret.name)}
+                          disabled={deleteLoading}
+                          className="px-2 py-1 text-xs rounded transition-colors disabled:opacity-50"
+                          style={{ color: 'var(--color-loss)', backgroundColor: 'var(--color-bg-card)' }}
+                        >
+                          {deleteLoading ? 'Deleting…' : 'Confirm'}
+                        </button>
+                        <button
+                          onClick={() => setDeletingName(null)}
+                          className="px-2 py-1 text-xs rounded transition-colors hover:bg-foreground/10"
+                          style={{ color: 'var(--color-text-tertiary)' }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setDeletingName(secret.name)}
+                        className="p-1.5 rounded transition-colors hover:bg-foreground/10"
+                        style={{ color: 'var(--color-text-tertiary)' }}
+                        title="Delete"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Usage hint */}
+      <div
+        className="text-xs p-3 rounded-lg mt-1"
+        style={{ backgroundColor: 'var(--color-bg-card)', color: 'var(--color-text-tertiary)' }}
+      >
+        Access in code: <code className="font-mono" style={{ color: 'var(--color-text-secondary)' }}>from vault import get; key = get("SECRET_NAME")</code>
       </div>
     </div>
   );
