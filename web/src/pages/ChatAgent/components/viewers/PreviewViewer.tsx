@@ -80,7 +80,7 @@ export default function PreviewViewer({ url, port, title, loading: externalLoadi
           </button>
         </div>
       </div>
-      {externalLoading && !url ? (
+      {externalLoading || !url ? (
         /* Server is starting — show frosted glass overlay with spinner */
         <div className="preview-viewer-resize-overlay" style={{ cursor: 'default' }}>
           <div className="preview-viewer-resize-card" style={{ flexDirection: 'column', alignItems: 'center', gap: 16, padding: '28px 36px' }}>
