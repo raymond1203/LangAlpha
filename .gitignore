@@ -34,8 +34,9 @@ ENV/
 .env.local
 .env.production
 
-# Production compose (gitignored, rsynced to VMs by deploy.sh)
+# Production deploy files
 docker-compose.prod.yml
+scripts/load_env.sh
 
 # IDE
 .vscode/
