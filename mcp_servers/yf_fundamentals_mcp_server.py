@@ -208,8 +208,10 @@ def get_company_info(ticker: str) -> dict:
         for key, value in info.items():
             if value is None:
                 continue
+            if isinstance(value, float) and value != value:  # NaN
+                continue
             if hasattr(value, "isoformat"):
-                cleaned[key] = value.isoformat()
+                cleaned[key] = _format_datetime(value)
             else:
                 cleaned[key] = value
 
