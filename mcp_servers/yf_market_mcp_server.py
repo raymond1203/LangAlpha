@@ -55,6 +55,19 @@ def _serialize_records(df: pd.DataFrame) -> list[dict]:
     return cleaned
 
 
+def _clean_value(obj):
+    """Recursively clean a value for JSON serialization."""
+    if isinstance(obj, dict):
+        return {k: _clean_value(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_clean_value(item) for item in obj]
+    if hasattr(obj, "isoformat"):
+        return _format_datetime(obj)
+    if isinstance(obj, float) and (obj != obj):  # NaN
+        return None
+    return obj
+
+
 def _make_response(
     data_type: str, data: Any, count: Optional[int] = None, **extra: Any
 ) -> dict:
@@ -78,49 +91,6 @@ def _make_error(msg: str) -> dict:
 # ---------------------------------------------------------------------------
 
 mcp = FastMCP("YFinanceMarketMCP")
-
-VALID_MARKETS = [
-    "US",
-    "GB",
-    "ASIA",
-    "EUROPE",
-    "RATES",
-    "COMMODITIES",
-    "CURRENCIES",
-    "CRYPTOCURRENCIES",
-]
-
-PREDEFINED_SCREENS = [
-    "aggressive_small_caps",
-    "day_gainers",
-    "day_losers",
-    "growth_technology_stocks",
-    "most_actives",
-    "most_shorted_stocks",
-    "small_cap_gainers",
-    "undervalued_growth_stocks",
-    "undervalued_large_caps",
-    "conservative_foreign_funds",
-    "high_yield_bond",
-    "portfolio_anchors",
-    "solid_large_growth_funds",
-    "solid_midcap_growth_funds",
-    "top_mutual_funds",
-]
-
-COMMON_SECTORS = [
-    "technology",
-    "healthcare",
-    "financial-services",
-    "consumer-cyclical",
-    "industrials",
-    "communication-services",
-    "consumer-defensive",
-    "energy",
-    "basic-materials",
-    "real-estate",
-    "utilities",
-]
 
 
 def _build_equity_query(filter_dict: dict) -> yf.EquityQuery:
@@ -153,7 +123,8 @@ def search_tickers(
     try:
         s = yf.Search(query, max_results=max_results, news_count=news_count)
         return _make_response(
-            "search_results", {"quotes": s.quotes, "news": s.news}
+            "search_results",
+            {"quotes": s.quotes, "news": [_clean_value(a) for a in s.news]},
         )
     except Exception as e:
         return _make_error(f"Search failed: {e}")
