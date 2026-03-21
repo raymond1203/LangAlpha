@@ -38,6 +38,7 @@ from fastapi.responses import Response
 from ptc_agent.core.paths import (
     AGENT_SYSTEM_DIRS,
     ALWAYS_HIDDEN_BASENAMES as _SHARED_BASENAMES,
+    ALWAYS_HIDDEN_DIR_NAMES,
     ALWAYS_HIDDEN_PATH_SEGMENTS,
     ALWAYS_HIDDEN_SUFFIXES,
     HIDDEN_DIR_NAMES,
@@ -69,23 +70,7 @@ _ALWAYS_HIDDEN_SEGMENTS = ALWAYS_HIDDEN_PATH_SEGMENTS
 _ALWAYS_HIDDEN_BASENAMES = _SHARED_BASENAMES + (".file_sync_marker",)
 _ALWAYS_HIDDEN_SUFFIXES = ALWAYS_HIDDEN_SUFFIXES
 
-_ALWAYS_HIDDEN_DIR_PREFIXES = (
-    # Package managers / dependencies
-    "node_modules/",
-    ".venv/",
-    "venv/",
-    "vendor/",
-    # Build artifacts
-    ".next/",
-    ".nuxt/",
-    # Caches
-    ".cache/",
-    ".pytest_cache/",
-    ".mypy_cache/",
-    ".ruff_cache/",
-    # VCS
-    ".git/",
-)
+_ALWAYS_HIDDEN_DIR_SEGMENTS = tuple(f"/{d}/" for d in ALWAYS_HIDDEN_DIR_NAMES)
 
 # Generous but bounded defaults.
 DEFAULT_READ_LIMIT_LINES = 20_000
@@ -199,7 +184,7 @@ def _is_always_hidden_path(client_path: str) -> bool:
     if any(seg in normalized for seg in _ALWAYS_HIDDEN_SEGMENTS):
         return True
 
-    if any(client_path.startswith(prefix) for prefix in _ALWAYS_HIDDEN_DIR_PREFIXES):
+    if any(seg in normalized for seg in _ALWAYS_HIDDEN_DIR_SEGMENTS):
         return True
 
     return False

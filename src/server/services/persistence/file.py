@@ -17,7 +17,7 @@ import shlex
 from datetime import datetime, timezone
 from typing import Any
 
-from ptc_agent.core.paths import AGENT_SYSTEM_DIRS
+from ptc_agent.core.paths import AGENT_SYSTEM_DIRS, ALWAYS_HIDDEN_DIR_NAMES, HIDDEN_DIR_NAMES
 from src.server.database.workspace_file import (
     bulk_update_file_mtimes,
     bulk_upsert_files,
@@ -87,8 +87,11 @@ def _detect_is_binary(file_path: str, content: bytes) -> bool:
     """Detect whether file content is binary."""
     if _is_binary_extension(file_path):
         return True
+    sample = content[:8192]
+    if b"\x00" in sample:
+        return True
     try:
-        content[:8192].decode("utf-8")
+        sample.decode("utf-8")
         return False
     except UnicodeDecodeError:
         return True
@@ -100,26 +103,9 @@ class FilePersistenceService:
     MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB per file
     MAX_WORKSPACE_SIZE = 1024 * 1024 * 1024  # 1GB total per workspace
 
-    # Directories to exclude from sync (relative to /home/workspace/).
-    # Built from shared AGENT_SYSTEM_DIRS (source of truth: ptc_agent.core.paths)
-    # plus environment/tool dirs that should never be persisted.
-    # Note: .agent is NOT excluded wholesale — only sub-paths .agent/user and
-    # .agent/large_tool_results.  .agent/threads/ is intentionally persisted
-    # so thread working directories survive sandbox restarts.
-    EXCLUDE_DIRS = (AGENT_SYSTEM_DIRS - {".agent"}) | {
-        ".agent/user",
-        ".agent/large_tool_results",
-        "node_modules",
-        ".venv",
-        "__pycache__",
-        ".git",
-        "_internal",
-        ".cache",
-        ".npm",
-        ".local",
-        ".config",
-        ".ipython",
-    }
+    # Directories excluded from sync (relative to /home/workspace/).
+    # All patterns match at any depth via find's -not -path '*/{d}/*'.
+    EXCLUDE_DIRS = AGENT_SYSTEM_DIRS | HIDDEN_DIR_NAMES | ALWAYS_HIDDEN_DIR_NAMES
 
     # File extensions to exclude
     EXCLUDE_EXTENSIONS = {".pyc", ".pyo", ".so", ".dylib", ".o"}
