@@ -24,19 +24,12 @@ _SECRETS_FILE = os.path.join(
     ".vault_secrets.json",
 )
 
-_cache: dict[str, str] | None = None
-
-
 def _load() -> dict[str, str]:
-    global _cache
-    if _cache is not None:
-        return _cache
     try:
         with open(_SECRETS_FILE) as f:
-            _cache = json.load(f)
+            return json.load(f)
     except FileNotFoundError:
-        _cache = {}
-    return _cache
+        return {}
 
 
 def get(name: str) -> str:

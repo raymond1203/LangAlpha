@@ -1014,7 +1014,7 @@ function SecretsTab({ workspaceId }: { workspaceId: string }) {
           <input
             type="text"
             value={newName}
-            onChange={e => setNewName(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ''))}
+            onChange={e => setNewName(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '').replace(/^[0-9]+/, ''))}
             placeholder="SECRET_NAME"
             className="w-full px-3 py-2 text-sm rounded-md bg-transparent outline-none font-mono"
             style={{ color: 'var(--color-text-primary)', border: '1px solid var(--color-border-muted)' }}
