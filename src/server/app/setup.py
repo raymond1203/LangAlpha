@@ -209,6 +209,17 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Failed to initialize PTC Agent: {e}")
         logger.warning("PTC Agent endpoints may not work correctly")
 
+    # Start SharedWSConnectionManager (shared upstream WS to ginlix-data)
+    try:
+        from src.server.services.shared_ws_manager import DEFAULT_WS_FEEDS, SharedWSConnectionManager
+
+        for market, interval, tier in DEFAULT_WS_FEEDS:
+            ws = SharedWSConnectionManager.get_instance(market, interval, tier)
+            await ws.start()
+        logger.info("SharedWSConnectionManager instances started")
+    except Exception as e:
+        logger.warning(f"Failed to start SharedWSConnectionManager: {e}")
+
     # Start AutomationScheduler (polling loop for time-based triggers)
     try:
         from src.server.services.automation_scheduler import AutomationScheduler
@@ -219,6 +230,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to start AutomationScheduler: {e}")
         logger.warning("Scheduled automations will not run")
+
+    # Start PriceMonitorService (real-time price condition triggers)
+    try:
+        from src.server.services.price_monitor import PriceMonitorService
+
+        price_monitor = PriceMonitorService.get_instance()
+        await price_monitor.start()
+        logger.info("PriceMonitorService started")
+    except Exception as e:
+        logger.warning(f"Failed to start PriceMonitorService: {e}")
+        logger.warning("Price-triggered automations will not run")
 
     # Start MarketInsightService (schedule-based market news gathering)
     try:
@@ -243,6 +265,15 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Error shutting down MarketInsightService: {e}")
 
+    # 0.5. Shutdown PriceMonitorService (before scheduler so executions can drain)
+    try:
+        from src.server.services.price_monitor import PriceMonitorService
+
+        price_mon = PriceMonitorService.get_instance()
+        await price_mon.stop()
+    except Exception as e:
+        logger.warning(f"Error shutting down PriceMonitorService: {e}")
+
     # 1. Shutdown AutomationScheduler
     try:
         from src.server.services.automation_scheduler import AutomationScheduler
@@ -251,6 +282,15 @@ async def lifespan(app: FastAPI):
         await scheduler.shutdown()
     except Exception as e:
         logger.warning(f"Error shutting down AutomationScheduler: {e}")
+
+    # 1.5. Shutdown SharedWSConnectionManager
+    try:
+        from src.server.services.shared_ws_manager import SharedWSConnectionManager
+
+        for ws in SharedWSConnectionManager.all_instances():
+            await ws.stop()
+    except Exception as e:
+        logger.warning(f"Error shutting down SharedWSConnectionManager: {e}")
 
     # 2. Cancel background subagent tasks
     try:

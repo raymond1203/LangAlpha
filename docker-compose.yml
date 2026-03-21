@@ -18,7 +18,7 @@ services:
       PGDATA: /var/lib/postgresql/data
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-      POSTGRES_DB: ${DB_NAME:-langalpha}
+      POSTGRES_DB: ${DB_NAME:-postgres}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
       interval: 5s

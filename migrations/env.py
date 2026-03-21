@@ -26,7 +26,7 @@ current_url = config.get_main_option("sqlalchemy.url")
 if not current_url or current_url == _PLACEHOLDER:
     db_host = os.getenv("DB_HOST", "localhost")
     db_port = os.getenv("DB_PORT", "5432")
-    db_name = os.getenv("DB_NAME", "langalpha")
+    db_name = os.getenv("DB_NAME", "postgres")
     db_user = os.getenv("DB_USER", "postgres")
     db_password = os.getenv("DB_PASSWORD", "postgres")
     sslmode = "require" if "supabase.com" in db_host else "disable"
