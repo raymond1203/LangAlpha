@@ -4,20 +4,17 @@ const TTL_MS = 5 * 60 * 1000; // 5 minutes
 export interface ChatSessionData {
   workspaceId: string;
   threadId?: string;
-  scrollTop: number;
   ts: number;
 }
 
 export interface SaveChatSessionParams {
   workspaceId: string;
   threadId?: string | null;
-  scrollTop?: number;
 }
 
-export function saveChatSession({ workspaceId, threadId, scrollTop }: SaveChatSessionParams): void {
+export function saveChatSession({ workspaceId, threadId }: SaveChatSessionParams): void {
   if (!workspaceId) return;
-  // Allow workspace-only sessions (threadId can be null/undefined)
-  const data: ChatSessionData = { workspaceId, scrollTop: scrollTop || 0, ts: Date.now() };
+  const data: ChatSessionData = { workspaceId, ts: Date.now() };
   if (threadId && threadId !== '__default__') {
     data.threadId = threadId;
   }

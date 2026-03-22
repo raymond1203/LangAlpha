@@ -558,7 +558,7 @@ function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName:
   // Keep resolvedThreadIdRef in sync with the resolved thread ID from useChatMessages
   resolvedThreadIdRef.current = currentThreadId || threadId;
 
-  // Save chat session on unmount for cross-tab restoration.
+  // Save chat session on unmount for cross-tab restoration (workspace + thread only).
   // If user clicked back, save workspace-level only (no threadId) so tab
   // switching returns to the workspace page, not the conversation.
   useEffect(() => {
@@ -567,33 +567,21 @@ function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName:
         saveChatSession({ workspaceId });
         return;
       }
-      const container = getScrollContainer(scrollAreaRef);
       saveChatSession({
         workspaceId,
         threadId: currentThreadIdRef.current,
-        scrollTop: container?.scrollTop || 0,
       });
     };
-  }, [workspaceId, getScrollContainer]);
+  }, [workspaceId]);
 
-  // Restore scroll position from saved session on mount
-  const sessionRestoredRef = useRef(false);
+  // Consume saved session on mount so it doesn't interfere with future navigations.
+  // Scroll position is NOT restored — we always start at the bottom.
   useEffect(() => {
-    if (sessionRestoredRef.current) return;
     const session = getChatSession();
-    if (!session || session.workspaceId !== workspaceId) return;
-    sessionRestoredRef.current = true;
-    clearChatSession();
-    const timer = setTimeout(() => {
-      requestAnimationFrame(() => {
-        const container = getScrollContainer(scrollAreaRef);
-        if (container && session.scrollTop) {
-          container.scrollTop = session.scrollTop;
-        }
-      });
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [workspaceId, getScrollContainer]);
+    if (session && session.workspaceId === workspaceId) {
+      clearChatSession();
+    }
+  }, [workspaceId]);
 
   // Soft-interrupt handler: pauses main agent while keeping subagents running
   const handleSoftInterrupt = useCallback(async () => {
