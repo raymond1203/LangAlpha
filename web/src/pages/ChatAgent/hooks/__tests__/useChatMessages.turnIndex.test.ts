@@ -78,6 +78,7 @@ import {
   fetchThreadTurns,
 } from '../../utils/api';
 import { useChatMessages } from '../useChatMessages';
+import type { AssistantMessage } from '@/types/chat';
 
 const mockSendStream = sendChatMessageStream as Mock;
 const mockFetchTurns = fetchThreadTurns as Mock;
@@ -145,12 +146,12 @@ describe('useChatMessages – turn index with steering messages', () => {
 
     await waitFor(() => {
       const assistants = result.current.messages.filter(
-        (m: Record<string, unknown>) => m.role === 'assistant',
+        (m): m is AssistantMessage => m.role === 'assistant',
       );
       // 1 real assistant + 3 steering assistants
       expect(assistants.length).toBe(4);
 
-      const steering = assistants.filter((m: Record<string, unknown>) => m.isSteering);
+      const steering = assistants.filter((m) => m.isSteering);
       expect(steering.length).toBe(3);
 
       // The first assistant (from the original turn) should NOT be steering
@@ -221,10 +222,10 @@ describe('useChatMessages – turn index with steering messages', () => {
     let lastAssistantId: string;
     await waitFor(() => {
       const assistants = result.current.messages.filter(
-        (m: Record<string, unknown>) => m.role === 'assistant',
+        (m): m is AssistantMessage => m.role === 'assistant',
       );
       expect(assistants.length).toBe(4); // 2 real + 2 steering
-      lastAssistantId = assistants[assistants.length - 1].id as string;
+      lastAssistantId = assistants[assistants.length - 1].id;
     });
 
     // Regenerate the last assistant message
