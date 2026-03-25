@@ -35,6 +35,12 @@ export interface TodoPayload {
   [key: string]: unknown;
 }
 
+/** Data for an inline HTML widget. */
+export interface HtmlWidgetData {
+  html: string;
+  title: string;
+}
+
 /** Data for a preview URL panel. */
 export interface PreviewData {
   url: string;
