@@ -55,8 +55,10 @@ class YouTubeExtractor(ContentExtractor):
             return None
 
         # Fetch metadata and transcript in parallel
-        title, author = await self._fetch_oembed(url)
-        transcript_text = await self._fetch_transcript(video_id)
+        (title, author), transcript_text = await asyncio.gather(
+            self._fetch_oembed(url),
+            self._fetch_transcript(video_id),
+        )
 
         # Build markdown
         lines = [f"# {title}", ""]

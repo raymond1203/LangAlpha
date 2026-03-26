@@ -282,7 +282,7 @@ class TestSafeCrawlerCrawl:
         wrapper = _make_wrapper()
         mock_crawler = _inject_mock_crawler(wrapper)
         mock_crawler.crawl_with_metadata = AsyncMock(
-            return_value=CrawlOutput(title="OK", html="", markdown="ok")
+            return_value=CrawlOutput(title="OK", html="", markdown="Page content here")
         )
 
         # Simulate some prior failures (not enough to open circuit)
@@ -291,6 +291,34 @@ class TestSafeCrawlerCrawl:
         await wrapper.crawl("https://example.com")
 
         assert wrapper._circuit.failure_count == 0
+
+    @pytest.mark.asyncio
+    async def test_empty_content_returns_failure(self):
+        """Empty markdown from backend is treated as a failed crawl."""
+        wrapper = _make_wrapper()
+        mock_crawler = _inject_mock_crawler(wrapper)
+        mock_crawler.crawl_with_metadata = AsyncMock(
+            return_value=CrawlOutput(title="", html="", markdown="")
+        )
+
+        result = await wrapper.crawl("https://example.com")
+
+        assert result.success is False
+        assert result.error_type == "empty_content"
+        assert "empty content" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_empty_content_records_failure(self):
+        """Empty content counts as a circuit breaker failure, not success."""
+        wrapper = _make_wrapper()
+        mock_crawler = _inject_mock_crawler(wrapper)
+        mock_crawler.crawl_with_metadata = AsyncMock(
+            return_value=CrawlOutput(title="", html="", markdown="  ")
+        )
+
+        await wrapper.crawl("https://example.com")
+
+        assert wrapper._circuit.failure_count == 1
 
     @pytest.mark.asyncio
     async def test_queue_count_decremented_on_success(self):

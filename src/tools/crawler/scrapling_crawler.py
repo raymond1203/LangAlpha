@@ -98,6 +98,9 @@ class ScraplingCrawler:
 
     async def crawl_with_metadata(self, url: str) -> CrawlOutput:
         """Crawl with tiered fallback, return CrawlOutput."""
+        from .extractors.base import _validate_url
+        _validate_url(url)
+
         # --- Tier 1: Fast HTTP fetch (requires curl_cffi) ---
         try:
             page, html_body, status = await self._tier1_fetch(url)

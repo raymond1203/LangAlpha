@@ -281,6 +281,18 @@ class SafeCrawlerWrapper:
                     timeout=timeout,
                 )
 
+                # Treat empty/near-empty content as a failed crawl —
+                # prevents blocked/errored pages from counting as circuit successes
+                if not output.markdown or len(output.markdown.strip()) < 10:
+                    await self._circuit.record_failure(self._trigger_browser_reset)
+                    return CrawlResult(
+                        success=False,
+                        markdown=output.markdown,
+                        title=output.title,
+                        error="Page returned empty content",
+                        error_type="empty_content",
+                    )
+
                 await self._circuit.record_success()
                 return CrawlResult(
                     success=True,

@@ -100,7 +100,7 @@ class TestSafeCrawlerWrapperLive:
         assert not result.success
         assert result.error
         assert result.error_type in (
-            "dns_error", "network_error", "connection_timeout", "crawl_error", "timeout",
+            "dns_error", "network_error", "connection_timeout", "crawl_error", "timeout", "empty_content",
         )
 
     async def test_circuit_breaker_starts_healthy(self):
