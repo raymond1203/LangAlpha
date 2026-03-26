@@ -1546,11 +1546,7 @@ class PTCSandbox:
 
         all_skills = dict(skills_mod.get("skills", {}))
 
-        lock_skills = (
-            merged_lock.get("skills", {})
-            if isinstance(merged_lock, dict)
-            else merged_lock
-        )
+        lock_skills = merged_lock.get("skills", {})
         for name, entry in lock_skills.items():
             if entry.get("owner") == "user" and name not in all_skills:
                 skill_path = f"{sandbox_skills_base}/{name}/SKILL.md"

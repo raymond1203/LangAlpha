@@ -5,6 +5,7 @@ replacing the deepagents dependency. Follows the Agent Skills specification
 (https://agentskills.io/specification).
 """
 
+import hashlib
 import re
 from pathlib import PurePosixPath
 from typing import Any, TypedDict
@@ -318,14 +319,13 @@ async def adiscover_skills(
             # Self-healing: create lock entry for orphaned skill
             try:
                 from ptc_agent.agent.middleware.skills.lock import build_lock_entry
-                import hashlib as _hashlib
 
                 entry = build_lock_entry(
                     meta,
                     owner="user",
                     source="local",
                     source_type="local",
-                    content_hash=f"sha256:{_hashlib.sha256(content.encode()).hexdigest()}",
+                    content_hash=f"sha256:{hashlib.sha256(content.encode()).hexdigest()}",
                 )
                 new_lock_entries[directory_name] = entry
             except Exception:

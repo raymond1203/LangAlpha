@@ -52,7 +52,7 @@ async def migrate_layout_v1_to_v2(runtime: Any, work_dir: str) -> None:
         cmd = (
             f"if [ -d {shlex.quote(src)} ]; then "
             f"mkdir -p {shlex.quote(dst)} && "
-            f"cp -a {shlex.quote(src)}/. {shlex.quote(dst)}/ 2>/dev/null; "
+            f"cp -a {shlex.quote(src)}/. {shlex.quote(dst)}/ && "
             f"rm -rf {shlex.quote(src)}; "
             f"fi"
         )
