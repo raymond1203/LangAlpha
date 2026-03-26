@@ -8,9 +8,11 @@ interface PreviewViewerProps extends Pick<PreviewData, 'url' | 'port' | 'title' 
   onRefresh?: () => void;
   /** When true, a frosted overlay covers the iframe for smooth resizing. */
   isDragging?: boolean;
+  /** Monotonic counter — when it changes, force iframe reload even if URL is the same. */
+  reloadToken?: number;
 }
 
-export default function PreviewViewer({ url, port, title, loading: externalLoading, error: externalError, onClose, onRefresh, isDragging }: PreviewViewerProps) {
+export default function PreviewViewer({ url, port, title, loading: externalLoading, error: externalError, onClose, onRefresh, isDragging, reloadToken }: PreviewViewerProps) {
   const [loading, setLoading] = useState(true);
   const [iframeKey, setIframeKey] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -29,15 +31,19 @@ export default function PreviewViewer({ url, port, title, loading: externalLoadi
   // Show overlay immediately when isDragging is true (first render), plus 80ms cooldown
   const showDragOverlay = isDragging || overlayLinger;
 
-  // Reload iframe when url changes (e.g. after async refresh resolves)
+  // Reload iframe when url or reloadToken changes (token forces reload even with same URL)
   const prevUrlRef = useRef(url);
+  const prevTokenRef = useRef(reloadToken);
   useEffect(() => {
-    if (url && prevUrlRef.current && url !== prevUrlRef.current) {
+    const urlChanged = url && prevUrlRef.current && url !== prevUrlRef.current;
+    const tokenChanged = reloadToken !== undefined && reloadToken !== prevTokenRef.current;
+    if (urlChanged || (tokenChanged && url)) {
       setIframeKey(k => k + 1);
       setLoading(true);
     }
     prevUrlRef.current = url;
-  }, [url]);
+    prevTokenRef.current = reloadToken;
+  }, [url, reloadToken]);
 
   const handleIframeLoad = useCallback(() => {
     setLoading(false);

@@ -79,9 +79,18 @@ class DaytonaRuntime(SandboxRuntime):
         return self._working_dir or self._default_working_dir
 
     async def fetch_working_dir(self) -> str:
-        """Fetch and cache the sandbox working directory (must be awaited)."""
+        """Fetch and cache the sandbox working directory (must be awaited).
+
+        When a snapshot is in use, prefers the configured default_working_dir
+        (/home/workspace) over the SDK result, which may return the Daytona
+        user's home (/home/daytona).  Without a snapshot the SDK-reported
+        directory is authoritative.
+        """
         if self._working_dir is None:
-            self._working_dir = await self._sandbox.get_work_dir()
+            if self.snapshot_name and self._default_working_dir:
+                self._working_dir = self._default_working_dir
+            else:
+                self._working_dir = await self._sandbox.get_work_dir()
         return self._working_dir
 
     # -- Lifecycle --
@@ -424,6 +433,9 @@ class DaytonaProvider(SandboxProvider):
                 "gh",
                 "polymarket",
                 "playwright",
+                "docker-ce",
+                "docker-ce-cli",
+                "containerd.io",
             ],
         }
         config_str = json.dumps(config_data, sort_keys=True)
@@ -472,7 +484,19 @@ class DaytonaProvider(SandboxProvider):
                 " && mv /tmp/polymarket /usr/local/bin/polymarket"
                 " && rm -rf /tmp/polymarket.tar.gz",
                 "npm install -g playwright"
-                " && npx playwright install --with-deps chromium",
+                " && PLAYWRIGHT_BROWSERS_PATH=/usr/local/ms-playwright"
+                " npx playwright install --with-deps chromium",
+                # -- Docker Engine (for interactive-dashboard complex tier) --
+                "install -m 0755 -d /etc/apt/keyrings"
+                " && curl -fsSL https://download.docker.com/linux/ubuntu/gpg"
+                " -o /etc/apt/keyrings/docker.asc"
+                " && chmod a+r /etc/apt/keyrings/docker.asc",
+                'echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc]'
+                " https://download.docker.com/linux/ubuntu"
+                ' $(. /etc/os-release && echo $VERSION_CODENAME) stable"'
+                " > /etc/apt/sources.list.d/docker.list",
+                "apt-get update"
+                " && apt-get install -y docker-ce docker-ce-cli containerd.io",
                 "apt-get clean",
                 "rm -rf /var/lib/apt/lists/*",
             )

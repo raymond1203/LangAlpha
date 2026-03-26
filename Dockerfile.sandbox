@@ -29,21 +29,38 @@ RUN apt-get update \
     # -- uv (Python package manager) --
     && curl -LsSf https://astral.sh/uv/install.sh | sh \
     && mv /root/.local/bin/uv /usr/local/bin/uv \
-    # -- Node.js 20 --
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    # -- Node.js 24 --
+    && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y nodejs \
     # -- NPM global packages --
     && npm install -g playwright docx pptxgenjs \
-    && npx playwright install --with-deps chromium \
+    && PLAYWRIGHT_BROWSERS_PATH=/usr/local/ms-playwright \
+       npx playwright install --with-deps chromium \
     # -- GitHub CLI --
     && curl -fsSL https://github.com/cli/cli/releases/download/v2.87.3/gh_2.87.3_linux_amd64.tar.gz \
         -o /tmp/gh.tar.gz \
     && tar -xzf /tmp/gh.tar.gz -C /tmp \
     && mv /tmp/gh_2.87.3_linux_amd64/bin/gh /usr/local/bin/gh \
     && rm -rf /tmp/gh.tar.gz /tmp/gh_2.87.3_linux_amd64 \
+    # -- Docker Engine (for interactive-dashboard complex tier) --
+    && install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+        -o /etc/apt/keyrings/docker.asc \
+    && chmod a+r /etc/apt/keyrings/docker.asc \
+    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] \
+        https://download.docker.com/linux/ubuntu \
+        $(. /etc/os-release && echo $VERSION_CODENAME) stable" \
+        > /etc/apt/sources.list.d/docker.list \
+    && apt-get update \
+    && apt-get install -y docker-ce docker-ce-cli containerd.io \
     # -- Cleanup --
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Playwright browsers were installed to /usr/local/ms-playwright (as root).
+# Set the env var so the Python playwright package finds them at runtime
+# regardless of which user runs the sandbox.
+ENV PLAYWRIGHT_BROWSERS_PATH=/usr/local/ms-playwright
 
 # ---------- Python packages ----------
 RUN uv pip install --system \
@@ -56,7 +73,8 @@ RUN uv pip install --system \
     openpyxl xlrd python-docx pypdf \
     beautifulsoup4 lxml pyyaml \
     defusedxml pdfplumber reportlab "markitdown[pptx]" \
-    tqdm tabulate
+    tqdm tabulate \
+    playwright
 
 # ---------- Matplotlib CJK font config ----------
 RUN python3 -c "import matplotlib as mpl; import os; mpl_dir = mpl.get_configdir(); os.makedirs(mpl_dir, exist_ok=True); open(os.path.join(mpl_dir, 'matplotlibrc'), 'w').write('font.sans-serif: Noto Sans CJK SC, DejaVu Sans\n'); import matplotlib.font_manager; matplotlib.font_manager._load_fontmanager(try_read_cache=False)"

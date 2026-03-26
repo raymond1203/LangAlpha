@@ -22,12 +22,99 @@ Choose the tier based on complexity:
 
 | Tier | When | Stack | Serve command |
 |------|------|-------|---------------|
-| **Simple** | Static snapshot, few charts, no server-side logic | Self-contained HTML + CDN libs | `python -m http.server 8050` |
-| **Complex** | Live refresh, filtering, multi-page, heavy interactivity | FastAPI backend + Vite/React frontend | `bash start.sh` |
+| **Simple** | Static snapshot, few charts, no server-side logic | Self-contained HTML + CDN libs | `python -m http.server 8050 --bind 0.0.0.0` |
+| **FastAPI + HTML** | Live data refresh, server-side logic, no React needed | FastAPI serves `static/` + `fetch()` polling | `bash start.sh` |
+| **Complex** | Filtering, routing, component interactivity, multi-page | FastAPI backend + Vite/React frontend | `bash start.sh` |
 
-**Decision rule:** Start with simple. Escalate to complex only when user needs: live data refresh, server-side filtering/pagination, multi-route navigation, or React-level component interactivity.
+**Decision rule:** Start with Simple. Escalate to FastAPI + HTML when user needs live data refresh or server-side logic. Escalate to Complex only when user needs React-level component interactivity, client-side routing, or a multi-page SPA.
 
 **Port convention:** Use port **8050** (default). Range 8050-8059 for dashboards.
+
+### CSP / Iframe Safety
+
+The preview iframe enforces Content Security Policy (CSP). Certain patterns are **silently blocked** — no error banner, just dead UI elements. Always use the safe alternatives:
+
+| Blocked pattern | Safe alternative |
+|-----------------|-----------------|
+| `<button onclick="fn()">` | `el.addEventListener('click', fn)` |
+| `<div onmouseover="fn()">` | `el.addEventListener('mouseover', fn)` |
+| Any `on*="..."` HTML attribute | `el.addEventListener(event, fn)` |
+| `innerHTML` with `onclick` | `document.createElement()` + `addEventListener` |
+| `eval("code")` | Direct function calls |
+| `new Function("code")` | Named function declarations |
+| `setTimeout("code string", ms)` | `setTimeout(fn, ms)` (function reference) |
+| `<a href="javascript:...">` | `<a href="#" data-action="...">` + `addEventListener` |
+
+**Quick self-check** — run before serving to catch violations:
+
+```python
+import subprocess
+result = subprocess.run(
+    ["grep", "-rnE", r'on(click|input|change|focus|blur|submit|load|error|mouse|key)\s*=',
+     "work/dashboard/"],
+    capture_output=True, text=True
+)
+if result.stdout.strip():
+    raise RuntimeError(f"CSP-unsafe inline handlers found:\n{result.stdout}")
+```
+
+**Template literal hygiene** — when building HTML strings in JS template literals, CSS semicolons inside `${}` expressions cause silent parse failures:
+
+```javascript
+// BAD — semicolon inside ${} terminates the expression early
+const el = `<div style="color:${positive ? 'green' : 'red'; font-weight:600}">`;
+
+// GOOD — close the expression first, then continue the attribute string
+const el = `<div style="color:${positive ? 'green' : 'red'};font-weight:600">`;
+```
+
+Rule: **never put a CSS semicolon inside `${}`** — always close `}` before the semicolon.
+
+### How Preview Serving Works
+
+`GetPreviewUrl` is a **platform-level tool** available only to the main agent runtime. It is NOT a Python function — do not `import` it or call it from `execute_code`. The agent invokes it as a tool call.
+
+When you call `GetPreviewUrl(port, command, title)`:
+
+1. The **command is persisted to the database** automatically
+2. The platform starts the command in a dedicated sandbox session for that port
+3. It polls until the port is listening, then generates a signed URL
+4. If the port is **already reachable**, the command start is skipped entirely
+
+**Sub-agent fallback:** Sub-agents cannot call `GetPreviewUrl`. Instead, build the dashboard files, start the server for verification, then return the serve details so the orchestrating agent can call `GetPreviewUrl`.
+
+**All tiers** — use the Bash tool with `run_in_background=true` to start the server:
+
+```bash
+# Simple tier — Bash tool with run_in_background=true
+cd work/<task> && python -m http.server 8050 --bind 0.0.0.0
+
+# Docker tiers — Bash tool with run_in_background=true
+cd work/<task> && bash start.sh
+```
+
+Then verify it's up in a separate (foreground) Bash call:
+
+```bash
+for i in $(seq 1 15); do curl -sf http://127.0.0.1:8050/ > /dev/null && echo "Server ready" && exit 0 || sleep 1; done; echo "FAIL"; exit 1
+```
+
+Then return **all three fields** to the orchestrating agent (it needs the command for DB persistence / restart recovery):
+
+```
+port: 8050
+command: "cd work/<task> && python -m http.server 8050 --bind 0.0.0.0"  # or "bash work/<task>/start.sh"
+title: "AAPL Stock Dashboard"
+```
+
+The orchestrating agent calls `GetPreviewUrl(port=8050, command="...", title="...")` which persists the command.
+
+**On workspace restart** (user closes and reopens later):
+- The sandbox filesystem persists (files, installed packages, Docker image cache all survive)
+- Only processes die — the platform looks up the saved command and re-executes it
+- The preview URL auto-recovers
+
+**Implication:** Write commands that are **idempotent** — they must work whether run for the first time or re-run after a restart. The platform handles the rest. Docker image cache survives restart so rebuilds are fast (~2-5s with warm cache).
 
 ### Sandbox Capabilities
 
@@ -35,8 +122,9 @@ All pre-installed in the Daytona sandbox snapshot — no `pip install` or `apt-g
 
 - **Python 3.12** + pandas, numpy, plotly, matplotlib, requests, httpx, yfinance
 - **FastAPI + uvicorn** (available via `fastmcp` transitive dependency)
-- **Node.js 20 + npm** — scaffold Vite/React projects with `npm create vite@latest`
-- **Playwright + Chromium** — available for advanced rendering
+- **Node.js 24 + npm** (host sandbox) / **Node.js 20** (Docker `apt install nodejs`) — scaffold Vite/React projects with `npm create vite@latest`
+- **Docker Engine** — for complex tier containerized dashboards (backend + frontend in one image)
+- **Playwright + Chromium** — available for verification testing
 
 ## Workflow
 
@@ -96,7 +184,7 @@ html = f"""<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AAPL Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
     <style>
         /* See references/ui-components.md for dark theme CSS */
     </style>
@@ -113,19 +201,73 @@ with open("work/dashboard/index.html", "w") as f:
     f.write(html)
 ```
 
-**Complex tier** — scaffold a FastAPI + Vite/React project (see Project Structure section below).
+**FastAPI + HTML tier** — write a FastAPI server with API routes + `StaticFiles` mount, and a single `static/index.html` with `fetch()` polling (see FastAPI + HTML Tier section below).
 
-### Step 5: Serve & Expose
+**Complex tier** — scaffold a FastAPI + Vite/React project (see Complex Tier section below).
+
+### Step 5: Verify Before Serving
+
+**Tier 1 — Syntax check (required, < 1 second)**
+
+Extract `<script>` blocks from the HTML and check with `node --check`:
+
+```python
+import re, subprocess, tempfile, os
+
+with open("work/dashboard/index.html") as f:
+    html = f.read()
+
+scripts = re.findall(r'<script(?![^>]*src)[^>]*>(.*?)</script>', html, re.DOTALL)
+for i, src in enumerate(scripts):
+    with tempfile.NamedTemporaryFile(suffix=".js", mode="w", delete=False) as tmp:
+        tmp.write(src)
+        tmp_path = tmp.name
+    result = subprocess.run(["node", "--check", tmp_path], capture_output=True, text=True)
+    os.unlink(tmp_path)
+    if result.returncode != 0:
+        raise RuntimeError(f"JS syntax error in script block {i+1}:\n{result.stderr}")
+print("Syntax check passed")
+```
+
+Also run the CSP self-check grep from the CSP section above.
+
+**Tier 2 — Browser verification (recommended for interactive dashboards)**
+
+Run when the dashboard has buttons, filters, or tabs. Skip for static data displays.
+
+After `GetPreviewUrl` starts the server, run a Playwright check to catch runtime errors:
+
+```python
+from playwright.sync_api import sync_playwright
+
+with sync_playwright() as p:
+    browser = p.chromium.launch()
+    page = browser.new_page()
+    js_errors = []
+    page.on("pageerror", lambda exc: js_errors.append(str(exc)))
+    page.goto("http://127.0.0.1:8050/", wait_until="networkidle", timeout=20000)
+    assert not js_errors, f"JS runtime errors: {js_errors}"
+    assert len(page.locator("body").inner_text().strip()) > 20, "Page appears blank"
+    page.screenshot(path="work/dashboard/verify-screenshot.png", full_page=True)
+    browser.close()
+print("Browser verification passed")
+```
+
+See [references/verification.md](references/verification.md) for extended templates with button-click testing and API response validation.
+
+### Step 6: Serve & Expose
 
 ```python
 # Simple tier
-GetPreviewUrl(port=8050, command="cd work/dashboard && python -m http.server 8050", title="AAPL Dashboard")
+GetPreviewUrl(port=8050, command="cd work/dashboard && python -m http.server 8050 --bind 0.0.0.0", title="AAPL Dashboard")
 
-# Complex tier
+# FastAPI + HTML tier / Complex tier
 GetPreviewUrl(port=8050, command="bash work/dashboard/start.sh", title="Stock Dashboard")
 ```
 
-### Step 6: Iterate
+**Local verification before `GetPreviewUrl`** — if you need the server running for Playwright verification, use the Bash tool with `run_in_background=true` (see sub-agent fallback above for the pattern). Do NOT use `subprocess.Popen` from `execute_code` — the process becomes a zombie when the tool-call shell exits.
+
+### Step 7: Iterate
 
 After the user sees the preview, adjust layout, data, or charts based on feedback.
 
@@ -162,6 +304,44 @@ Default data sources for common dashboard needs:
 | Earnings calendar | `yf_market` | `get_earnings_calendar` | `start, end` (YYYY-MM-DD) |
 | Sector info | `yf_market` | `get_sector_info` | `sector_key` (technology, healthcare, etc.) |
 | Industry info | `yf_market` | `get_industry_info` | `industry_key` |
+
+### Yahoo Finance Field Conventions
+
+Many fields are already in display units — do NOT multiply by 100:
+
+| Field | Unit | Example | Note |
+|-------|------|---------|------|
+| `regularMarketChangePercent` | % (not decimal) | `0.389` = +0.39% | Do NOT multiply by 100 |
+| `dividendYield` | % (not decimal) | `0.41` = 0.41% | Same convention |
+| `marketCap` | Absolute USD | `3.71e12` | Divide by 1e9 for $B display |
+| `trailingPE` | Ratio | `31.98` | Display directly |
+
+### `get_predefined_screen` Response Structure
+
+Quotes are nested — not at the top level:
+
+```python
+result = get_predefined_screen("day_gainers")
+quotes = result["data"]["quotes"]  # nested at result["data"]["quotes"], NOT result["quotes"]
+# Each quote: symbol, regularMarketPrice, regularMarketChangePercent, marketCap, ...
+```
+
+### Direct yfinance Usage (Docker / without MCP)
+
+Inside Docker containers, MCP tool modules are unavailable. Use `yfinance` directly:
+
+```python
+import yfinance as yf
+
+# Stock screener (yfinance 1.2.0+)
+result = yf.screen("day_gainers", count=5)
+quotes = result.get("quotes", [])
+
+# Stock data
+ticker = yf.Ticker("AAPL")
+info = ticker.info
+hist = ticker.history(period="1y")
+```
 
 ## UI Design Rules
 
@@ -213,71 +393,104 @@ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
 See [references/ui-components.md](references/ui-components.md) for complete CSS and component code.
 
-## Complex Tier — Project Structure
+## FastAPI + HTML Tier — Project Structure
 
-When using FastAPI + Vite/React, scaffold this structure:
+For live-data dashboards without React. FastAPI serves API endpoints and static HTML directly — no npm, no build step. Use the **copy-ready template files** with `.fastapi-html` suffix in `references/`:
 
 ```
 work/<task>/
+├── Dockerfile           # cp references/Dockerfile.fastapi-html Dockerfile
+├── start.sh             # cp references/start.sh start.sh
 ├── server/
-│   ├── main.py          # FastAPI app with CORS, /api routes
+│   ├── main.py          # cp references/server-main.fastapi-html.py server/main.py
+│   └── requirements.txt # cp references/requirements.txt server/requirements.txt
+└── static/
+    └── index.html       # Single HTML file with fetch() polling
+```
+
+### Setup Workflow
+
+1. **Copy template files** — all four `cp` commands above, then add your API routes to `server/main.py`
+2. **Add your Python deps** to `server/requirements.txt` (append pandas, yfinance, etc.)
+3. **Write `static/index.html`** with `fetch()` calls to your API routes for live data
+4. **Serve**: `GetPreviewUrl(port=8050, command="bash work/<task>/start.sh", title="Dashboard")`
+
+### Template Files
+
+**`Dockerfile`** ([references/Dockerfile.fastapi-html](references/Dockerfile.fastapi-html)) — Python 3.12-slim only (no Node/npm). Uses `uv pip install` for fast deps.
+
+**`server/main.py`** ([references/server-main.fastapi-html.py](references/server-main.fastapi-html.py)) — FastAPI skeleton with CORS, `HEAD /`, `/healthz`, and `StaticFiles` mount for `static/` directory. `StaticFiles` is the last mount (catches all unmatched routes).
+
+**`start.sh`** — same `references/start.sh` template (works unchanged for all Docker tiers).
+
+### Key Differences from Complex Tier
+
+- **No `frontend/` directory** — HTML lives in `static/`
+- **No npm/Node** — Dockerfile uses `python:3.12-slim` only
+- **`StaticFiles` mount** — serves `static/` directory with `html=True` (auto-serves `index.html`)
+- **`fetch()` for live data** — HTML uses `setInterval(() => fetch('/api/data').then(...), 30000)` for auto-refresh
+- **No SPA routing** — single `index.html`, no client-side router needed
+
+## Complex Tier — Project Structure
+
+When using FastAPI + Vite/React, scaffold this structure using the **copy-ready template files** in `references/`:
+
+```
+work/<task>/
+├── Dockerfile           # Copy from references/Dockerfile
+├── start.sh             # Copy from references/start.sh
+├── server/
+│   ├── main.py          # Copy from references/server-main.py, add your API routes
+│   ├── requirements.txt # Copy from references/requirements.txt, add your deps
 │   ├── routes/          # API route modules (stocks.py, sectors.py)
 │   └── models.py        # Pydantic response models
 ├── frontend/
 │   ├── package.json     # Vite + React + chart libraries
-│   ├── vite.config.js   # Proxy /api to FastAPI, host 0.0.0.0
+│   ├── vite.config.js   # Copy from references/vite.config.js
 │   ├── index.html
 │   └── src/
 │       ├── App.jsx      # Main app with routing/tabs
 │       ├── components/  # Chart, KPI, Table components
 │       ├── hooks/       # useStockData, useSectorData, etc.
 │       └── utils/       # formatters, color helpers
-└── start.sh             # Starts both servers
+└── verify.py            # Copy from references/verification.md (optional)
 ```
 
-### FastAPI Backend (`server/main.py`)
+### Setup Workflow
 
-```python
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+1. **Copy template files** from `references/` into `work/<task>/` — they work with zero modifications for port 8050
+2. **Add your API routes** to `server/main.py` (the template includes CORS, `HEAD /`, `/healthz`, and static file serving)
+3. **Add your Python deps** to `server/requirements.txt` (template includes fastapi + uvicorn)
+4. **Write frontend code** in `frontend/src/` (vite.config.js template proxies `/api` to backend on port 8051)
+5. **Serve**: `GetPreviewUrl(port=8050, command="bash work/<task>/start.sh", title="Dashboard")`
 
-app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+### Template Files
 
-@app.get("/api/stock/{ticker}")
-async def get_stock(ticker: str, period: str = "1y"):
-    from tools.yf_price import get_stock_history
-    from tools.yf_fundamentals import get_company_info
-    return {"history": get_stock_history(ticker, period=period), "info": get_company_info(ticker)}
-```
+**`Dockerfile`** ([references/Dockerfile](references/Dockerfile)) — Python 3.12 + Node + uv + tzdata. Builds frontend at image time, serves static files from FastAPI. Uses `uv pip install` for fast dependency installation.
 
-### Vite Config (`frontend/vite.config.js`)
+**`start.sh`** ([references/start.sh](references/start.sh)) — Cold-boot safe Docker wrapper. Starts dockerd if needed, builds image (uses layer cache on re-runs), removes old container, starts new one, health-checks with log dump on failure. Env var overrides: `PORT` (default 8050), `NAME` (default "dashboard").
 
-```javascript
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+**`server/main.py`** ([references/server-main.py](references/server-main.py)) — FastAPI skeleton with CORS, `HEAD /` (liveness for platform proxy), `/healthz`, SPA catch-all route for client-side routing (`/tab/news`, `/stocks/AAPL` → `index.html`), and a 503 fallback if the frontend build is missing.
 
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    host: '0.0.0.0',
-    port: 8050,
-    proxy: { '/api': 'http://localhost:8051' }
-  }
-});
-```
+**`server/requirements.txt`** ([references/requirements.txt](references/requirements.txt)) — Minimal: fastapi + uvicorn. Append project-specific packages (pandas, yfinance, etc.).
 
-### Startup Script (`start.sh`)
+**`frontend/vite.config.js`** ([references/vite.config.js](references/vite.config.js)) — Vite + React with `/api` proxy to backend on port 8051.
 
-```bash
-#!/bin/bash
-cd "$(dirname "$0")"
-cd server && uvicorn main:app --host 0.0.0.0 --port 8051 &
-cd frontend && npm install --prefer-offline && npx vite --host 0.0.0.0 --port 8050 &
-wait
-```
+> **Critical: Vite proxy is dev-only.** The `proxy` setting in `vite.config.js` only applies during `npm run dev`. The production build outputs plain static files with no proxy. In the Docker image, FastAPI serves both the built SPA from `frontend/dist/` and all `/api/*` routes from the **same port**. The reference `server-main.py` template already does this correctly — do NOT use a two-process architecture with separate static file server and API server.
 
-Call `GetPreviewUrl(port=8050, command="bash work/<task>/start.sh", title="Dashboard")`.
+### Docker Gotchas
+
+- **MCP tools are host-only**: The `tools/` modules (e.g., `from tools.yf_price import ...`) exist only in the host workspace Python environment — they are NOT copied into the Docker image. FastAPI server code inside Docker must call `yfinance` directly. Add `yfinance` to `server/requirements.txt`
+- **`--network host`**: Required for the container to reach external APIs (yfinance, MCP servers). Already set in `start.sh` template
+- **`tzdata`**: Required for yfinance timezone handling. Already in `Dockerfile` template
+- **Image cache**: Persists across workspace restarts. First build: 30-60s. Subsequent builds: ~2-5s (cached layers)
+- **Logs**: Use `docker logs dashboard` to debug startup failures
+- **Fallback without Docker**: If Docker is unavailable, build the frontend and run FastAPI directly:
+  ```bash
+  fuser -k 8050/tcp 2>/dev/null || true
+  cd frontend && npm install --prefer-offline && npm run build && cd ..
+  cd server && uvicorn main:app --host 0.0.0.0 --port 8050
+  ```
 
 ## Chart Libraries
 
@@ -285,9 +498,9 @@ Call `GetPreviewUrl(port=8050, command="bash work/<task>/start.sh", title="Dashb
 
 | Library | CDN URL | Best for |
 |---------|---------|----------|
-| **Chart.js** | `https://cdn.jsdelivr.net/npm/chart.js` | Line, bar, pie, doughnut, area |
+| **Chart.js** | `https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js` | Line, bar, pie, doughnut, area |
 | **Plotly.js** | `https://cdn.plot.ly/plotly-2.35.2.min.js` | Candlestick, heatmap, treemap |
-| **Lightweight Charts** | `https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js` | TradingView-style candlestick |
+| **Lightweight Charts** | `https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js` | TradingView-style candlestick |
 
 Default to **Chart.js**. Use Plotly for candlesticks/heatmaps. Lightweight Charts only for TradingView-style.
 
@@ -379,8 +592,8 @@ Layout:
 - **Component per widget**: One React component per chart/card/table
 - **Shared hooks**: `useStockData(ticker)`, `useSectorData(key)` for data fetching
 - **Error boundaries**: Wrap chart components so one failure doesn't crash the whole page
-- **Proxy, not CORS**: Prefer Vite proxy config over CORS middleware when possible
-- **`host: '0.0.0.0'`**: Both FastAPI and Vite must bind to `0.0.0.0`, not `127.0.0.1`
+- **Single-port production**: Vite proxy is dev-only. In production Docker builds, FastAPI serves both `/api/*` and the SPA from one port
+- **`host: '0.0.0.0'`**: Both FastAPI and Vite must bind to `0.0.0.0`, not `127.0.0.1` or `localhost`
 
 ## Error Handling & Debugging
 
@@ -389,22 +602,50 @@ Layout:
 | `GetPreviewUrl` returns error | Port already in use — try a different port (8051, 8052, ...) |
 | Page is blank | Check for JS errors — ensure all `getElementById` targets exist |
 | Data is empty | Validate MCP tool response before embedding — check for `None` or empty lists |
+| Buttons/inputs do nothing | CSP blocking inline handlers — replace `onclick=` etc. with `addEventListener`. Run CSP self-check |
 | FastAPI won't start | Ensure `host='0.0.0.0'` in `uvicorn.run()` |
 | Vite won't start | Ensure `--host 0.0.0.0` flag and check if port is free |
 | CORS errors | Add `CORSMiddleware` to FastAPI or use Vite proxy |
 | Charts don't render | CDN scripts must load before chart initialization — use `DOMContentLoaded` event |
 | Iframe shows "refused to connect" | Server not ready yet — add a small delay or retry logic |
+| HEAD / returns 404 or 405 | Add `@app.head("/")` as its own function — don't stack with `/healthz` (use `server-main.py` template) |
+| SPA deep route returns 404 | Add catch-all `@app.get("/{full_path:path}")` that serves `index.html` for non-file paths (use `server-main.py` template) |
+| `start.sh` fails on restart | Ensure idempotent: dockerd startup check, `docker rm -f` before `docker run` (use `start.sh` template) |
+| Docker: yfinance timezone error | Add `tzdata` package to Dockerfile (included in template) |
+| Docker: can't reach external APIs | Use `--network host` flag (included in `start.sh` template) |
+| `GetPreviewUrl` not found / `NameError` | Tool only available to main agent runtime — sub-agents use Bash tool with `run_in_background=true` to start the server, then report port/command/title back |
+| Playwright `ERR_CONNECTION_REFUSED` | Use `127.0.0.1:PORT` not `localhost` — sandbox resolves `localhost` to IPv6 (`::1`) first |
+| Background server died / `<defunct>` | Use Bash tool with `run_in_background=true` — do NOT use `subprocess.Popen` from `execute_code` (process becomes zombie when tool-call shell exits) |
+| `ModuleNotFoundError: tools.*` in Docker | MCP tools are host-only — use `yfinance` directly inside Docker containers |
 
 ## Quality Checklist
 
 Before calling `GetPreviewUrl`:
 
+**Data & Code**
 - [ ] All data fetched and validated (no empty dataframes or None values)
 - [ ] Files written to `work/<task>/` directory
 - [ ] JSON data properly escaped with `json.dumps()`
 - [ ] All chart containers exist in HTML before JS tries to reference them
+
+**CSP Safety**
+- [ ] No inline event handlers (`onclick`, `oninput`, `onchange`, etc.) — all events via `addEventListener`
+- [ ] No `eval()`, `new Function()`, or string-based `setTimeout()`
+- [ ] No `javascript:` URLs
+- [ ] CSP self-check grep passes (no matches)
+
+**Verification**
+- [ ] Tier 1: JS syntax check passed (`node --check` on extracted script blocks)
+- [ ] Tier 2: Playwright verification passed (for interactive dashboards with buttons/filters/tabs)
+
+**Serving**
 - [ ] Server binds to `0.0.0.0` (not `127.0.0.1` or `localhost`)
 - [ ] Correct port used (default 8050)
+- [ ] Command passed to `GetPreviewUrl` is idempotent (works on re-run after restart)
+- [ ] Complex tier: `start.sh` and `Dockerfile` copied from templates
+- [ ] Complex tier: FastAPI includes `HEAD /` endpoint (use `server-main.py` template)
+
+**UI Quality**
 - [ ] Dark theme applied consistently (see color table above)
 - [ ] Responsive layout — no horizontal scroll
 - [ ] Financial numbers properly formatted (currency, %, abbreviations)

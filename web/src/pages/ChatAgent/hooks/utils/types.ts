@@ -49,6 +49,10 @@ export interface PreviewData {
   port: number;
   title?: string;
   command?: string;
+  /** URL path suffix (e.g. "/timeline.html") appended to the resolved signed URL. */
+  path?: string;
   loading?: boolean;
   error?: boolean;
+  /** Monotonic counter — incremented on user clicks to force iframe reload even when URL is unchanged. */
+  reloadToken?: number;
 }

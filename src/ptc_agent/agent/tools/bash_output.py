@@ -1,6 +1,6 @@
 """Get output and status of background bash commands."""
 
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 from langchain_core.tools import BaseTool, tool
@@ -19,19 +19,25 @@ def create_bash_output_tool(sandbox: Any) -> BaseTool:
     """
 
     @tool
-    async def BashOutput(command_id: str) -> str:
-        """Get the output and status of a background bash command.
+    async def BashOutput(command_id: str, action: Literal["status", "stop"] = "status") -> str:
+        """Get the output/status of a background command, or stop it.
 
         Use this to check on commands started with run_in_background=True.
-        To stop a background command, use the Bash tool (e.g. pkill -f '...').
 
         Args:
             command_id: The command_id returned when the background command was started
+            action: "status" (default) to check output, or "stop" to terminate the command
 
         Returns:
-            Status and output of the background command
+            Status and output of the background command, or confirmation of stop
         """
         try:
+            if action == "stop":
+                stopped = await sandbox.stop_background_command(command_id)
+                if stopped:
+                    return f"Background command {command_id} stopped."
+                return f"No running background command found with id {command_id}."
+
             result = await sandbox.get_background_command_status(command_id)
 
             is_running = result["is_running"]

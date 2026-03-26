@@ -35,7 +35,7 @@ sandbox:
 
     # Hash will be automatically appended based on dependencies
     snapshot_enabled: true # Recommended: Enable snapshot-based sandbox creation
-    snapshot_name: "open-ptc-v1" # Base name for snapshot (hash will be appended)
+    snapshot_name: "langalpha" # Base name for snapshot (hash will be appended)
     snapshot_auto_create: true # Automatically create snapshot if it doesn't exist
 
   # Docker local sandbox configuration

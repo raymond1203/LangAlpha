@@ -2724,6 +2724,7 @@ export function useChatMessages(
             port: payload.port as number,
             title: payload.title as string | undefined,
             command: payload.command as string | undefined,
+            path: payload.path as string | undefined,
             loading: true,
           });
         } else if (artifactType === 'task') {
