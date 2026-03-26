@@ -520,6 +520,35 @@
       margin: 15mm;
     }
 
+    /* Unclip the entire ancestor chain — react-to-print copies all stylesheets
+       into its print iframe, so global height:100vh / overflow:hidden on html/body
+       and app shell containers will clip content to one page if not overridden. */
+    html {
+      height: auto !important;
+      overflow: visible !important;
+      background: #ffffff !important;
+    }
+    body {
+      height: auto !important;
+      overflow: visible !important;
+      background: #ffffff !important;
+      position: static !important;
+    }
+    #root,
+    .app-layout,
+    .app-main,
+    .main,
+    .chat-agent-container,
+    .chat-split-container,
+    .chat-split-right,
+    .file-panel,
+    .file-panel-content-wrapper,
+    .file-panel-content {
+      height: auto !important;
+      overflow: visible !important;
+      position: static !important;
+    }
+
     /* Hide everything except the markdown content */
     body * {
       visibility: hidden;
@@ -528,11 +557,12 @@
     .markdown-print-content * {
       visibility: visible;
     }
+
     .markdown-print-content {
-      position: absolute;
-      left: 0;
-      top: 0;
+      position: relative;
       width: 100%;
+      height: auto;
+      overflow: visible;
       background: #ffffff !important;
       color: #1a1a1a !important;
       -webkit-print-color-adjust: exact;
