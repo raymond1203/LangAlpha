@@ -42,6 +42,7 @@ DEFAULT_DEPENDENCIES = [
     # Web scraping
     "scrapling[all]",
     "html2text",
+    "youtube-transcript-api",
     # Browser automation
     "playwright",
     # Utilities

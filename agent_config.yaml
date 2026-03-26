@@ -266,7 +266,7 @@ search_api: tavily
 # Web crawling with SafeCrawlerWrapper for circuit breaker and fault tolerance.
 # Backend: "scrapling" uses tiered HTTP→browser→stealth fetching.
 crawler:
-  backend: "scrapling" # Crawler backend (currently only "scrapling")
+  backend: "router" # Options: "scrapling", "router" (adds PDF/YouTube/X extraction)
   max_concurrent_crawls: 20 # Max parallel browser contexts (adjust based on RAM: ~150MB each)
   page_timeout: 60000 # Page load timeout in ms
   delay_before_return: 3 # Seconds to wait for JS rendering after DOM ready

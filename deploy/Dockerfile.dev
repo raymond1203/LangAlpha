@@ -24,7 +24,7 @@ RUN uv sync --frozen --no-dev
 # patchright: Chromium for DynamicFetcher (Tier 2)
 # scrapling install: Camoufox for StealthyFetcher (Tier 3)
 RUN uv run patchright install --with-deps chromium \
-    && uv run scrapling install || true
+    && uv run scrapling install
 
 # Copy application source (will be overridden by volume mounts in dev)
 COPY src/ src/
