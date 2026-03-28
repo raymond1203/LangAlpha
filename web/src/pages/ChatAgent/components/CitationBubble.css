@@ -6,3 +6,7 @@
   outline: 2px solid var(--color-accent-primary);
   outline-offset: 2px;
 }
+
+.cite-bubble-card-title:hover {
+  color: var(--color-accent-primary);
+}

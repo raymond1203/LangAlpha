@@ -138,6 +138,7 @@ function CitationBubble({ node: _node, label, href, ...props }: MarkdownComponen
                 href={url}
                 target="_blank"
                 rel="noopener noreferrer"
+                className="cite-bubble-card-title"
                 style={{
                   fontSize: 14,
                   fontWeight: 500,
@@ -149,8 +150,6 @@ function CitationBubble({ node: _node, label, href, ...props }: MarkdownComponen
                   WebkitBoxOrient: 'vertical' as const,
                   overflow: 'hidden',
                 }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-accent-primary)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--color-text-primary)'; }}
               >
                 {meta.title}
               </a>
