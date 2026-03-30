@@ -1,8 +1,13 @@
 """
-Onboarding completion service.
+Onboarding and personalization completion service.
 
-Checks if user has completed onboarding requirements and auto-sets onboarding_completed.
-Requirements: at least one stock (watchlist or portfolio) + risk preference.
+Two separate completion flows:
+
+1. **Personalization** (BYOK wizard): auto-sets personalization_completed
+   when the user has at least one API key or OAuth connection.
+
+2. **Onboarding** (investment preferences): auto-sets onboarding_completed
+   when the user has at least one stock + risk preference set.
 """
 
 import logging
@@ -30,6 +35,47 @@ def _has_risk_preference(prefs: dict | None) -> bool:
     for v in risk.values():
         if v and isinstance(v, str) and v.strip():
             return True
+    return False
+
+
+async def maybe_complete_personalization(user_id: str) -> bool:
+    """
+    If personalization requirements are met, set personalization_completed=True.
+
+    Requirements: at least one API key configured (BYOK) or one OAuth connection.
+
+    Returns:
+        True if personalization was just completed, False otherwise.
+    """
+    try:
+        user = await user_db.get_user(user_id)
+        if not user:
+            return False
+        if user.get("personalization_completed"):
+            return False
+
+        # Check for API keys
+        from src.server.database.api_keys import is_byok_active
+
+        has_key = await is_byok_active(user_id)
+        if not has_key:
+            # Check for OAuth connections
+            from src.server.database.oauth_tokens import has_any_oauth_token
+
+            has_key = await has_any_oauth_token(user_id)
+
+        if has_key:
+            await user_db.update_user(
+                user_id=user_id, personalization_completed=True
+            )
+            logger.info(
+                f"[onboarding] Auto-completed personalization for user {user_id}"
+            )
+            return True
+    except Exception as e:
+        logger.warning(
+            f"[onboarding] Failed to check/complete personalization: {e}"
+        )
     return False
 
 

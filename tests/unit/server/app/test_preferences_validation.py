@@ -26,6 +26,8 @@ def _mock_model_config(system_models=None, byok_providers=None):
 
     mc.get_model_config.side_effect = lambda name: system_models.get(name)
     mc.get_byok_eligible_providers.return_value = byok_providers
+    # _flat_providers is accessed directly by _validate_custom_models
+    mc._flat_providers = {p: {} for p in byok_providers}
     return mc
 
 

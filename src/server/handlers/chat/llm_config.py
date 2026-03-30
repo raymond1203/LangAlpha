@@ -152,9 +152,8 @@ async def resolve_byok_llm_client(
         parent_info = mc.get_provider_info(parent)
         base_url = parent_info.get("base_url")  # None for anthropic = SDK default
 
-    logger.info(
-        f"[CHAT] Using BYOK key for parent_provider={parent} "
-        f"(model_provider={provider}) base_url={base_url or 'SDK default'}"
+    logger.debug(
+        f"[CHAT] Resolved BYOK client for model={model_name} parent={parent} base_url={base_url or 'SDK default'}"
     )
     # Always pass base_url (even None) to override the sub-provider's URL via sentinel
     return create_llm(
@@ -212,14 +211,11 @@ async def resolve_oauth_llm_client(
     # Provider-specific headers
     headers = {}
     if provider == "claude-oauth":
-        logger.info(f"[CHAT] Using Claude OAuth for provider={provider}")
+        logger.debug(f"[CHAT] Resolved Claude OAuth client for model={model_name}")
     else:
         # Codex: set ChatGPT-Account-Id header
         account_id = token_data.get("account_id", "")
-        token_type = "sk-key" if access_token.startswith("sk-") else "oauth-jwt"
-        logger.info(
-            f"[CHAT] Using Codex OAuth for provider={provider} token_type={token_type} account_id={account_id[:8]}..."
-        )
+        logger.debug(f"[CHAT] Resolved Codex OAuth client for model={model_name}")
         if account_id:
             headers["ChatGPT-Account-Id"] = account_id
 
@@ -393,5 +389,24 @@ async def resolve_llm_config(
             if config is base_config:
                 config = config.model_copy(deep=True)
             config.subsidiary_llm_clients[role] = sub_client
+
+    # Resolve OAuth/BYOK for fallback models
+    if config.llm.fallback:
+        resolved_fallbacks: list = []
+        for fb_model in config.llm.fallback:
+            fb_client = await resolve_oauth_llm_client(user_id, fb_model)
+            if not fb_client and is_byok:
+                fb_client = await resolve_byok_llm_client(
+                    user_id, fb_model, is_byok, _pref_cache=model_pref,
+                )
+            if fb_client:
+                resolved_fallbacks.append(fb_client)
+        if resolved_fallbacks:
+            if config is base_config:
+                config = config.model_copy(deep=True)
+            config.fallback_llm_clients = resolved_fallbacks
+            logger.info(
+                f"[CHAT] Resolved {len(resolved_fallbacks)}/{len(config.llm.fallback)} fallback models via OAuth/BYOK"
+            )
 
     return config
