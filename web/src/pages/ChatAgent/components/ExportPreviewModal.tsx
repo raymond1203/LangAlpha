@@ -251,11 +251,19 @@ export default function ExportPreviewModal({
         if (gen !== renderGenRef.current) return; // superseded
         setPageCount(flow.total);
         // Apply zoom AFTER Paged.js finishes measuring.
-        // CSS zoom during rendering distorts Paged.js's overflow detection
-        // (clientHeight is unzoomed but getBoundingClientRect is zoomed),
-        // causing it to fit 2x content per page.
+        // We use transform:scale() instead of CSS zoom for GPU-accelerated
+        // compositing. CSS zoom is layout-affecting (every scroll frame
+        // recalculates layout), while transform:scale() is paint-only.
+        // The tradeoff: transform doesn't change the element's layout box,
+        // so we set the wrapper height explicitly to fix scroll extent.
         const pagesEl = container.querySelector('.pagedjs_pages') as HTMLElement | null;
-        if (pagesEl) pagesEl.style.zoom = String(previewZoomRef.current);
+        if (pagesEl) {
+          const zoom = previewZoomRef.current;
+          const naturalHeight = pagesEl.scrollHeight;
+          pagesEl.style.transform = `scale(${zoom})`;
+          pagesEl.style.transformOrigin = 'top center';
+          container.style.height = `${naturalHeight * zoom}px`;
+        }
         // Reveal now that zoom is applied — no layout flash
         container.style.visibility = 'visible';
         setRendering(false);
@@ -277,7 +285,12 @@ export default function ExportPreviewModal({
     const container = pagedContainerRef.current;
     if (!container) return;
     const pagesEl = container.querySelector('.pagedjs_pages') as HTMLElement | null;
-    if (pagesEl) pagesEl.style.zoom = String(previewZoom);
+    if (pagesEl) {
+      pagesEl.style.transform = `scale(${previewZoom})`;
+      pagesEl.style.transformOrigin = 'top center';
+      // scrollHeight is layout-based (unaffected by transform), so it's always the natural height
+      container.style.height = `${pagesEl.scrollHeight * previewZoom}px`;
+    }
   }, [previewZoom]);
 
   // ---- Cleanup Paged.js styles on unmount ----

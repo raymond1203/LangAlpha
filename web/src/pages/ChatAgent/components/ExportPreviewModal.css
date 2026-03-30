@@ -198,21 +198,23 @@
 /* ====== Paged.js Preview ====== */
 /* Paged.js renders .pagedjs_pages > .pagedjs_page elements with proper A4 dimensions */
 
-/* Outer container — overflow visible so parent .export-preview-content handles scrolling */
+/* Outer container — clips the untransformed layout box from transform:scale().
+   Height is set via JS after Paged.js renders (naturalHeight × zoom). */
 .export-preview-paged {
-  overflow: visible;
+  overflow: hidden;
 }
 
 /* Container for Paged.js output.
-   NOTE: zoom is applied via JS AFTER Paged.js finishes rendering.
-   Applying zoom in CSS causes Paged.js to mismeasure content (clientHeight
-   vs getBoundingClientRect inconsistency under zoom), fitting 2x content per page. */
+   Scaling is applied via JS (transform:scale) AFTER Paged.js finishes rendering.
+   We use transform:scale instead of CSS zoom because transform is GPU-composited
+   (paint-only), while zoom is layout-affecting and forces CPU re-layout on scroll.
+   The wrapper (.export-preview-paged) has its height set explicitly to match the
+   visual (scaled) dimensions so the scroll container sees correct bounds. */
 .export-preview-paged .pagedjs_pages {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  /* zoom: set to 0.5 via JS after render — do NOT set here */
   padding: 8px 0 20px;
 }
 
