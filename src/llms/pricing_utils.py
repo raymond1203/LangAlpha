@@ -83,10 +83,10 @@ def detect_provider_for_model(model_name: str) -> Optional[str]:
         >>> detect_provider_for_model("unknown-model")
         None
     """
-    from .llm import ModelConfig
+    from .llm import LLM
 
     try:
-        model_config = ModelConfig()
+        model_config = LLM.get_model_config()
         config_data = model_config.llm_config  # Load models.json
     except Exception as e:
         logger.debug(f"Failed to load models.json for provider detection: {e}")
@@ -160,10 +160,10 @@ def find_model_pricing(model_name: str, provider: Optional[str] = None) -> Optio
         >>> find_model_pricing("gpt-5-0905", provider="openai")  # Version fallback
         {'input': 1.25, 'output': 10.0, ...}  # Falls back to gpt-5 pricing
     """
-    from .llm import ModelConfig
+    from .llm import LLM
 
     try:
-        model_config = ModelConfig()
+        model_config = LLM.get_model_config()
         manifest = model_config.manifest
     except Exception as e:
         logger.warning(f"Failed to load model manifest for pricing lookup: {e}")

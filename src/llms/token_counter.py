@@ -7,7 +7,7 @@ import json
 import logging
 
 from .pricing_utils import calculate_total_cost
-from .llm import ModelConfig
+from .llm import LLM
 
 logger = logging.getLogger(__name__)
 
@@ -386,7 +386,7 @@ class TokenUsageTracker:
         model_pricing_map = {}
         if use_config:
             try:
-                config = ModelConfig()
+                config = LLM.get_model_config()
 
                 for model in self.model_totals.keys():
                     # Try to find the model in config across all providers
