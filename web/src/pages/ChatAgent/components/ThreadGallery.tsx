@@ -441,7 +441,7 @@ function ThreadGallery({ workspaceId, onBack, onThreadSelect }: ThreadGalleryPro
           name: a.file.name,
           type: a.type,
           size: a.file.size,
-          preview: a.preview || null,
+          preview: null,
           dataUrl: a.dataUrl,
         }));
       }
