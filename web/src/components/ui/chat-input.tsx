@@ -558,7 +558,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showWorkspaceMenu]);
 
-  // Close model menu on click outside
+  // Close model menu on click outside, scroll, or resize
   useEffect(() => {
     if (!showModelMenu) return;
     const handleClickOutside = (e: MouseEvent) => {
@@ -567,8 +567,15 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
       setShowModelMenu(false);
       setShowMoreModels(false);
     };
+    const dismiss = () => { setShowModelMenu(false); setShowMoreModels(false); };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    window.addEventListener('scroll', dismiss, true);
+    window.addEventListener('resize', dismiss);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('scroll', dismiss, true);
+      window.removeEventListener('resize', dismiss);
+    };
   }, [showModelMenu]);
 
   // --- File Upload Handling ---
