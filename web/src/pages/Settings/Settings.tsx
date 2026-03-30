@@ -287,7 +287,7 @@ function Settings() {
       const cleanStarred = starredModels.filter(m => allValidModels.has(m));
       const cleanFallback = fallbackModels.filter(m => allValidModels.has(m));
       const activeProviderKeys = new Set(byokProviders.filter(p => p.has_key).map(p => p.provider));
-      const cleanCustomProviders = customProvidersList.filter(cp => activeProviderKeys.has(cp.name));
+      const cleanCustomProviders = customProvidersList.filter(cp => activeProviderKeys.has(cp.name as string));
       const cleanCustomModels = customModels.filter(cm => activeProviderKeys.has(cm.provider) || allValidModels.has(cm.name));
 
       await updatePrefsMutation.mutateAsync({
