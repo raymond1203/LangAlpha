@@ -449,6 +449,28 @@ def upload_chart(file_path: str, custom_name: str | None = None) -> str | None:
     )
 
 
+def sanitize_storage_key(name: str, data_url: str | None = None) -> str:
+    """Derive a safe S3/OSS key segment from a display name.
+
+    Takes the first line, truncates to 120 chars, strips path-unsafe
+    characters, and appends a MIME-derived extension when possible.
+    """
+    lines = (name or "").splitlines()
+    safe = (lines[0].strip()[:120] if lines else "") or "file"
+    safe = safe.replace("/", "_")
+
+    ext = ""
+    if data_url:
+        if data_url.startswith("data:application/pdf"):
+            ext = ".pdf"
+        elif data_url.startswith("data:image/"):
+            mime = data_url.split(";")[0].split("/")[-1]
+            ext = f".{mime}" if mime else ".png"
+    if ext and not safe.lower().endswith(ext):
+        safe = f"{safe}{ext}"
+    return safe
+
+
 # Convenience function for quick setup verification
 def verify_connection() -> bool:
     """Verify OSS connection and credentials.

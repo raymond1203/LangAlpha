@@ -95,6 +95,21 @@ if STORAGE_PROVIDER == "none":
     def upload_chart(file_path: str, custom_name: str | None = None) -> str | None:
         return None
 
+    def sanitize_storage_key(name: str, data_url: str | None = None) -> str:
+        lines = (name or "").splitlines()
+        safe = (lines[0].strip()[:120] if lines else "") or "file"
+        safe = safe.replace("/", "_")
+        ext = ""
+        if data_url:
+            if data_url.startswith("data:application/pdf"):
+                ext = ".pdf"
+            elif data_url.startswith("data:image/"):
+                mime = data_url.split(";")[0].split("/")[-1]
+                ext = f".{mime}" if mime else ".png"
+        if ext and not safe.lower().endswith(ext):
+            safe = f"{safe}{ext}"
+        return safe
+
     def verify_connection() -> bool:
         logger.info("Storage is disabled (STORAGE_PROVIDER=none)")
         return True
@@ -105,6 +120,7 @@ elif STORAGE_PROVIDER == "oss":
         does_object_exist,
         get_public_url,
         get_signed_url,
+        sanitize_storage_key,
         upload_base64,
         upload_bytes,
         upload_chart,
@@ -121,6 +137,7 @@ else:
         does_object_exist,
         get_public_url,
         get_signed_url,
+        sanitize_storage_key,
         upload_base64,
         upload_bytes,
         upload_chart,
@@ -139,6 +156,7 @@ __all__ = [
     "get_public_url",
     "get_signed_url",
     "is_storage_enabled",
+    "sanitize_storage_key",
     "upload_base64",
     "upload_bytes",
     "upload_chart",
