@@ -386,6 +386,7 @@
     "fontSize": "字号",
     "lineHeight": "行高",
     "zoom": "缩放",
+    "pages": "约 {{count}} 页",
     "editFile": "编辑文件",
     "undo": "撤销 (Cmd+Z)",
     "redo": "重做 (Cmd+Shift+Z)",

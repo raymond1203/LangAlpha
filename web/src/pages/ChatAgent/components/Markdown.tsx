@@ -83,7 +83,7 @@ function CodeBlock({ language, code, compact = false, codeTheme }: CodeBlockProp
     return (
       <div style={{ margin: compact ? '4px 0' : '6px 0' }}>
         <div className="rounded overflow-hidden"
-          style={{ backgroundColor: '#f7f6f3', pageBreakInside: 'avoid', breakInside: 'avoid' as any }}>
+          style={{ backgroundColor: '#f7f6f3', pageBreakInside: 'avoid', breakInside: 'avoid' }}>
           <SyntaxHighlighter
             language={language || 'text'}
             style={oneLight}

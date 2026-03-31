@@ -429,7 +429,7 @@ export default function ExportPreviewModal({
 
   const pageCountLabel = !loading && !error && pageCount > 0 && (
     <span className="export-preview-page-count">
-      ~{pageCount} {pageCount === 1 ? 'page' : 'pages'}
+      {t('filePanel.pages', { count: pageCount }) ?? `~${pageCount} pages`}
     </span>
   );
 

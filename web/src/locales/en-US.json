@@ -386,6 +386,8 @@
     "fontSize": "Size",
     "lineHeight": "Line Height",
     "zoom": "Zoom",
+    "pages": "~{{count}} pages",
+    "pages_one": "~1 page",
     "editFile": "Edit file",
     "undo": "Undo (Cmd+Z)",
     "redo": "Redo (Cmd+Shift+Z)",
