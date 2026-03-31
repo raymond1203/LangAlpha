@@ -153,7 +153,7 @@ export default function SetupWizard() {
 
   return (
     <div
-      className="min-h-screen flex flex-col"
+      className="h-screen h-dvh flex flex-col overflow-y-auto"
       style={{ backgroundColor: 'var(--color-bg-page)' }}
     >
       {/* Exit button — visible when user already has model access configured */}
@@ -196,7 +196,7 @@ export default function SetupWizard() {
       </header>
 
       {/* Progress stepper */}
-      <div className="py-3 sm:py-6">
+      <div className="py-4 sm:py-6">
         <ProgressStepper currentDot={currentDot} labels={stepperLabels} />
       </div>
 
@@ -209,7 +209,7 @@ export default function SetupWizard() {
           maxWidth: 640,
           padding: 'clamp(16px, 5vw, 48px)',
           paddingTop: 0,
-          paddingBottom: 'env(safe-area-inset-bottom, 16px)',
+          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 32px)',
         }}
       >
         <AnimatePresence mode="wait" initial={false}>

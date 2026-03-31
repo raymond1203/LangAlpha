@@ -193,7 +193,7 @@ export default function MethodStep() {
   }, [selected, navigate]);
 
   const handleSkipToDefaults = useCallback(() => {
-    navigate('/setup/models');
+    navigate('/setup/defaults');
   }, [navigate]);
 
   const handleRedeemInvitation = useCallback(async () => {

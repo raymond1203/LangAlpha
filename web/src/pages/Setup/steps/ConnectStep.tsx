@@ -190,11 +190,12 @@ export default function ConnectStep() {
   const state = (location.state as LocationState | null) ?? {};
 
   // Redirect to method step if essential state is missing (e.g. browser refresh)
+  // Custom provider flows don't have a provider yet — skip the guard for those.
   useEffect(() => {
-    if (!state.provider) {
+    if (!state.provider && !state.isCustom && !state.isExistingCustom) {
       navigate('/setup/method', { replace: true });
     }
-  }, [state.provider, navigate]);
+  }, [state.provider, state.isCustom, state.isExistingCustom, navigate]);
 
   const method = state.method ?? 'api_key';
   const isCustom = state.isCustom ?? false;
@@ -497,9 +498,12 @@ export default function ConnectStep() {
         state: { method, provider: slug, displayName: customName.trim(), brandKey: slug },
       });
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { detail?: string } }; message?: string };
+      const err = e as { response?: { data?: { detail?: string | Array<{ msg?: string }> } }; message?: string };
       const detail = err?.response?.data?.detail;
-      setError(typeof detail === 'string' ? detail : err?.message ?? 'Failed to save custom provider.');
+      const msg = typeof detail === 'string'
+        ? detail
+        : Array.isArray(detail) ? detail.map((d) => d.msg).filter(Boolean).join('; ') : null;
+      setError(msg || err?.message || 'Failed to save custom provider.');
     } finally {
       setSaving(false);
     }

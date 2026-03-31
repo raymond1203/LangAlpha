@@ -455,7 +455,7 @@ export default function ModelPickStep() {
             You can connect multiple providers for more model options.
           </span>
         </div>
-        <Button variant="outline" size="sm" onClick={handleAddAnother}>
+        <Button variant="outline" size="sm" className="shrink-0" onClick={handleAddAnother}>
           + Add
         </Button>
       </div>
