@@ -241,9 +241,14 @@ async def astream_flash_workflow(
         multimodal_contexts = parse_multimodal_contexts(request.additional_context)
         if multimodal_contexts:
             modalities = get_input_modalities(effective_model) if effective_model else ["text"]
-            supported, unsupported = filter_multimodal_by_capability(
+            supported, unsupported, file_only = filter_multimodal_by_capability(
                 multimodal_contexts, modalities
             )
+            if file_only:
+                logger.warning(
+                    f"[FLASH_CHAT] {len(file_only)} file-only attachment(s) "
+                    f"ignored (Flash mode has no sandbox)"
+                )
             if supported:
                 messages = inject_multimodal_context(messages, supported)
                 logger.info(
