@@ -597,13 +597,13 @@ class TestBuildGraphConfig:
         config = self._build()
         assert "checkpoint_id" not in config["configurable"]
 
-    @patch("src.config.langsmith.get_filtered_langsmith_tracer", return_value=None)
+    @patch("src.server.handlers.chat._common.get_filtered_langsmith_tracer", return_value=None)
     def test_token_callback_in_callbacks(self, _mock):
         cb = MagicMock()
         config = self._build(token_callback=cb)
         assert config["callbacks"] == [cb]
 
-    @patch("src.config.langsmith.get_filtered_langsmith_tracer", return_value=None)
+    @patch("src.server.handlers.chat._common.get_filtered_langsmith_tracer", return_value=None)
     def test_no_callbacks_when_none(self, _mock):
         config = self._build(token_callback=None)
         assert "callbacks" not in config

@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Optional
 import psycopg
 from fastapi import HTTPException
 
+from src.config.langsmith import get_filtered_langsmith_tracer
 from src.config.settings import (
     get_langsmith_metadata,
     get_langsmith_tags,
@@ -683,8 +684,6 @@ def build_graph_config(
     callbacks: list = []
     if token_callback:
         callbacks.append(token_callback)
-
-    from src.config.langsmith import get_filtered_langsmith_tracer
 
     langsmith_tracer = get_filtered_langsmith_tracer()
     if langsmith_tracer:
