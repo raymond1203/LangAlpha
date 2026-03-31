@@ -144,14 +144,24 @@ class ModelConfig:
         return provider.title()
 
     def get_model_metadata(self) -> dict[str, dict[str, str]]:
-        """Return {model_key: {sdk, provider}} for all visible models."""
+        """Return {model_key: {sdk, provider, access_type, ...}} for all visible models."""
         result = {}
         for model_name, model_info in self.llm_config.items():
             if not model_info or not model_info.get("visible", False):
                 continue
             provider = model_info.get("provider", "unknown")
-            sdk = self.get_provider_info(provider).get("sdk", "unknown")
-            result[model_name] = {"sdk": sdk, "provider": provider}
+            provider_info = self.get_provider_info(provider)
+            sdk = provider_info.get("sdk", "unknown")
+            access_type = provider_info.get("access_type", "api_key")
+            entry: dict[str, str] = {"sdk": sdk, "provider": provider, "access_type": access_type}
+            # Mark variants that require their own API key (different env_key from parent).
+            # e.g. z-ai-cn needs ZAI_CN_API_KEY, not ZAI_API_KEY.
+            parent_provider = provider_info.get("parent_provider")
+            if parent_provider:
+                parent_info = self.get_provider_info(parent_provider)
+                if provider_info.get("env_key") != parent_info.get("env_key"):
+                    entry["requires_own_key"] = "true"
+            result[model_name] = entry
         return result
 
     def get_input_modalities(self, model_name: str) -> list[str]:
