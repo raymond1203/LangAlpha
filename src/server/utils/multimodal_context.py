@@ -105,6 +105,11 @@ def inject_multimodal_context(
     the attachment context first. Non-image/non-PDF contexts are skipped
     (they are handled via system-reminder with sandbox path only).
 
+    .. note::
+        Mutates ``messages`` in place (modifies the last user message's
+        ``content`` key). Callers must pass a fresh list if they need to
+        preserve the original.
+
     Args:
         messages: List of message dicts (role + content)
         multimodal_contexts: List of MultimodalContext objects to inject
@@ -292,15 +297,17 @@ async def upload_to_sandbox(
     Returns:
         List of virtual paths parallel to the input list (``None`` on failure).
     """
-    paths: List[Optional[str]] = []
-
-    for ctx in contexts:
+    async def _upload_one(ctx) -> Optional[str]:
         data_url = ctx.data if hasattr(ctx, "data") else ctx.get("data", "")
         desc = (
             ctx.description if hasattr(ctx, "description") else ctx.get("description")
         ) or "file"
 
         try:
+            if "," not in data_url:
+                logger.warning(f"Malformed data URL for '{desc}' (no comma)")
+                return None
+
             header, b64_content = data_url.split(",", 1)
             mime_type = header.split(":")[1].split(";")[0] if ":" in header else ""
 
@@ -319,16 +326,16 @@ async def upload_to_sandbox(
             ok = await sandbox.aupload_file_bytes(abs_path, file_bytes)
             if ok:
                 # Return relative path (agent convention per workspace_paths template)
-                paths.append(rel_path)
+                return rel_path
             else:
                 logger.warning(f"Upload returned False for '{desc}'")
-                paths.append(None)
+                return None
 
         except Exception:
             logger.warning(
                 f"Failed to upload attachment '{desc}' to sandbox",
                 exc_info=True,
             )
-            paths.append(None)
+            return None
 
-    return paths
+    return list(await asyncio.gather(*(_upload_one(ctx) for ctx in contexts)))
