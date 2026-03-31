@@ -90,8 +90,12 @@ def _extract_system_to_instructions(payload: dict) -> None:
         # Always strip system messages from input (Codex rejects them)
         payload["input"] = filtered
         if system_parts:
+            # Intentionally replaces any existing instructions (e.g. static
+            # model_kwargs placeholder) with the real agent system prompt.
             payload["instructions"] = "\n\n".join(system_parts)
-        logger.debug("[codex] Promoted %d system message(s) to instructions", len(system_parts))
+            logger.debug("[codex] Promoted %d system message(s) to instructions", len(system_parts))
+        else:
+            logger.debug("[codex] Stripped system message(s) with no text content")
 
 
 class ChatCodexOpenAI(ChatOpenAI):
