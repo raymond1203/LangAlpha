@@ -43,11 +43,11 @@ interface WatchlistItemProps {
   index: number;
   onDelete?: (id: string) => void;
   marketStatus: MarketStatusData;
+  isMobile: boolean;
 }
 
-function WatchlistItem({ item, index, onDelete, marketStatus }: WatchlistItemProps) {
+function WatchlistItem({ item, index, onDelete, marketStatus, isMobile }: WatchlistItemProps) {
   const navigate = useNavigate();
-  const isMobile = useIsMobile();
   const pos = item.isPositive;
   const pctStr = (pos ? '+' : '') + Number(item.changePercent).toFixed(2) + '%';
   const hasId = !!item.watchlist_item_id;
@@ -157,11 +157,11 @@ interface PortfolioItemProps {
   onDelete?: (id: string) => void;
   valuesHidden: boolean;
   marketStatus: MarketStatusData;
+  isMobile: boolean;
 }
 
-function PortfolioItem({ item, index, onEdit, onDelete, valuesHidden, marketStatus }: PortfolioItemProps) {
+function PortfolioItem({ item, index, onEdit, onDelete, valuesHidden, marketStatus, isMobile }: PortfolioItemProps) {
   const navigate = useNavigate();
-  const isMobile = useIsMobile();
   const pos = item.isPositive;
   const plStr =
     item.unrealizedPlPercent != null
@@ -348,6 +348,7 @@ function PortfolioWatchlistCard({
   onPortfolioEdit,
   marketStatus,
 }: PortfolioWatchlistCardProps) {
+  const isMobile = useIsMobile();
   const [activeTab, setActiveTabRaw] = useState<PWTabKey>(() => (localStorage.getItem('portfolio_active_tab') as PWTabKey) || 'watchlist');
   const [valuesHidden, setValuesHiddenRaw] = useState(() => localStorage.getItem('portfolio_values_hidden') === 'true');
 
@@ -440,6 +441,7 @@ function PortfolioWatchlistCard({
                       index={i}
                       onDelete={onWatchlistDelete}
                       marketStatus={marketStatus}
+                      isMobile={isMobile}
                     />
                   ))}
               <AddNewButton label="Add Symbol" onClick={onWatchlistAdd} />
@@ -520,6 +522,7 @@ function PortfolioWatchlistCard({
                       onDelete={onPortfolioDelete}
                       valuesHidden={valuesHidden}
                       marketStatus={marketStatus}
+                      isMobile={isMobile}
                     />
                   ))}
               <AddNewButton label="Add Transaction" onClick={onPortfolioAdd} />
