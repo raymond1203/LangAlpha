@@ -25,7 +25,7 @@ sse_keepalive_interval: 15  # seconds
 # Feature Flags
 result_log_db_enabled: true
 redis_warm_on_startup: true
-langsmith_tracing: false
+langsmith_tracing: true
 
 # SSE Event Logging
 sse_event_log_enabled: false
