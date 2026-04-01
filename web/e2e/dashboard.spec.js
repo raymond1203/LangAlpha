@@ -369,11 +369,11 @@ test.describe('Watchlist CRUD', () => {
     // Wait for the item to render
     await expect(page.locator('text=TSLA').first()).toBeVisible();
 
-    // Right-click to open context menu
+    // Right-click to open context menu (Radix ContextMenu)
     await page.locator('text=TSLA').first().click({ button: 'right' });
 
-    // Click "Delete" in context menu
-    await page.locator('button', { hasText: 'Delete' }).click();
+    // Click "Delete" in context menu (Radix renders items as role="menuitem")
+    await page.getByRole('menuitem', { name: 'Delete' }).click();
 
     // Verify the DELETE request was made
     expect(deleteCalled).toBe(true);
@@ -517,11 +517,11 @@ test.describe('Portfolio CRUD', () => {
     await page.getByRole('button', { name: 'Holdings' }).click();
     await expect(page.locator('text=AAPL').first()).toBeVisible();
 
-    // Right-click to open context menu
+    // Right-click to open context menu (Radix ContextMenu)
     await page.locator('text=AAPL').first().click({ button: 'right' });
 
-    // Click "Edit" in context menu
-    await page.locator('button', { hasText: 'Edit' }).click();
+    // Click "Edit" in context menu (Radix renders items as role="menuitem")
+    await page.getByRole('menuitem', { name: 'Edit' }).click();
 
     // Edit dialog opens with pre-filled values
     await expect(
@@ -561,11 +561,11 @@ test.describe('Portfolio CRUD', () => {
     await page.getByRole('button', { name: 'Holdings' }).click();
     await expect(page.locator('text=AAPL').first()).toBeVisible();
 
-    // Right-click to open context menu
+    // Right-click to open context menu (Radix ContextMenu)
     await page.locator('text=AAPL').first().click({ button: 'right' });
 
-    // Click "Delete" in context menu
-    await page.locator('button', { hasText: 'Delete' }).click();
+    // Click "Delete" in context menu (Radix renders items as role="menuitem")
+    await page.getByRole('menuitem', { name: 'Delete' }).click();
 
     // Confirm dialog appears
     await expect(

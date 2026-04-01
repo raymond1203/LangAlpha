@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
-import { createPortal } from 'react-dom';
 import {
   Plus, ArrowUp, X, FileText, Loader2, Archive, Square,
   ScrollText, ChartCandlestick, Zap, FileStack, ChevronDown, ChevronRight, FolderOpen, TextSelect,
@@ -9,6 +8,10 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { TokenUsageRing, type TokenUsageData } from './token-usage-ring';
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent,
+} from './dropdown-menu';
 import { usePreferences } from '@/hooks/usePreferences';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { getSkills, getModelMetadata } from '../../pages/ChatAgent/utils/api';
@@ -280,12 +283,10 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
   const [selectedModel, setSelectedModel] = useState<string | null>(effectiveInitialModel);
   const [reasoningEffort, setReasoningEffort] = useState<string | null>(null);
   const [fastMode, setFastMode] = useState(false);
-  const [showModelMenu, setShowModelMenu] = useState(false);
   const [showMoreModels, setShowMoreModels] = useState(false);
-  const moreModelsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+
   const [modelMetadata, setModelMetadata] = useState<Record<string, { sdk?: string; provider?: string }>>({});
-  const modelMenuRef = useRef<HTMLDivElement>(null);
-  const modelDropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
   // Sync selectedModel when initialModel or preferredModel changes
@@ -487,6 +488,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
   const fileInputRef = useRef<HTMLInputElement>(null);
   const autocompleteRef = useRef<HTMLDivElement>(null);
   const slashMenuRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const hasModeToggle = mode !== undefined && onModeChange !== undefined;
 
@@ -557,26 +559,6 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showWorkspaceMenu]);
-
-  // Close model menu on click outside, scroll, or resize
-  useEffect(() => {
-    if (!showModelMenu) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (modelMenuRef.current?.contains(target) || modelDropdownRef.current?.contains(target)) return;
-      setShowModelMenu(false);
-      setShowMoreModels(false);
-    };
-    const dismiss = () => { setShowModelMenu(false); setShowMoreModels(false); };
-    document.addEventListener('mousedown', handleClickOutside);
-    window.addEventListener('scroll', dismiss, true);
-    window.addEventListener('resize', dismiss);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      window.removeEventListener('scroll', dismiss, true);
-      window.removeEventListener('resize', dismiss);
-    };
-  }, [showModelMenu]);
 
   // --- File Upload Handling ---
   const handleFiles = useCallback((newFilesList: FileList | File[]) => {
@@ -1005,58 +987,21 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
 
   const showWorkspaceSelector = hasModeToggle && mode === 'deep' && workspaces && workspaces.length > 0;
 
-  /** Shared submenu body for "More models" — used by both desktop flyout and mobile inline */
-  const renderMoreModelsList = (indent: boolean) => {
-    const indentStyle = indent ? { paddingLeft: 24 } : undefined;
-    const compatible = starredModels.filter((m) => !initialModel || areModelsCompatible(selectedModel, m, modelMetadata));
-    return (
-      <>
-        {compatible.length > 0 ? (
-          compatible.map((m) => (
-            <div
-              key={m}
-              className="model-dropdown-item"
-              style={indentStyle}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                setSelectedModel(m);
-                setShowModelMenu(false);
-                setShowMoreModels(false);
-              }}
-            >
-              <span>{getModelDisplayName(m)}</span>
-              {m === selectedModel && <Check className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--color-accent-primary)' }} />}
-            </div>
-          ))
-        ) : (
-          <div className="model-dropdown-link" style={indentStyle}
-            onMouseDown={(e) => { e.preventDefault(); navigate('/settings?tab=model'); setShowModelMenu(false); setShowMoreModels(false); }}
-          >
-            {t('chat.modelSelector.configureModels')}
-          </div>
-        )}
-        <div className="model-dropdown-separator" />
-        <div
-          className="model-dropdown-link"
-          style={indentStyle}
-          onMouseDown={(e) => { e.preventDefault(); navigate('/settings?tab=model'); setShowModelMenu(false); setShowMoreModels(false); }}
-        >
-          {t('chat.modelSelector.manageModels')}
-        </div>
-      </>
-    );
-  };
+  /** Render starred model items — used by both desktop submenu and mobile inline expand */
+  const moreModelsItems = useMemo(() => {
+    return starredModels.filter((m) => !initialModel || areModelsCompatible(selectedModel, m, modelMetadata));
+  }, [starredModels, initialModel, selectedModel, modelMetadata]);
 
   return (
     <div
       className="relative w-full"
-      style={showModelMenu ? { zIndex: 50 } : undefined}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
       {/* Main Container */}
       <div
+        ref={chatContainerRef}
         className={`chat-input-container flex flex-col items-stretch transition-all duration-200 relative z-10 rounded-2xl cursor-text border border-[hsl(var(--primary))] bg-[var(--color-bg-card)] ${isListening ? 'recording' : ''}`}
         onClick={() => textareaRef.current?.focus()}
       >
@@ -1379,148 +1324,204 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
             <div className="flex flex-row items-center min-w-0 gap-1">
               {/* Model Selector */}
               {(starredModels.length > 0 || selectedModel) && (
-                <div className="relative" ref={modelMenuRef}>
-                  <button
-                    className="inline-flex items-center rounded-full border-none cursor-pointer"
-                    style={{
-                      gap: '4px',
-                      padding: '6px 10px',
-                      fontSize: '13px',
-                      fontWeight: 500,
-                      background: showModelMenu ? 'var(--color-accent-soft)' : 'transparent',
-                      color: showModelMenu ? 'var(--color-accent-light)' : 'var(--color-text-muted, #8b8fa3)',
-                      border: showModelMenu ? '1px solid var(--color-accent-overlay)' : '1px solid transparent',
-                      transition: 'background 0.2s, color 0.2s, border-color 0.2s',
-                    }}
-                    onClick={(e) => { e.stopPropagation(); setShowModelMenu((v) => !v); setShowMoreModels(false); }}
-                    onMouseEnter={(e) => {
-                      if (!showModelMenu) e.currentTarget.style.background = 'var(--color-border-muted)';
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!showModelMenu) e.currentTarget.style.background = 'transparent';
-                    }}
-                    type="button"
-                    title="Select model"
+                <DropdownMenu modal={false} open={modelMenuOpen} onOpenChange={(open) => { setModelMenuOpen(open); if (!open) setShowMoreModels(false); }}>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className="model-selector-trigger inline-flex items-center gap-1 rounded-full cursor-pointer py-1.5 px-2.5 text-[13px] font-medium border border-transparent transition-colors outline-none"
+                      onClick={(e) => e.stopPropagation()}
+                      type="button"
+                      title="Select model"
+                    >
+                      <span className="max-w-[120px] truncate">{getModelDisplayName(selectedModel) || 'Model'}</span>
+                      {fastMode && isCodexModel && <Rocket className="h-3 w-3" style={{ color: 'var(--color-accent-light)' }} />}
+                      <ChevronDown className="h-3 w-3" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    side={dropdownDirection === 'down' ? 'bottom' : 'top'}
+                    className="w-60"
+                    container={isMobile ? chatContainerRef.current : undefined}
+                    data-click-outside-ignore
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ backgroundColor: 'var(--color-bg-elevated)', borderColor: 'var(--color-border-muted)' }}
                   >
-                    <span className="max-w-[120px] truncate">{getModelDisplayName(selectedModel) || 'Model'}</span>
-                    {fastMode && isCodexModel && <Rocket className="h-3 w-3" style={{ color: 'var(--color-accent-light)' }} />}
-                    <ChevronDown className="h-3 w-3" />
-                  </button>
-                  {showModelMenu && (() => {
-                    const btnRect = modelMenuRef.current?.getBoundingClientRect();
-                    if (!btnRect) return null;
-                    const fixedStyle: React.CSSProperties = {
-                      position: 'fixed',
-                      right: Math.max(8, window.innerWidth - btnRect.right),
-                      left: 'auto',
-                      margin: 0,
-                      ...(dropdownDirection === 'down'
-                        ? { top: btnRect.bottom + 4, bottom: 'auto' }
-                        : { bottom: window.innerHeight - btnRect.top + 4, top: 'auto' }),
-                    };
-                    return createPortal(
-                    <div ref={modelDropdownRef} data-click-outside-ignore className={`model-dropdown ${dropdownDirection === 'down' ? 'model-dropdown-down' : 'model-dropdown-up'}`} style={fixedStyle}>
-
-                      {/* Primary menu: thread models + reasoning + "More models"
-                         Submenu direction: open left if dropdown is near right edge of viewport */}
-                      {(() => {
-                        const primaryModels: string[] = threadModelsProp.length > 0
-                          ? [...new Set([...threadModelsProp, selectedModel].filter((m): m is string => !!m))]
-                          : [selectedModel].filter((m): m is string => !!m);
-                        return primaryModels
-                          .filter((m: string) => !initialModel || areModelsCompatible(selectedModel, m, modelMetadata))
-                          .map((m: string) => (
-                            <div
-                              key={m}
-                              className="model-dropdown-item"
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                setSelectedModel(m);
-                                setShowModelMenu(false);
-                                setShowMoreModels(false);
-                              }}
-                            >
-                              <span>{getModelDisplayName(m)}</span>
-                              {m === selectedModel && <Check className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--color-accent-primary)' }} />}
-                            </div>
-                          ));
-                      })()}
-                      <div className="model-dropdown-separator" />
-                      <div className="model-effort-section">
-                        <span className="model-effort-label">{t('chat.modelSelector.reasoningEffort')}</span>
-                        <div className="model-effort-toggle">
-                          {([['low', Zap, t('chat.modelSelector.effortLow')], ['medium', Brain, t('chat.modelSelector.effortMedium')], ['high', Flame, t('chat.modelSelector.effortHigh')]] as const).map(([level, Icon, label]) => (
-                            <button
-                              key={level}
-                              className={`model-effort-btn ${level === reasoningEffort ? 'active' : ''}`}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                setReasoningEffort(level === reasoningEffort ? null : level);
-                              }}
-                              title={label}
-                            >
-                              <Icon className="h-3.5 w-3.5" />
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      {isCodexModel && (
-                        <div className="model-effort-section">
-                          <span className="model-effort-label">
-                            <Rocket className="h-3.5 w-3.5" style={{ marginRight: 4, verticalAlign: '-2px', display: 'inline' }} />
-                            {t('chat.modelSelector.fastMode')}
-                            <span className="fast-mode-help-wrap">
-                              <CircleHelp className="fast-mode-help-icon" />
-                              <span className="fast-mode-help-tooltip">{t('chat.modelSelector.fastModeHelpLine1')}<br />{t('chat.modelSelector.fastModeHelpLine2')}</span>
-                            </span>
-                          </span>
-                          <button
-                            className={`fast-mode-switch ${fastMode ? 'active' : ''}`}
-                            onMouseDown={(e) => { e.preventDefault(); setFastMode((v) => !v); }}
-                            title={t('chat.modelSelector.fastModeDesc')}
-                            role="switch"
-                            aria-checked={fastMode}
+                    {/* Thread models */}
+                    {(() => {
+                      const primaryModels: string[] = threadModelsProp.length > 0
+                        ? [...new Set([...threadModelsProp, selectedModel].filter((m): m is string => !!m))]
+                        : [selectedModel].filter((m): m is string => !!m);
+                      return primaryModels
+                        .filter((m: string) => !initialModel || areModelsCompatible(selectedModel, m, modelMetadata))
+                        .map((m: string) => (
+                          <DropdownMenuItem
+                            key={m}
+                            onSelect={() => setSelectedModel(m)}
+                            className="text-[13px] justify-between"
+                            style={{ color: 'var(--color-text-primary)' }}
                           >
-                            <span className="fast-mode-switch-thumb" />
+                            <span>{getModelDisplayName(m)}</span>
+                            {m === selectedModel && <Check className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--color-accent-primary)' }} />}
+                          </DropdownMenuItem>
+                        ));
+                    })()}
+                    <DropdownMenuSeparator style={{ backgroundColor: 'var(--color-border-muted)' }} />
+                    {/* Reasoning effort (custom control — not a menu item, won't close on click) */}
+                    <div className="model-effort-section">
+                      <span className="model-effort-label">{t('chat.modelSelector.reasoningEffort')}</span>
+                      <div className="model-effort-toggle">
+                        {([['low', Zap, t('chat.modelSelector.effortLow')], ['medium', Brain, t('chat.modelSelector.effortMedium')], ['high', Flame, t('chat.modelSelector.effortHigh')]] as const).map(([level, Icon, label]) => (
+                          <button
+                            key={level}
+                            className={`model-effort-btn ${level === reasoningEffort ? 'active' : ''}`}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setReasoningEffort(level === reasoningEffort ? null : level);
+                            }}
+                            title={label}
+                          >
+                            <Icon className="h-3.5 w-3.5" />
                           </button>
-                        </div>
-                      )}
-                      <div className="model-dropdown-separator" />
-                      {/* "More models" with hover submenu (desktop) or tap-to-expand inline (mobile) */}
-                      <div
-                        className="model-dropdown-link model-dropdown-link-arrow"
-                        {...(isMobile
-                          ? { onMouseDown: (e: React.MouseEvent) => { e.preventDefault(); setShowMoreModels((v) => !v); } }
-                          : {
-                            onMouseEnter: () => { if (moreModelsTimeout.current) clearTimeout(moreModelsTimeout.current); setShowMoreModels(true); },
-                            onMouseLeave: () => { moreModelsTimeout.current = setTimeout(() => setShowMoreModels(false), 150); },
-                          }
-                        )}
-                      >
-                        <span>{t('chat.modelSelector.moreModels')}</span>
-                        <ChevronRight className={`h-3.5 w-3.5 transition-transform ${isMobile && showMoreModels ? 'rotate-90' : ''}`} />
-                        {/* Submenu — flyout on desktop; inline on mobile */}
-                        {showMoreModels && !isMobile && (() => {
-                          const menuRect = modelDropdownRef.current?.getBoundingClientRect();
-                          const openLeft = menuRect && menuRect.right + 244 > window.innerWidth;
-                          return (
-                            <div
-                              className={`model-dropdown-submenu ${dropdownDirection === 'down' ? 'model-dropdown-submenu-down' : 'model-dropdown-submenu-up'} ${openLeft ? 'model-dropdown-submenu-left' : 'model-dropdown-submenu-right'}`}
-                              onMouseEnter={() => { if (moreModelsTimeout.current) clearTimeout(moreModelsTimeout.current); }}
-                              onMouseLeave={() => { moreModelsTimeout.current = setTimeout(() => setShowMoreModels(false), 150); }}
-                            >
-                              {renderMoreModelsList(false)}
-                            </div>
-                          );
-                        })()}
+                        ))}
                       </div>
-                      {/* Mobile inline expanded submenu */}
-                      {showMoreModels && isMobile && renderMoreModelsList(true)}
-                    </div>,
-                    document.body
-                    );
-                  })()}
-                </div>
+                    </div>
+                    {/* Fast mode (Codex only — custom control, won't close on click) */}
+                    {isCodexModel && (
+                      <div className="model-effort-section">
+                        <span className="model-effort-label">
+                          <Rocket className="h-3.5 w-3.5" style={{ marginRight: 4, verticalAlign: '-2px', display: 'inline' }} />
+                          {t('chat.modelSelector.fastMode')}
+                          <span className="fast-mode-help-wrap">
+                            <CircleHelp className="fast-mode-help-icon" />
+                            <span className="fast-mode-help-tooltip">{t('chat.modelSelector.fastModeHelpLine1')}<br />{t('chat.modelSelector.fastModeHelpLine2')}</span>
+                          </span>
+                        </span>
+                        <button
+                          className={`fast-mode-switch ${fastMode ? 'active' : ''}`}
+                          onMouseDown={(e) => { e.preventDefault(); setFastMode((v) => !v); }}
+                          title={t('chat.modelSelector.fastModeDesc')}
+                          role="switch"
+                          aria-checked={fastMode}
+                        >
+                          <span className="fast-mode-switch-thumb" />
+                        </button>
+                      </div>
+                    )}
+                    <DropdownMenuSeparator style={{ backgroundColor: 'var(--color-border-muted)' }} />
+                    {/* More models — desktop: sub-menu flyout, mobile: inline toggle with onMouseDown (same pattern as effort buttons) */}
+                    {isMobile ? (
+                      <>
+                        {/* Toggle trigger — onMouseDown fires after pointerup on mobile, avoiding Radix's pointer sequence race */}
+                        <div
+                          className="flex items-center justify-between px-3 py-2 text-xs cursor-pointer rounded-sm transition-colors hover:bg-accent/15"
+                          style={{ color: 'var(--color-text-tertiary)' }}
+                          role="menuitem"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setShowMoreModels((v) => !v);
+                          }}
+                        >
+                          <span>{t('chat.modelSelector.moreModels')}</span>
+                          <ChevronRight className={`h-3.5 w-3.5 transition-transform ${showMoreModels ? 'rotate-90' : ''}`} />
+                        </div>
+                        {/* Model items — plain divs (not DropdownMenuItems) to avoid Collection registration changes */}
+                        <div className={showMoreModels ? '' : 'hidden'}>
+                          {moreModelsItems.length > 0 ? (
+                            moreModelsItems.map((m) => (
+                              <div
+                                key={m}
+                                className="relative flex w-full cursor-default select-none items-center justify-between rounded-sm px-3 py-2 pl-6 text-[13px] outline-none transition-colors hover:bg-accent/15"
+                                style={{ color: 'var(--color-text-primary)' }}
+                                role="menuitem"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  setSelectedModel(m);
+                                  setModelMenuOpen(false);
+                                }}
+                              >
+                                <span>{getModelDisplayName(m)}</span>
+                                {m === selectedModel && <Check className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--color-accent-primary)' }} />}
+                              </div>
+                            ))
+                          ) : (
+                            <div
+                              className="relative flex w-full cursor-default select-none items-center rounded-sm px-3 py-2 pl-6 text-xs outline-none transition-colors hover:bg-accent/15"
+                              style={{ color: 'var(--color-text-tertiary)' }}
+                              role="menuitem"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                navigate('/settings?tab=model');
+                                setModelMenuOpen(false);
+                              }}
+                            >
+                              {t('chat.modelSelector.configureModels')}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger
+                          className="text-xs justify-between"
+                          style={{ color: 'var(--color-text-tertiary)' }}
+                        >
+                          <span className="flex-1">{t('chat.modelSelector.moreModels')}</span>
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent
+                          className="w-60"
+                          data-click-outside-ignore
+                          collisionPadding={{ top: 8, right: 8, bottom: 60, left: 8 }}
+                          style={{ backgroundColor: 'var(--color-bg-elevated)', borderColor: 'var(--color-border-muted)' }}
+                        >
+                          {moreModelsItems.length > 0 ? (
+                            moreModelsItems.map((m) => (
+                              <DropdownMenuItem
+                                key={m}
+                                onSelect={() => setSelectedModel(m)}
+                                className="text-[13px] justify-between"
+                                style={{ color: 'var(--color-text-primary)' }}
+                              >
+                                <span>{getModelDisplayName(m)}</span>
+                                {m === selectedModel && <Check className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--color-accent-primary)' }} />}
+                              </DropdownMenuItem>
+                            ))
+                          ) : (
+                            <DropdownMenuItem
+                              onSelect={() => navigate('/settings?tab=model')}
+                              className="text-xs"
+                              style={{ color: 'var(--color-text-tertiary)' }}
+                            >
+                              {t('chat.modelSelector.configureModels')}
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+                    )}
+                    {isMobile ? (
+                      <div
+                        className="relative flex w-full cursor-default select-none items-center rounded-sm px-3 py-2 text-xs outline-none transition-colors hover:bg-accent/15"
+                        style={{ color: 'var(--color-text-tertiary)' }}
+                        role="menuitem"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          navigate('/settings?tab=model');
+                          setModelMenuOpen(false);
+                        }}
+                      >
+                        {t('chat.modelSelector.manageModels')}
+                      </div>
+                    ) : (
+                      <DropdownMenuItem
+                        onSelect={() => navigate('/settings?tab=model')}
+                        className="text-xs"
+                        style={{ color: 'var(--color-text-tertiary)' }}
+                      >
+                        {t('chat.modelSelector.manageModels')}
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
               {/* Voice Input Button (Show only if enabled in user settings) */}
               {speechSupported && !isLoading && !!otherPref?.voice_input_enabled && (

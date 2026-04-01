@@ -172,12 +172,12 @@ test.describe('Workspace Gallery', () => {
     // Click the 3-dot menu button (MoreHorizontal icon)
     await cardContainer.locator('button:has(svg)').first().click();
 
-    // Click Delete in the dropdown
-    await page.locator('button', { hasText: 'Delete' }).first().click();
+    // Click Delete in the dropdown (Radix renders menu items as role="menuitem")
+    await page.getByRole('menuitem', { name: 'Delete' }).click();
 
     // Confirm deletion in the modal
     await expect(page.locator('h2', { hasText: 'Delete Workspace' })).toBeVisible();
-    await page.locator('button', { hasText: 'Delete' }).last().click();
+    await page.getByRole('button', { name: 'Delete' }).click();
 
     // The Research card should disappear (refetch returns without ws-1)
     await expect(page.getByText('Research', { exact: true })).not.toBeVisible({ timeout: 10000 });

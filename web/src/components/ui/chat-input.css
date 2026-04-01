@@ -198,63 +198,23 @@
   background-color: var(--color-accent-soft);
 }
 
-/* ====== Model selector dropdown ====== */
+/* ====== Model selector trigger (Radix data-state) ====== */
 
-.model-dropdown {
-  position: absolute;
-  right: 0;
-  width: 240px;
-  background-color: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-muted);
-  border-radius: 8px;
-  overflow: visible;
-  z-index: 100;
-  opacity: 1;
-  isolation: isolate;
+.model-selector-trigger {
+  color: var(--color-text-muted, #8b8fa3);
 }
 
-.model-dropdown-up {
-  bottom: 100%;
-  margin-bottom: 4px;
-  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.4);
+.model-selector-trigger:hover:not([data-state=open]) {
+  background: var(--color-border-muted);
 }
 
-.model-dropdown-down {
-  top: 100%;
-  margin-top: 4px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
-}
-
-.model-dropdown-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 14px;
-  cursor: pointer;
-  font-size: 13px;
+.model-selector-trigger[data-state=open] {
+  background: var(--color-accent-soft);
   color: var(--color-text-primary);
-  transition: background-color 0.1s;
+  border-color: var(--color-accent-overlay);
 }
 
-.model-dropdown-item:hover {
-  background-color: var(--color-accent-soft);
-}
-
-.model-dropdown-item.disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.model-dropdown-item.disabled:hover {
-  background-color: transparent;
-}
-
-.model-dropdown-separator {
-  height: 1px;
-  background-color: var(--color-border-muted);
-  margin: 4px 0;
-}
+/* ====== Model selector controls (inside Radix DropdownMenuContent) ====== */
 
 .model-effort-section {
   display: flex;
@@ -376,83 +336,6 @@
 
 .fast-mode-help-wrap:hover .fast-mode-help-tooltip {
   display: block;
-}
-
-.model-dropdown-link {
-  padding: 8px 14px;
-  font-size: 12px;
-  color: var(--color-text-tertiary);
-  cursor: pointer;
-  transition: color 0.15s, background-color 0.1s;
-}
-
-.model-dropdown-link:hover {
-  color: var(--color-text-primary);
-  background-color: var(--color-accent-soft);
-}
-
-.model-dropdown-link-arrow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  position: relative;
-}
-
-/* ====== Model selector submenu (More models) ====== */
-
-.model-dropdown-submenu {
-  position: absolute;
-  width: 240px;
-  background-color: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-muted);
-  border-radius: 8px;
-  overflow: hidden;
-  z-index: 101;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
-  opacity: 1;
-  isolation: isolate;
-}
-
-.model-dropdown-submenu-up {
-  bottom: 0;
-}
-
-.model-dropdown-submenu-down {
-  top: 0;
-}
-
-/* Submenu opens to the right (default) */
-.model-dropdown-submenu-right {
-  left: calc(100% + 4px);
-
-  /* Invisible bridge to cover the gap between trigger and submenu */
-  &::before {
-    content: '';
-    position: absolute;
-    right: 100%;
-    top: 0;
-    width: 8px;
-    height: 100%;
-  }
-}
-
-/* Submenu opens to the left (when no space on the right) */
-.model-dropdown-submenu-left {
-  right: calc(100% + 4px);
-
-  /* Invisible bridge on the right side */
-  &::before {
-    content: '';
-    position: absolute;
-    left: 100%;
-    top: 0;
-    width: 8px;
-    height: 100%;
-  }
-}
-
-.model-dropdown-empty {
-  padding: 4px 0;
 }
 
 /* ====== Mobile responsive dropdowns ====== */
