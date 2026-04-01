@@ -324,7 +324,7 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
           <Newspaper size={120} style={{ color: 'var(--color-accent-primary)' }} />
         </div>
 
-        <div className="relative z-10 p-4 sm:p-8 flex flex-col md:flex-row gap-8 items-start">
+        <div className="relative z-10 p-4 sm:p-8 flex flex-col gap-8 items-start">
           <div className="flex-1">
             {/* Badge + updated */}
             <div className="flex items-center gap-2 mb-4">
@@ -367,7 +367,7 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
 
             {/* Summary */}
             <p
-              className="mb-6 leading-relaxed max-w-2xl line-clamp-3 sm:line-clamp-none"
+              className="mb-6 leading-relaxed line-clamp-3 sm:line-clamp-none"
               style={{ color: 'var(--color-text-secondary)' }}
             >
               {latest.summary}
