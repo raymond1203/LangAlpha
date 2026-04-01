@@ -37,6 +37,7 @@ ENV/
 # Production deploy files
 docker-compose.prod.yml
 scripts/load_env.sh
+scripts/deploy/
 
 # IDE
 .vscode/
@@ -84,3 +85,6 @@ posts/
 
 docs/libs
 .worktrees/
+.superpowers/
+.gstack/
+TODO.md

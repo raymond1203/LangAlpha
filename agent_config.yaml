@@ -7,10 +7,10 @@
 
 llm:
   # Model name from src/llms/manifest/models.json
-  name: "claude-sonnet-4-6-oauth"
-  flash: "claude-haiku-4-5-oauth"
-  summarization: "claude-haiku-4-5-oauth" # defaults to flash model
-  fetch: "claude-haiku-4-5-oauth"         # defaults to flash model
+  name: "qwen3.5-plus"
+  flash: "qwen3.5-flash"
+  summarization: "qwen3.5-flash" # defaults to flash model
+  fetch: "qwen3.5-flash"         # defaults to flash model
   fallback:
     - "kimi-k2.5"
     - "minimax-m2.7"
@@ -107,7 +107,7 @@ mcp:
         GINLIX_DATA_URL: "${GINLIX_DATA_URL}"
 
     - name: "tavily"
-      enabled: false # Set to false to disable this server
+      enabled: false
       description: "Web search engine for finding current information online"
       instruction: "Use for web searches, news, research, and real-time information. Best for queries requiring up-to-date data from the internet."
       tool_exposure_mode: "summary" # Brief - 4 simple tools
@@ -163,7 +163,7 @@ mcp:
       enabled: true
       description: "Web scraping with anti-bot bypass, CSS selection, and markdown extraction"
       instruction: "Use for scraping web pages. Choose extraction_type='markdown' for readable content. Use 'get' for fast HTTP requests, 'fetch' for JS-rendered pages, 'stealthy_fetch' for Cloudflare-protected sites. Bulk variants accept multiple URLs for parallel scraping."
-      tool_exposure_mode: "detailed"
+      tool_exposure_mode: "summary"
       transport: "stdio"
       command: "scrapling"
       args: ["mcp"]
