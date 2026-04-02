@@ -347,8 +347,8 @@ export default function MethodStep() {
         })}
       </div>
 
-      {/* Invitation code section — hide when already configured or invitation redeemed */}
-      {!canSkip && (
+      {/* Invitation code section — hide only when user already has platform access */}
+      {(userLoading || !hasPlatformAccess) && (
         <>
           {!showInvitation ? (
             <button
