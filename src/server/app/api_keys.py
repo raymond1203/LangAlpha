@@ -467,7 +467,7 @@ async def _check_ssrf(base_url: str) -> None:
         )
 
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         infos = await loop.run_in_executor(
             None, socket.getaddrinfo, hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM,
         )

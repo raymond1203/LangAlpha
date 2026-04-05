@@ -353,7 +353,7 @@ class LLM:
         - "oauth"    — user-provided OAuth token
         - "platform" — system key (platform pays, credits deducted)
         """
-        if self.api_key_override:
+        if self.api_key_override is not None and self.api_key_override != "":
             if self.provider_info.get("access_type") == "oauth":
                 return "oauth"
             return "byok"
