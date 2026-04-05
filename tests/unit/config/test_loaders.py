@@ -100,6 +100,19 @@ class TestLoadFromDictLLM:
         with pytest.raises(ValueError, match="llm section must be"):
             load_from_dict(data)
 
+    def test_null_llm_allowed(self):
+        """llm: null produces config with llm=None."""
+        data = _full_config_dict(llm=None)
+        config = load_from_dict(data)
+        assert config.llm is None
+
+    def test_missing_llm_allowed(self):
+        """Omitting llm section entirely produces config with llm=None."""
+        data = _full_config_dict()
+        del data["llm"]
+        config = load_from_dict(data)
+        assert config.llm is None
+
     def test_dict_llm_minimal(self):
         """Dict with only name — others default to None."""
         data = _full_config_dict(llm={"name": "gpt-4o"})
@@ -115,7 +128,7 @@ class TestLoadFromDictLLM:
 
 
 class TestLoadFromDictRequiredSections:
-    @pytest.mark.parametrize("missing_key", ["llm", "mcp", "logging", "filesystem"])
+    @pytest.mark.parametrize("missing_key", ["mcp", "logging", "filesystem"])
     def test_missing_required_section(self, missing_key):
         data = _full_config_dict()
         del data[missing_key]

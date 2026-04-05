@@ -94,10 +94,12 @@ class TestAgentConfigCreate:
     def test_minimal_create(self):
         """Minimal create() with just an LLM client."""
         mock_llm = MagicMock()
-        config = AgentConfig.create(
-            llm=mock_llm,
-            daytona_api_key="test-key-123",
-        )
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("SANDBOX_PROVIDER", None)
+            config = AgentConfig.create(
+                llm=mock_llm,
+                daytona_api_key="test-key-123",
+            )
         assert config.llm.name == "custom"
         assert config.llm_client is mock_llm
         assert config.daytona.api_key == "test-key-123"
@@ -105,7 +107,8 @@ class TestAgentConfigCreate:
     def test_create_uses_env_var(self):
         """create() should fall back to DAYTONA_API_KEY env var."""
         mock_llm = MagicMock()
-        with patch.dict(os.environ, {"DAYTONA_API_KEY": "env-key-456"}):
+        with patch.dict(os.environ, {"DAYTONA_API_KEY": "env-key-456"}, clear=False):
+            os.environ.pop("SANDBOX_PROVIDER", None)
             config = AgentConfig.create(llm=mock_llm)
         assert config.daytona.api_key == "env-key-456"
 
@@ -131,26 +134,30 @@ class TestAgentConfigCreate:
         servers = [
             MCPServerConfig(name="test-server", command="node", args=["server.js"]),
         ]
-        config = AgentConfig.create(
-            llm=mock_llm,
-            daytona_api_key="key",
-            mcp_servers=servers,
-        )
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("SANDBOX_PROVIDER", None)
+            config = AgentConfig.create(
+                llm=mock_llm,
+                daytona_api_key="key",
+                mcp_servers=servers,
+            )
         assert len(config.mcp.servers) == 1
         assert config.mcp.servers[0].name == "test-server"
 
     def test_create_with_custom_kwargs(self):
         """create() should accept and apply optional kwargs."""
         mock_llm = MagicMock()
-        config = AgentConfig.create(
-            llm=mock_llm,
-            daytona_api_key="key",
-            python_version="3.11",
-            log_level="DEBUG",
-            enable_view_image=False,
-            background_auto_wait=True,
-            subagents_enabled=["general-purpose", "research"],
-        )
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("SANDBOX_PROVIDER", None)
+            config = AgentConfig.create(
+                llm=mock_llm,
+                daytona_api_key="key",
+                python_version="3.11",
+                log_level="DEBUG",
+                enable_view_image=False,
+                background_auto_wait=True,
+                subagents_enabled=["general-purpose", "research"],
+            )
         assert config.daytona.python_version == "3.11"
         assert config.logging.level == "DEBUG"
         assert config.enable_view_image is False
@@ -159,11 +166,13 @@ class TestAgentConfigCreate:
 
     def test_create_with_allowed_directories(self):
         mock_llm = MagicMock()
-        config = AgentConfig.create(
-            llm=mock_llm,
-            daytona_api_key="key",
-            allowed_directories=["/workspace", "/data"],
-        )
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("SANDBOX_PROVIDER", None)
+            config = AgentConfig.create(
+                llm=mock_llm,
+                daytona_api_key="key",
+                allowed_directories=["/workspace", "/data"],
+            )
         assert config.filesystem.allowed_directories == ["/workspace", "/data"]
 
 

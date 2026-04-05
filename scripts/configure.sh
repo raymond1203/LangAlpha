@@ -52,6 +52,29 @@ set_llm_field() {
     ' "$CONFIG" > "$CONFIG.tmp" && mv "$CONFIG.tmp" "$CONFIG"
 }
 
+set_llm_null() {
+    # Replace the entire llm: block (up to the next top-level key) with "llm: null"
+    awk '
+        /^llm:/ { print "llm: null"; skip=1; next }
+        skip && /^[a-z]/ { skip=0 }
+        skip { next }
+        { print }
+    ' "$CONFIG" > "${CONFIG}.tmp.$$" && mv "${CONFIG}.tmp.$$" "$CONFIG"
+}
+
+ensure_llm_block() {
+    # If llm is currently "llm: null", expand to a full block so set_llm_field works.
+    if grep -q '^llm: null' "$CONFIG" 2>/dev/null; then
+        local tmp="${CONFIG}.tmp.$$"
+        sed 's/^llm: null$/llm:\
+  name: ""\
+  flash: ""\
+  summarization: ""\
+  fetch: ""\
+  fallback: []/' "$CONFIG" > "$tmp" && mv "$tmp" "$CONFIG"
+    fi
+}
+
 set_search_api() {
     local tmp="${CONFIG}.tmp.$$"
     sed "s|^search_api:.*|search_api: ${1}|" "$CONFIG" > "$tmp" && mv "$tmp" "$CONFIG"
@@ -143,13 +166,15 @@ fi
 header "LLM Provider"
 printf "  How will you access LLM models?\n\n"
 printf "  ${BOLD}1${NC}) OAuth — connect your Claude or ChatGPT subscription in the UI\n"
-printf "  ${BOLD}2${NC}) API key — choose from available providers\n\n"
+printf "  ${BOLD}2${NC}) API key — choose from available providers\n"
+printf "  ${BOLD}3${NC}) Skip — configure models later in the web UI\n\n"
 info "You can change models later in agent_config.yaml (see models.json for all options)."
 printf "\n"
 llm=$(prompt_choice "Choice" "1")
 
 case $llm in
     1)
+        ensure_llm_block
         printf "\n"
         printf "  Which subscription will you connect?\n"
         printf "    ${BOLD}a${NC}) Claude (Anthropic)\n"
@@ -174,6 +199,7 @@ case $llm in
         esac
         ;;
     2)
+        ensure_llm_block
         # Read providers dynamically from manifest
         _providers=(); _p_names=(); _p_envs=()
         while IFS=$'\t' read -r key name env; do
@@ -230,6 +256,10 @@ case $llm in
         fi
         printf "\n"
         info "Tip: edit agent_config.yaml to add fallback models, or switch models in the web UI."
+        ;;
+    3)
+        set_llm_null
+        success "LLM set to null — the setup wizard will guide you through model selection on first launch."
         ;;
     *)
         info "Skipping LLM config — edit agent_config.yaml manually."
