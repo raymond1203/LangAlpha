@@ -84,7 +84,13 @@ class SerperAPI:
                 headers=headers,
                 json=payload,
             )
-            response.raise_for_status()
+            if response.status_code >= 400:
+                body = response.text
+                raise httpx.HTTPStatusError(
+                    f"Serper API error {response.status_code}: {body}",
+                    request=response.request,
+                    response=response,
+                )
             return response.json()
 
     def _format_news_results(

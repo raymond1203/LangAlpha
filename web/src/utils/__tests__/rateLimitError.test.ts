@@ -36,7 +36,7 @@ describe('buildRateLimitError', () => {
       { type: 'workspace_limit', current: 3, limit: 3 },
       'https://ginlix.ai/account',
     );
-    expect(result.message).toBe('Active workspace limit reached (3/3).');
+    expect(result.message).toBe('Active workspace limit reached (3/3). Stop or delete an existing workspace to free up a slot.');
     expect(result.link).toBeUndefined();
   });
 

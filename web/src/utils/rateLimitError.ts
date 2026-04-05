@@ -32,7 +32,7 @@ export function buildRateLimitError(
   } else if (info.type === 'negative_balance') {
     message = (info.message as string) || 'Outstanding credit balance. Please add credits to continue.';
   } else if (info.type === 'workspace_limit') {
-    message = `Active workspace limit reached (${info.current}/${info.limit}).`;
+    message = `Active workspace limit reached (${info.current}/${info.limit}). Stop or delete an existing workspace to free up a slot.`;
   } else if (info.type === 'burst_limit') {
     message = `Too many concurrent requests. Please wait a moment.`;
   } else {

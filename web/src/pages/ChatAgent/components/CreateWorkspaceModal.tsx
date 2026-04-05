@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { X, Upload, FileText, CheckCircle2, Loader2, Circle, AlertCircle } from 'lucide-react';
 import { Input } from '../../../components/ui/input';
 import { uploadWorkspaceFile } from '../utils/api';
+import { buildRateLimitError } from '@/utils/rateLimitError';
 import './CreateWorkspaceModal.css';
 
 
@@ -141,7 +142,13 @@ function CreateWorkspaceModal({ isOpen, onClose, onCreate, onComplete }: CreateW
       setCreatedWorkspace(workspace);
     } catch (err: any) { // TODO: type properly
       setCreationStep('error');
-      setProgressError(err.message || t('workspace.failedCreateWorkspace'));
+      if (err.status === 429 && err.rateLimitInfo) {
+        const accountUrl = (import.meta.env.VITE_ACCOUNT_URL as string | undefined) || '/account';
+        const { message } = buildRateLimitError(err.rateLimitInfo, accountUrl);
+        setProgressError(message);
+      } else {
+        setProgressError(err.message || t('workspace.failedCreateWorkspace'));
+      }
       return;
     }
 
