@@ -5,7 +5,7 @@ import { formatPriceTrigger } from '../../../Automations/utils/price';
 import { formatRelativeTime } from '../../../Automations/utils/time';
 import { useTranslation } from 'react-i18next';
 
-// ─── Constants (matching InlineMarketCharts) ─────────────────────────
+// ─── Constants (matching InlineArtifactCards) ─────────────────────────
 
 const GREEN = 'var(--color-profit)';
 const YELLOW = 'var(--color-warning)';

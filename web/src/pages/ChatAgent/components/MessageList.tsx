@@ -17,7 +17,7 @@ import {
   InlineSecFilingCard,
   InlineStockScreenerCard,
   InlineWebSearchCard,
-} from './charts/InlineMarketCharts';
+} from './charts/InlineArtifactCards';
 import { InlineAutomationCard } from './charts/InlineAutomationCards';
 import { InlinePreviewCard } from './charts/InlinePreviewCard';
 import { extractFilePaths, FileMentionCards } from './FileCard';

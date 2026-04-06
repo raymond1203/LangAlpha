@@ -10,7 +10,7 @@ import {
   StockScreenerTable,
 } from './charts/MarketDataCharts';
 import SecFilingViewer from './charts/SecFilingViewer';
-import { FaviconImg } from './charts/InlineMarketCharts';
+import { FaviconImg } from './charts/InlineArtifactCards';
 import AutomationDetailPanel from './charts/AutomationDetailPanel';
 import Markdown, { CodeBlock } from './Markdown';
 import iconRobo from '../../../assets/img/icon-robo.png';
