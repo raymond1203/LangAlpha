@@ -270,6 +270,54 @@ class TestCalculateTotalCost:
         assert "cached_input" in result["breakdown"]
         assert result["breakdown"]["cached_input"]["tokens"] == 3000
 
+    def test_cache_creation_subtracted_from_input(self):
+        """Cache creation tokens must not be double-billed as regular input."""
+        pricing = {"input": 5.0, "cached_input": 0.5, "cache_5m": 6.25, "output": 25.0}
+        result = calculate_total_cost(
+            input_tokens=28342,
+            output_tokens=286,
+            cached_tokens=20459,
+            cache_5m_tokens=7882,
+            pricing=pricing,
+        )
+        # adjusted_input = 28342 - 7882 = 20460
+        # regular = 20460 - 20459 = 1 token at input rate
+        assert result["breakdown"]["input"]["tokens"] == 1
+        assert result["breakdown"]["input"]["cost"] == pytest.approx(1 / 1_000_000 * 5.0)
+        assert result["breakdown"]["cached_input"]["tokens"] == 20459
+        assert result["breakdown"]["cache_5m_creation"]["tokens"] == 7882
+
+    def test_negative_adjusted_input_clamped(self):
+        """Ensure cache_5m > input_tokens doesn't produce negative costs."""
+        pricing = {"input": 5.0, "cache_5m": 6.25, "output": 25.0}
+        result = calculate_total_cost(
+            input_tokens=100,
+            output_tokens=50,
+            cache_5m_tokens=200,
+            pricing=pricing,
+        )
+        # adjusted_input = max(0, 100 - 200) = 0 → no regular input cost
+        assert "input" not in result["breakdown"]
+        assert result["breakdown"]["cache_5m_creation"]["tokens"] == 200
+
+    def test_no_cache_creation_pricing_keeps_tokens_in_input(self):
+        """Providers without cache_5m/cache_1h pricing (e.g. DeepSeek) should bill
+        cache creation tokens at the regular input rate, not subtract them."""
+        pricing = {"input": 0.14, "output": 0.28, "cached_input": 0.028}
+        result = calculate_total_cost(
+            input_tokens=1400,  # langchain-anthropic normalized: 100 + 800 + 500
+            output_tokens=50,
+            cached_tokens=800,
+            cache_5m_tokens=500,  # extracted from legacy cache_creation int
+            pricing=pricing,
+        )
+        # No cache_5m pricing → 500 tokens stay in input, billed at input rate
+        # regular = 1400 - 800 = 600 tokens at input rate
+        assert result["breakdown"]["input"]["tokens"] == 600
+        assert result["breakdown"]["input"]["cost"] == pytest.approx(600 / 1_000_000 * 0.14)
+        assert result["breakdown"]["cached_input"]["tokens"] == 800
+        assert "cache_5m_creation" not in result["breakdown"]
+
     def test_zero_tokens(self):
         pricing = {"input": 2.50, "output": 10.0}
         result = calculate_total_cost(pricing=pricing)

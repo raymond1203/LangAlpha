@@ -12,6 +12,50 @@ from .llm import LLM
 logger = logging.getLogger(__name__)
 
 
+def extract_cache_from_details(details: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract cache token counts from a LangChain input_token_details dict.
+
+    Handles three formats produced by different providers/versions:
+    - Flat: ephemeral_5m_input_tokens / ephemeral_1h_input_tokens at top level
+    - Dict: cache_creation dict with ephemeral keys nested inside
+    - Int:  cache_creation as total int (legacy, pre-TTL breakdown)
+
+    Returns dict with keys cached_tokens, cache_5m_tokens, cache_1h_tokens
+    (only present when value is not None and > 0).
+    """
+    if not details:
+        return {}
+
+    result = {}
+
+    # Cache reads
+    cache_read = details.get('cache_read')
+    if cache_read is not None and cache_read > 0:
+        result['cached_tokens'] = cache_read
+
+    # Cache creation — try flat ephemeral keys first (primary format)
+    cache_5m = details.get('ephemeral_5m_input_tokens')
+    cache_1h = details.get('ephemeral_1h_input_tokens')
+
+    # Override from cache_creation field if present (dict or int)
+    if 'cache_creation' in details:
+        cache_creation = details['cache_creation']
+        if isinstance(cache_creation, dict):
+            cache_5m = cache_creation.get('ephemeral_5m_input_tokens', cache_5m)
+            cache_1h = cache_creation.get('ephemeral_1h_input_tokens', cache_1h)
+        elif isinstance(cache_creation, int) and cache_creation > 0:
+            # Legacy int format — assign to 5m if no TTL breakdown available
+            if not cache_5m and not cache_1h:
+                cache_5m = cache_creation
+
+    if cache_5m is not None and cache_5m > 0:
+        result['cache_5m_tokens'] = cache_5m
+    if cache_1h is not None and cache_1h > 0:
+        result['cache_1h_tokens'] = cache_1h
+
+    return result
+
+
 def extract_token_usage(response: Any) -> Dict[str, Any]:
     """Extract token usage information from a response object.
     
@@ -31,13 +75,10 @@ def extract_token_usage(response: Any) -> Dict[str, Any]:
             token_info['output_tokens'] = usage.get('output_tokens', 0)
             token_info['total_tokens'] = usage.get('total_tokens', 0)
             
-            # Extract cached tokens from input_token_details (Response API format)
+            # Extract cache tokens from input_token_details (LangChain normalized format)
             if 'input_token_details' in usage:
                 details = usage['input_token_details']
-                if details and 'cache_read' in details:
-                    cache_read = details.get('cache_read')
-                    if cache_read is not None:
-                        token_info['cached_tokens'] = cache_read
+                token_info.update(extract_cache_from_details(details))
                 if details and 'audio' in details:
                     audio = details.get('audio')
                     if audio is not None:
@@ -155,6 +196,8 @@ class TokenUsageRecord:
     rejected_prediction_tokens: Optional[int] = None
     audio_input_tokens: Optional[int] = None
     audio_output_tokens: Optional[int] = None
+    cache_5m_tokens: Optional[int] = None
+    cache_1h_tokens: Optional[int] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -204,6 +247,8 @@ class TokenUsageTracker:
             rejected_prediction_tokens=token_info.get('rejected_prediction_tokens'),
             audio_input_tokens=token_info.get('audio_input_tokens'),
             audio_output_tokens=token_info.get('audio_output_tokens'),
+            cache_5m_tokens=token_info.get('cache_5m_tokens'),
+            cache_1h_tokens=token_info.get('cache_1h_tokens'),
             metadata=metadata or {}
         )
         
@@ -228,9 +273,11 @@ class TokenUsageTracker:
                 'total_tokens': 0,
                 'reasoning_tokens': 0,
                 'cached_tokens': 0,
+                'cache_5m_tokens': 0,
+                'cache_1h_tokens': 0,
                 'call_count': 0
             }
-        
+
         self.model_totals[record.model]['input_tokens'] += record.input_tokens
         self.model_totals[record.model]['output_tokens'] += record.output_tokens
         self.model_totals[record.model]['total_tokens'] += record.total_tokens
@@ -238,6 +285,10 @@ class TokenUsageTracker:
             self.model_totals[record.model]['reasoning_tokens'] += record.reasoning_tokens
         if record.cached_tokens:
             self.model_totals[record.model]['cached_tokens'] += record.cached_tokens
+        if record.cache_5m_tokens:
+            self.model_totals[record.model]['cache_5m_tokens'] += record.cache_5m_tokens
+        if record.cache_1h_tokens:
+            self.model_totals[record.model]['cache_1h_tokens'] += record.cache_1h_tokens
         self.model_totals[record.model]['call_count'] += 1
         
         # Update operation totals
@@ -248,9 +299,11 @@ class TokenUsageTracker:
                 'total_tokens': 0,
                 'reasoning_tokens': 0,
                 'cached_tokens': 0,
+                'cache_5m_tokens': 0,
+                'cache_1h_tokens': 0,
                 'call_count': 0
             }
-        
+
         self.operation_totals[record.operation]['input_tokens'] += record.input_tokens
         self.operation_totals[record.operation]['output_tokens'] += record.output_tokens
         self.operation_totals[record.operation]['total_tokens'] += record.total_tokens
@@ -258,6 +311,10 @@ class TokenUsageTracker:
             self.operation_totals[record.operation]['reasoning_tokens'] += record.reasoning_tokens
         if record.cached_tokens:
             self.operation_totals[record.operation]['cached_tokens'] += record.cached_tokens
+        if record.cache_5m_tokens:
+            self.operation_totals[record.operation]['cache_5m_tokens'] += record.cache_5m_tokens
+        if record.cache_1h_tokens:
+            self.operation_totals[record.operation]['cache_1h_tokens'] += record.cache_1h_tokens
         self.operation_totals[record.operation]['call_count'] += 1
     
     def get_summary(self, include_details: bool = False) -> Dict[str, Any]:
@@ -438,12 +495,16 @@ class TokenUsageTracker:
             input_tokens = stats.get('input_tokens', 0)
             output_tokens = stats.get('output_tokens', 0)
             cached_tokens = stats.get('cached_tokens', 0)
+            cache_5m_tokens = stats.get('cache_5m_tokens', 0)
+            cache_1h_tokens = stats.get('cache_1h_tokens', 0)
 
             # Calculate cost using pricing utilities
             cost_result = calculate_total_cost(
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 cached_tokens=cached_tokens,
+                cache_5m_tokens=cache_5m_tokens,
+                cache_1h_tokens=cache_1h_tokens,
                 pricing=pricing_info
             )
 

@@ -807,34 +807,17 @@ def add_cost_to_token_usage(token_usage: Optional[Dict[str, Any]]) -> Dict[str, 
         input_tokens = usage.get('input_tokens', 0)
         output_tokens = usage.get('output_tokens', 0)
 
-        # Extract cached tokens from input_token_details
+        # Extract cache tokens from input_token_details via shared helper
         cached_tokens = 0
         cache_5m_tokens = 0
         cache_1h_tokens = 0
 
         if 'input_token_details' in usage:
-            details = usage['input_token_details']
-            # Cache hits (reads)
-            cached_tokens = details.get('cache_read', 0)
-
-            # Cache creation tokens - handle multiple formats:
-            # Format 1: Flat format (ephemeral tokens at top level)
-            cache_5m_tokens = details.get('ephemeral_5m_input_tokens', 0)
-            cache_1h_tokens = details.get('ephemeral_1h_input_tokens', 0)
-
-            # Format 2 & 3: cache_creation field (dict or int)
-            if 'cache_creation' in details:
-                cache_creation = details['cache_creation']
-
-                # Dict format: {'ephemeral_5m_input_tokens': X, 'ephemeral_1h_input_tokens': Y}
-                if isinstance(cache_creation, dict):
-                    cache_5m_tokens = cache_creation.get('ephemeral_5m_input_tokens', 0)
-                    cache_1h_tokens = cache_creation.get('ephemeral_1h_input_tokens', 0)
-
-                # Int format: total cache creation tokens (assign to 5m if not already set)
-                elif isinstance(cache_creation, int) and cache_creation > 0:
-                    if cache_5m_tokens == 0 and cache_1h_tokens == 0:
-                        cache_5m_tokens = cache_creation
+            from src.llms.token_counter import extract_cache_from_details
+            cache_info = extract_cache_from_details(usage['input_token_details'])
+            cached_tokens = cache_info.get('cached_tokens', 0)
+            cache_5m_tokens = cache_info.get('cache_5m_tokens', 0)
+            cache_1h_tokens = cache_info.get('cache_1h_tokens', 0)
 
         # Calculate cost for this model using pricing utilities
         cost_result = calculate_total_cost(
@@ -974,32 +957,10 @@ def calculate_cost_from_per_call_records(
         output_tokens = usage.get('output_tokens', 0)
 
         # Extract cached tokens and cache creation tokens
-        # Primary: Use flattened structure (what extract_token_usage() actually returns)
+        # Uses flattened structure from extract_token_usage()
         cached_tokens = usage.get('cached_tokens', 0)
-        cache_5m_tokens = 0
-        cache_1h_tokens = 0
-
-        # Fallback: Check nested structure (for legacy/edge cases)
-        if 'input_token_details' in usage:
-            details = usage['input_token_details']
-
-            # Cache hits (reads) - only if not already set from flattened structure
-            if cached_tokens == 0:
-                cached_tokens = details.get('cache_read', 0)
-
-            # Cache creation tokens - handle multiple formats
-            cache_5m_tokens = details.get('ephemeral_5m_input_tokens', 0)
-            cache_1h_tokens = details.get('ephemeral_1h_input_tokens', 0)
-
-            if 'cache_creation' in details:
-                cache_creation = details['cache_creation']
-
-                if isinstance(cache_creation, dict):
-                    cache_5m_tokens = cache_creation.get('ephemeral_5m_input_tokens', 0)
-                    cache_1h_tokens = cache_creation.get('ephemeral_1h_input_tokens', 0)
-                elif isinstance(cache_creation, int) and cache_creation > 0:
-                    if cache_5m_tokens == 0 and cache_1h_tokens == 0:
-                        cache_5m_tokens = cache_creation
+        cache_5m_tokens = usage.get('cache_5m_tokens', 0)
+        cache_1h_tokens = usage.get('cache_1h_tokens', 0)
 
         # Get pricing information — cost is 0 when pricing unavailable,
         # but token counts are still aggregated so usage is never lost.

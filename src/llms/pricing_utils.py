@@ -673,14 +673,22 @@ def calculate_total_cost(
     breakdown = {}
     total_cost = 0.0
 
+    # Cache creation tokens are included in LangChain's normalized input_tokens total.
+    # Only subtract them when there's explicit cache creation pricing — otherwise they
+    # should remain in input_tokens and be billed at the regular input rate (correct for
+    # providers like DeepSeek where cache writes are charged at input rate).
+    subtract_5m = cache_5m_tokens if 'cache_5m' in pricing else 0
+    subtract_1h = cache_1h_tokens if 'cache_1h' in pricing else 0
+    adjusted_input = max(0, input_tokens - subtract_5m - subtract_1h)
+
     # Calculate input costs (pass output_tokens for 2D matrix pricing)
     regular_input_cost, cached_input_cost = get_input_cost(
-        input_tokens, pricing, cached_tokens, output_tokens=output_tokens
+        adjusted_input, pricing, cached_tokens, output_tokens=output_tokens
     )
 
     if regular_input_cost > 0:
         breakdown['input'] = {
-            'tokens': input_tokens - cached_tokens,
+            'tokens': adjusted_input - cached_tokens,
             'cost': regular_input_cost
         }
         total_cost += regular_input_cost

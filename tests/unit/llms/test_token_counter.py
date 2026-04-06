@@ -11,6 +11,7 @@ import pytest
 from src.llms.token_counter import (
     TokenUsageRecord,
     TokenUsageTracker,
+    extract_cache_from_details,
     extract_token_usage,
     get_global_tracker,
     reset_global_tracker,
@@ -123,6 +124,154 @@ class TestExtractTokenUsage:
         )
         info = extract_token_usage(response)
         assert "cached_tokens" not in info
+
+    def test_usage_metadata_with_ephemeral_5m(self):
+        response = SimpleNamespace(
+            usage_metadata={
+                "input_tokens": 28342,
+                "output_tokens": 286,
+                "total_tokens": 28628,
+                "input_token_details": {
+                    "cache_read": 20459,
+                    "cache_creation": 0,
+                    "ephemeral_5m_input_tokens": 7882,
+                },
+            }
+        )
+        info = extract_token_usage(response)
+        assert info["cached_tokens"] == 20459
+        assert info["cache_5m_tokens"] == 7882
+        assert "cache_1h_tokens" not in info
+
+    def test_usage_metadata_with_ephemeral_1h(self):
+        response = SimpleNamespace(
+            usage_metadata={
+                "input_tokens": 500,
+                "output_tokens": 50,
+                "total_tokens": 550,
+                "input_token_details": {
+                    "cache_read": 100,
+                    "ephemeral_1h_input_tokens": 300,
+                },
+            }
+        )
+        info = extract_token_usage(response)
+        assert info["cached_tokens"] == 100
+        assert info["cache_1h_tokens"] == 300
+
+    def test_usage_metadata_ephemeral_none_skipped(self):
+        response = SimpleNamespace(
+            usage_metadata={
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "total_tokens": 150,
+                "input_token_details": {
+                    "cache_read": 0,
+                    "ephemeral_5m_input_tokens": None,
+                    "ephemeral_1h_input_tokens": None,
+                },
+            }
+        )
+        info = extract_token_usage(response)
+        assert "cache_5m_tokens" not in info
+        assert "cache_1h_tokens" not in info
+
+    def test_anthropic_combined_paths(self):
+        """Real-world Anthropic response has both usage_metadata and response_metadata."""
+        response = SimpleNamespace(
+            usage_metadata={
+                "input_tokens": 28342,
+                "output_tokens": 286,
+                "total_tokens": 28628,
+                "input_token_details": {
+                    "cache_read": 20459,
+                    "cache_creation": 0,
+                    "ephemeral_5m_input_tokens": 7882,
+                    "ephemeral_1h_input_tokens": 0,
+                },
+            },
+            response_metadata={
+                "usage": {
+                    "input_tokens": 1,
+                    "output_tokens": 286,
+                    "cache_read_input_tokens": 20459,
+                    "cache_creation": {
+                        "ephemeral_5m_input_tokens": 7882,
+                        "ephemeral_1h_input_tokens": 0,
+                    },
+                },
+                "model_name": "claude-sonnet-4-6",
+            },
+        )
+        info = extract_token_usage(response)
+        # input_tokens from Path A (LangChain normalized total)
+        assert info["input_tokens"] == 28342
+        assert info["output_tokens"] == 286
+        assert info["cached_tokens"] == 20459
+        assert info["cache_5m_tokens"] == 7882
+        assert "cache_1h_tokens" not in info
+
+
+# ---------------------------------------------------------------------------
+# extract_cache_from_details
+# ---------------------------------------------------------------------------
+
+
+class TestExtractCacheFromDetails:
+    """Shared helper for extracting cache tokens from input_token_details."""
+
+    def test_flat_format(self):
+        details = {
+            "cache_read": 20459,
+            "ephemeral_5m_input_tokens": 7882,
+            "ephemeral_1h_input_tokens": 0,
+        }
+        result = extract_cache_from_details(details)
+        assert result["cached_tokens"] == 20459
+        assert result["cache_5m_tokens"] == 7882
+        assert "cache_1h_tokens" not in result
+
+    def test_dict_format(self):
+        details = {
+            "cache_read": 100,
+            "cache_creation": {
+                "ephemeral_5m_input_tokens": 500,
+                "ephemeral_1h_input_tokens": 200,
+            },
+        }
+        result = extract_cache_from_details(details)
+        assert result["cached_tokens"] == 100
+        assert result["cache_5m_tokens"] == 500
+        assert result["cache_1h_tokens"] == 200
+
+    def test_int_format_legacy(self):
+        details = {"cache_read": 0, "cache_creation": 1000}
+        result = extract_cache_from_details(details)
+        assert result["cache_5m_tokens"] == 1000
+        assert "cached_tokens" not in result
+
+    def test_int_format_skipped_when_ephemeral_present(self):
+        details = {
+            "ephemeral_5m_input_tokens": 800,
+            "cache_creation": 1000,
+        }
+        result = extract_cache_from_details(details)
+        # Flat ephemeral key takes priority; int cache_creation ignored
+        assert result["cache_5m_tokens"] == 800
+
+    def test_none_details(self):
+        assert extract_cache_from_details(None) == {}
+
+    def test_empty_details(self):
+        assert extract_cache_from_details({}) == {}
+
+    def test_none_values_skipped(self):
+        details = {
+            "cache_read": None,
+            "ephemeral_5m_input_tokens": None,
+        }
+        result = extract_cache_from_details(details)
+        assert result == {}
 
 
 # ---------------------------------------------------------------------------
