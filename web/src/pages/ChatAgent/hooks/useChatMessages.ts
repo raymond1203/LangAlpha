@@ -1233,16 +1233,25 @@ export function useChatMessages(
             }
           }
 
-          // Resolve pending create_workspace or start_question interrupt from tool_call_result
+          // Resolve pending create_workspace, start_question, ptc_agent, or secretary action interrupt from tool_call_result
           {
-            const idx = pendingHistoryInterrupts.findIndex((p) => p.type === 'create_workspace' || p.type === 'start_question');
+            const PROPOSAL_INTERRUPT_TYPES = new Set(['create_workspace', 'start_question', 'ptc_agent', 'delete_workspace', 'stop_workspace', 'delete_thread']);
+            const idx = pendingHistoryInterrupts.findIndex((p) => PROPOSAL_INTERRUPT_TYPES.has(p.type));
             if (idx !== -1 && typeof event.content === 'string') {
               const matched = pendingHistoryInterrupts[idx];
               const content = event.content;
-              const dataKey = matched.type === 'create_workspace' ? 'workspaceProposals' : 'questionProposals';
+              const dataKeyMap: Record<string, string> = {
+                create_workspace: 'workspaceProposals',
+                start_question: 'questionProposals',
+                ptc_agent: 'ptcAgentProposals',
+                delete_workspace: 'secretaryActionProposals',
+                stop_workspace: 'secretaryActionProposals',
+                delete_thread: 'secretaryActionProposals',
+              };
+              const dataKey = dataKeyMap[matched.type] || 'questionProposals';
 
               let resolvedStatus = 'approved';
-              if (content === 'User declined workspace creation.' || content === 'User declined starting the question.') {
+              if (content === 'User declined workspace creation.' || content === 'User declined starting the question.' || content === 'User declined the action.' || content === 'User declined.') {
                 resolvedStatus = 'rejected';
               } else {
                 try {
@@ -1381,6 +1390,72 @@ export function useChatMessages(
 
               pendingHistoryInterrupts.push({
                 type: 'start_question',
+                assistantMessageId: interruptAssistantId,
+                proposalId,
+                interruptId: event.interrupt_id,
+              });
+            } else if (actionType === 'ptc_agent') {
+              // --- PTC agent interrupt (history) ---
+              const proposalId = event.interrupt_id || `ptc-agent-history-${Date.now()}`;
+              const proposalData = actionRequests[0];
+              const order = event._eventId != null ? Number(event._eventId) : ++pairState.contentOrderCounter;
+
+              setMessages((prev) =>
+                updateMessage(prev,interruptAssistantId, (m) => {
+                  if (m.role !== 'assistant') return m;
+                  const msg = m as AssistantMessage;
+                  return {
+                    ...msg,
+                    contentSegments: [...(msg.contentSegments || []), { type: 'ptc_agent' as const, proposalId, order }],
+                    ptcAgentProposals: {
+                      ...(msg.ptcAgentProposals || {}),
+                      [proposalId]: {
+                        workspace_id: proposalData.workspace_id,
+                        workspace_name: proposalData.workspace_name,
+                        question: proposalData.question,
+                        interruptId: event.interrupt_id,
+                        status: 'pending',
+                      },
+                    },
+                  };
+                })
+              );
+
+              pendingHistoryInterrupts.push({
+                type: 'ptc_agent',
+                assistantMessageId: interruptAssistantId,
+                proposalId,
+                interruptId: event.interrupt_id,
+              });
+            } else if (actionType === 'delete_workspace' || actionType === 'stop_workspace' || actionType === 'delete_thread') {
+              // --- Secretary action interrupt (history) ---
+              const proposalId = event.interrupt_id || `secretary-${actionType}-history-${Date.now()}`;
+              const proposalData = actionRequests[0];
+              const order = event._eventId != null ? Number(event._eventId) : ++pairState.contentOrderCounter;
+
+              setMessages((prev) =>
+                updateMessage(prev,interruptAssistantId, (m) => {
+                  if (m.role !== 'assistant') return m;
+                  const msg = m as AssistantMessage;
+                  return {
+                    ...msg,
+                    contentSegments: [...(msg.contentSegments || []), { type: actionType as 'delete_workspace' | 'stop_workspace' | 'delete_thread', proposalId, order }],
+                    secretaryActionProposals: {
+                      ...(msg.secretaryActionProposals || {}),
+                      [proposalId]: {
+                        actionType: actionType as 'delete_workspace' | 'stop_workspace' | 'delete_thread',
+                        workspace_id: proposalData.workspace_id,
+                        thread_id: proposalData.thread_id,
+                        interruptId: event.interrupt_id,
+                        status: 'pending',
+                      },
+                    },
+                  };
+                })
+              );
+
+              pendingHistoryInterrupts.push({
+                type: actionType,
                 assistantMessageId: interruptAssistantId,
                 proposalId,
                 interruptId: event.interrupt_id,
@@ -2056,6 +2131,20 @@ export function useChatMessages(
           } else if (intInfo.type === 'start_question') {
             setPendingInterrupt({
               type: 'start_question',
+              interruptId: intInfo.interruptId,
+              assistantMessageId: intInfo.assistantMessageId,
+              proposalId: intInfo.proposalId,
+            });
+          } else if (intInfo.type === 'ptc_agent') {
+            setPendingInterrupt({
+              type: 'ptc_agent',
+              interruptId: intInfo.interruptId,
+              assistantMessageId: intInfo.assistantMessageId,
+              proposalId: intInfo.proposalId,
+            });
+          } else if (intInfo.type === 'delete_workspace' || intInfo.type === 'stop_workspace' || intInfo.type === 'delete_thread') {
+            setPendingInterrupt({
+              type: intInfo.type,
               interruptId: intInfo.interruptId,
               assistantMessageId: intInfo.assistantMessageId,
               proposalId: intInfo.proposalId,
@@ -2877,13 +2966,22 @@ export function useChatMessages(
         if (unresolvedList && unresolvedList.length > 0 && typeof event.content === 'string') {
           const content = event.content as string;
 
-          // Try create_workspace / start_question
-          const matchIdx = unresolvedList.findIndex((u: HistoryInterruptInfo) => u.type === 'create_workspace' || u.type === 'start_question');
+          // Try create_workspace / start_question / ptc_agent / secretary actions
+          const PROPOSAL_TYPES = new Set(['create_workspace', 'start_question', 'ptc_agent', 'delete_workspace', 'stop_workspace', 'delete_thread']);
+          const matchIdx = unresolvedList.findIndex((u: HistoryInterruptInfo) => PROPOSAL_TYPES.has(u.type));
           if (matchIdx !== -1) {
             const matched = unresolvedList[matchIdx];
-            const dataKey = matched.type === 'create_workspace' ? 'workspaceProposals' : 'questionProposals';
+            const dataKeyMap: Record<string, string> = {
+              create_workspace: 'workspaceProposals',
+              start_question: 'questionProposals',
+              ptc_agent: 'ptcAgentProposals',
+              delete_workspace: 'secretaryActionProposals',
+              stop_workspace: 'secretaryActionProposals',
+              delete_thread: 'secretaryActionProposals',
+            };
+            const dataKey = dataKeyMap[matched.type] || 'questionProposals';
             let resolvedStatus = 'approved';
-            if (content === 'User declined workspace creation.' || content === 'User declined starting the question.') {
+            if (content === 'User declined workspace creation.' || content === 'User declined starting the question.' || content === 'User declined the action.' || content === 'User declined.') {
               resolvedStatus = 'rejected';
             } else {
               try { if (JSON.parse(content)?.success === false) resolvedStatus = 'rejected'; } catch { /* not JSON */ }
@@ -2893,9 +2991,9 @@ export function useChatMessages(
               updateMessage(prev,matched.assistantMessageId, (m) => { if (m.role !== 'assistant') return m; const msg = m as AssistantMessage; return {
                 ...msg,
                 [dataKey]: {
-                  ...(msg[dataKey] || {}),
+                  ...((msg as unknown as Record<string, Record<string, unknown>>)[dataKey] || {}),
                   [proposalId]: {
-                    ...(msg[dataKey]?.[proposalId] || {}),
+                    ...((msg as unknown as Record<string, Record<string, Record<string, unknown>>>)[dataKey]?.[proposalId] || {}),
                     status: resolvedStatus,
                   },
                 },
@@ -3048,6 +3146,74 @@ export function useChatMessages(
           pendingInterruptIdsRef.current.add(event.interrupt_id!);
           setPendingInterrupt({
             type: 'start_question',
+            interruptId: event.interrupt_id,
+            assistantMessageId,
+            proposalId,
+          });
+        } else if (actionType === 'ptc_agent') {
+          // --- PTC agent interrupt ---
+          const proposalId = event.interrupt_id || `ptc-agent-${Date.now()}`;
+          const proposalData = actionRequests[0];
+          const order = event._eventId != null ? Number(event._eventId) : ++refs.contentOrderCounterRef.current;
+
+          setMessages((prev) =>
+            updateMessage(prev,assistantMessageId, (m) => { if (m.role !== 'assistant') return m; const msg = m as AssistantMessage; return {
+              ...msg,
+              contentSegments: [
+                ...(msg.contentSegments || []),
+                { type: 'ptc_agent' as const, proposalId, order },
+              ],
+              ptcAgentProposals: {
+                ...(msg.ptcAgentProposals || {}),
+                [proposalId]: {
+                  workspace_id: proposalData.workspace_id,
+                  workspace_name: proposalData.workspace_name,
+                  question: proposalData.question,
+                  interruptId: event.interrupt_id,
+                  status: 'pending',
+                },
+              },
+              isStreaming: false,
+            }; })
+          );
+
+          pendingInterruptIdsRef.current.add(event.interrupt_id!);
+          setPendingInterrupt({
+            type: 'ptc_agent',
+            interruptId: event.interrupt_id,
+            assistantMessageId,
+            proposalId,
+          });
+        } else if (actionType === 'delete_workspace' || actionType === 'stop_workspace' || actionType === 'delete_thread') {
+          // --- Secretary action interrupt ---
+          const proposalId = event.interrupt_id || `secretary-${actionType}-${Date.now()}`;
+          const proposalData = actionRequests[0];
+          const order = event._eventId != null ? Number(event._eventId) : ++refs.contentOrderCounterRef.current;
+
+          setMessages((prev) =>
+            updateMessage(prev,assistantMessageId, (m) => { if (m.role !== 'assistant') return m; const msg = m as AssistantMessage; return {
+              ...msg,
+              contentSegments: [
+                ...(msg.contentSegments || []),
+                { type: actionType as 'delete_workspace' | 'stop_workspace' | 'delete_thread', proposalId, order },
+              ],
+              secretaryActionProposals: {
+                ...(msg.secretaryActionProposals || {}),
+                [proposalId]: {
+                  actionType: actionType as 'delete_workspace' | 'stop_workspace' | 'delete_thread',
+                  workspace_id: proposalData.workspace_id,
+                  thread_id: proposalData.thread_id,
+                  interruptId: event.interrupt_id,
+                  status: 'pending',
+                },
+              },
+              isStreaming: false,
+            }; })
+          );
+
+          pendingInterruptIdsRef.current.add(event.interrupt_id!);
+          setPendingInterrupt({
+            type: actionType,
             interruptId: event.interrupt_id,
             assistantMessageId,
             proposalId,
@@ -3675,6 +3841,126 @@ export function useChatMessages(
     resumeWithHitlResponse(hitlResponse, false);
   }, [pendingInterrupt, resumeWithHitlResponse]);
 
+  // --- PTC Agent approve/reject ---
+  const handleApprovePTCAgent = useCallback(() => {
+    if (!pendingInterrupt || pendingInterrupt.type !== 'ptc_agent') return;
+    const { interruptId, proposalId } = pendingInterrupt;
+    const pid = proposalId!;
+
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.role !== 'assistant') return m;
+        const msg = m as AssistantMessage;
+        if (!msg.ptcAgentProposals?.[pid]) return m;
+        return {
+          ...msg,
+          ptcAgentProposals: {
+            ...msg.ptcAgentProposals,
+            [pid]: {
+              ...msg.ptcAgentProposals[pid],
+              status: 'approved',
+            },
+          },
+        };
+      })
+    );
+
+    const hitlResponse = {
+      [interruptId!]: { decisions: [{ type: 'approve' }] },
+    };
+    resumeWithHitlResponse(hitlResponse, false);
+  }, [pendingInterrupt, resumeWithHitlResponse]);
+
+  const handleRejectPTCAgent = useCallback(() => {
+    if (!pendingInterrupt || pendingInterrupt.type !== 'ptc_agent') return;
+    const { interruptId, proposalId } = pendingInterrupt;
+    const pid = proposalId!;
+
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.role !== 'assistant') return m;
+        const msg = m as AssistantMessage;
+        if (!msg.ptcAgentProposals?.[pid]) return m;
+        return {
+          ...msg,
+          ptcAgentProposals: {
+            ...msg.ptcAgentProposals,
+            [pid]: {
+              ...msg.ptcAgentProposals[pid],
+              status: 'rejected',
+            },
+          },
+        };
+      })
+    );
+
+    const hitlResponse = {
+      [interruptId!]: { decisions: [{ type: 'reject' }] },
+    };
+    resumeWithHitlResponse(hitlResponse, false);
+  }, [pendingInterrupt, resumeWithHitlResponse]);
+
+  // --- Secretary action approve/reject (delete_workspace, stop_workspace, delete_thread) ---
+  const handleApproveSecretaryAction = useCallback(() => {
+    if (!pendingInterrupt) return;
+    const { type, interruptId, proposalId } = pendingInterrupt;
+    if (type !== 'delete_workspace' && type !== 'stop_workspace' && type !== 'delete_thread') return;
+    const pid = proposalId!;
+
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.role !== 'assistant') return m;
+        const msg = m as AssistantMessage;
+        if (!msg.secretaryActionProposals?.[pid]) return m;
+        return {
+          ...msg,
+          secretaryActionProposals: {
+            ...msg.secretaryActionProposals,
+            [pid]: {
+              ...msg.secretaryActionProposals[pid],
+              status: 'approved',
+            },
+          },
+        };
+      })
+    );
+
+    const hitlResponse = {
+      [interruptId!]: { decisions: [{ type: 'approve' }] },
+    };
+    resumeWithHitlResponse(hitlResponse, false);
+  }, [pendingInterrupt, resumeWithHitlResponse]);
+
+  const handleRejectSecretaryAction = useCallback(() => {
+    if (!pendingInterrupt) return;
+    const { type, interruptId, proposalId } = pendingInterrupt;
+    if (type !== 'delete_workspace' && type !== 'stop_workspace' && type !== 'delete_thread') return;
+    const pid = proposalId!;
+
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.role !== 'assistant') return m;
+        const msg = m as AssistantMessage;
+        if (!msg.secretaryActionProposals?.[pid]) return m;
+        return {
+          ...msg,
+          secretaryActionProposals: {
+            ...msg.secretaryActionProposals,
+            [pid]: {
+              ...msg.secretaryActionProposals[pid],
+              status: 'rejected',
+            },
+          },
+        };
+      })
+    );
+
+    const hitlResponse = {
+      [interruptId!]: { decisions: [{ type: 'reject' }] },
+    };
+    resumeWithHitlResponse(hitlResponse, false);
+  }, [pendingInterrupt, resumeWithHitlResponse]);
+
   const insertNotification = useCallback((text: string, variant: 'info' | 'success' | 'warning' = 'info') => {
     setMessages((prev) => appendMessage(prev, createNotificationMessage(text, variant)));
   }, []);
@@ -3994,6 +4280,10 @@ export function useChatMessages(
     handleRejectCreateWorkspace,
     handleApproveStartQuestion,
     handleRejectStartQuestion,
+    handleApprovePTCAgent,
+    handleRejectPTCAgent,
+    handleApproveSecretaryAction,
+    handleRejectSecretaryAction,
     tokenUsage,
     isShared,
     insertNotification,

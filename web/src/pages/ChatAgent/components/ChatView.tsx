@@ -552,6 +552,10 @@ function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName:
     handleRejectCreateWorkspace,
     handleApproveStartQuestion,
     handleRejectStartQuestion,
+    handleApprovePTCAgent,
+    handleRejectPTCAgent,
+    handleApproveSecretaryAction,
+    handleRejectSecretaryAction,
     tokenUsage,
     threadId: currentThreadId,
     threadModels,
@@ -1823,6 +1827,10 @@ function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName:
                         onRejectCreateWorkspace={handleRejectCreateWorkspace}
                         onApproveStartQuestion={handleApproveStartQuestion}
                         onRejectStartQuestion={handleRejectStartQuestion}
+                        onApprovePTCAgent={handleApprovePTCAgent}
+                        onRejectPTCAgent={handleRejectPTCAgent}
+                        onApproveSecretaryAction={handleApproveSecretaryAction}
+                        onRejectSecretaryAction={handleRejectSecretaryAction}
                         onEditMessage={(id, content) => handleEditMessage(id, content, chatInputRef.current?.getModelOptions?.())}
                         onRegenerate={(id) => handleRegenerate(id, chatInputRef.current?.getModelOptions?.())}
                         onRetry={() => handleRetry(chatInputRef.current?.getModelOptions?.())}

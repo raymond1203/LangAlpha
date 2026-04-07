@@ -59,6 +59,30 @@ export interface StartQuestionSegment {
   order: number;
 }
 
+export interface PTCAgentSegment {
+  type: 'ptc_agent';
+  proposalId: string;
+  order: number;
+}
+
+export interface DeleteWorkspaceSegment {
+  type: 'delete_workspace';
+  proposalId: string;
+  order: number;
+}
+
+export interface StopWorkspaceSegment {
+  type: 'stop_workspace';
+  proposalId: string;
+  order: number;
+}
+
+export interface DeleteThreadSegment {
+  type: 'delete_thread';
+  proposalId: string;
+  order: number;
+}
+
 export interface PlanApprovalSegment {
   type: 'plan_approval';
   planApprovalId: string;
@@ -75,6 +99,10 @@ export type ContentSegment =
   | UserQuestionSegment
   | CreateWorkspaceSegment
   | StartQuestionSegment
+  | PTCAgentSegment
+  | DeleteWorkspaceSegment
+  | StopWorkspaceSegment
+  | DeleteThreadSegment
   | PlanApprovalSegment;
 
 // --- Process Records ---
@@ -166,6 +194,24 @@ export interface QuestionProposalState {
   interruptId?: string;
 }
 
+export interface PTCAgentProposalState {
+  proposalId?: string;
+  status: string;
+  workspace_id?: string;
+  workspace_name?: string;
+  question?: string;
+  interruptId?: string;
+}
+
+export interface SecretaryActionProposalState {
+  proposalId?: string;
+  status: string;
+  actionType: 'delete_workspace' | 'stop_workspace' | 'delete_thread';
+  workspace_id?: string;
+  thread_id?: string;
+  interruptId?: string;
+}
+
 // --- Chat Messages ---
 
 export interface UserMessage {
@@ -200,6 +246,8 @@ export interface AssistantMessage {
   userQuestions?: Record<string, UserQuestionState>;
   workspaceProposals?: Record<string, WorkspaceProposalState>;
   questionProposals?: Record<string, QuestionProposalState>;
+  ptcAgentProposals?: Record<string, PTCAgentProposalState>;
+  secretaryActionProposals?: Record<string, SecretaryActionProposalState>;
   // Runtime flags
   steering?: boolean;
   steeringDelivered?: boolean;

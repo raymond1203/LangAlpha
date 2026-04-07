@@ -27,6 +27,8 @@ import PlanApprovalCard from './PlanApprovalCard';
 import UserQuestionCard from './UserQuestionCard';
 import CreateWorkspaceCard from './CreateWorkspaceCard';
 import StartQuestionCard from './StartQuestionCard';
+import PTCAgentCard from './PTCAgentCard';
+import SecretaryConfirmCard from './SecretaryConfirmCard';
 import SubagentTaskMessageContent from './SubagentTaskMessageContent';
 import TextMessageContent from './TextMessageContent';
 import InlineWidget from './viewers/InlineWidget';
@@ -270,6 +272,10 @@ interface MessageListProps {
   onRejectCreateWorkspace?: (proposalData: Record<string, unknown>) => void;
   onApproveStartQuestion?: (proposalData: Record<string, unknown>) => void;
   onRejectStartQuestion?: (proposalData: Record<string, unknown>) => void;
+  onApprovePTCAgent?: (proposalData: Record<string, unknown>) => void;
+  onRejectPTCAgent?: (proposalData: Record<string, unknown>) => void;
+  onApproveSecretaryAction?: (proposalData: Record<string, unknown>) => void;
+  onRejectSecretaryAction?: (proposalData: Record<string, unknown>) => void;
   onEditMessage?: (messageId: string, content: string) => void;
   onRegenerate?: (messageId: string) => void;
   onRetry?: () => void;
@@ -289,7 +295,7 @@ interface MessageListProps {
  * - Streaming indicators
  * - Error state styling
  */
-function MessageList({ messages, isLoading, isLoadingHistory, hideAvatar, compactToolCalls, isSubagentView, readOnly, allowFiles, onOpenSubagentTask, onOpenFile, onOpenDir, onToolCallDetailClick, onApprovePlan, onRejectPlan, onPlanDetailClick, onAnswerQuestion, onSkipQuestion, onApproveCreateWorkspace, onRejectCreateWorkspace, onApproveStartQuestion, onRejectStartQuestion, onEditMessage, onRegenerate, onRetry, onThumbUp, onThumbDown, getFeedbackForMessage, onReportWithAgent, onWidgetSendPrompt }: MessageListProps): React.ReactElement | null {
+function MessageList({ messages, isLoading, isLoadingHistory, hideAvatar, compactToolCalls, isSubagentView, readOnly, allowFiles, onOpenSubagentTask, onOpenFile, onOpenDir, onToolCallDetailClick, onApprovePlan, onRejectPlan, onPlanDetailClick, onAnswerQuestion, onSkipQuestion, onApproveCreateWorkspace, onRejectCreateWorkspace, onApproveStartQuestion, onRejectStartQuestion, onApprovePTCAgent, onRejectPTCAgent, onApproveSecretaryAction, onRejectSecretaryAction, onEditMessage, onRegenerate, onRetry, onThumbUp, onThumbDown, getFeedbackForMessage, onReportWithAgent, onWidgetSendPrompt }: MessageListProps): React.ReactElement | null {
   const isMobile = useIsMobile();
 
   // Empty state - show when no messages exist (hidden in subagent view)
@@ -366,6 +372,10 @@ function MessageList({ messages, isLoading, isLoadingHistory, hideAvatar, compac
             onRejectCreateWorkspace={onRejectCreateWorkspace}
             onApproveStartQuestion={onApproveStartQuestion}
             onRejectStartQuestion={onRejectStartQuestion}
+            onApprovePTCAgent={onApprovePTCAgent}
+            onRejectPTCAgent={onRejectPTCAgent}
+            onApproveSecretaryAction={onApproveSecretaryAction}
+            onRejectSecretaryAction={onRejectSecretaryAction}
             onEditMessage={onEditMessage}
             onRegenerate={onRegenerate}
             onRetry={onRetry}
@@ -404,6 +414,10 @@ interface MessageBubbleProps {
   onRejectCreateWorkspace?: (proposalData: Record<string, unknown>) => void;
   onApproveStartQuestion?: (proposalData: Record<string, unknown>) => void;
   onRejectStartQuestion?: (proposalData: Record<string, unknown>) => void;
+  onApprovePTCAgent?: (proposalData: Record<string, unknown>) => void;
+  onRejectPTCAgent?: (proposalData: Record<string, unknown>) => void;
+  onApproveSecretaryAction?: (proposalData: Record<string, unknown>) => void;
+  onRejectSecretaryAction?: (proposalData: Record<string, unknown>) => void;
   onEditMessage?: (messageId: string, content: string) => void;
   onRegenerate?: (messageId: string) => void;
   onRetry?: () => void;
@@ -424,7 +438,7 @@ interface MessageBubbleProps {
  * Wrapped with React.memo — safe because updateMessage() in messageHelpers.ts
  * returns the same object reference for unchanged messages.
  */
-const MessageBubble = memo(function MessageBubble({ message, isLoading, hideAvatar, compactToolCalls, isSubagentView, readOnly, allowFiles, onOpenSubagentTask, onOpenFile, onOpenDir, onToolCallDetailClick, onApprovePlan, onRejectPlan, onPlanDetailClick, onAnswerQuestion, onSkipQuestion, onApproveCreateWorkspace, onRejectCreateWorkspace, onApproveStartQuestion, onRejectStartQuestion, onEditMessage, onRegenerate, onRetry, onThumbUp, onThumbDown, getFeedbackForMessage, onReportWithAgent, onWidgetSendPrompt, isMobile }: MessageBubbleProps): React.ReactElement {
+const MessageBubble = memo(function MessageBubble({ message, isLoading, hideAvatar, compactToolCalls, isSubagentView, readOnly, allowFiles, onOpenSubagentTask, onOpenFile, onOpenDir, onToolCallDetailClick, onApprovePlan, onRejectPlan, onPlanDetailClick, onAnswerQuestion, onSkipQuestion, onApproveCreateWorkspace, onRejectCreateWorkspace, onApproveStartQuestion, onRejectStartQuestion, onApprovePTCAgent, onRejectPTCAgent, onApproveSecretaryAction, onRejectSecretaryAction, onEditMessage, onRegenerate, onRetry, onThumbUp, onThumbDown, getFeedbackForMessage, onReportWithAgent, onWidgetSendPrompt, isMobile }: MessageBubbleProps): React.ReactElement {
   const { user } = useUser();
   const { theme } = useTheme();
   const logo = theme === 'light' ? logoDark : logoLight;
@@ -670,6 +684,12 @@ const MessageBubble = memo(function MessageBubble({ message, isLoading, hideAvat
               onRejectCreateWorkspace={onRejectCreateWorkspace}
               onApproveStartQuestion={onApproveStartQuestion}
               onRejectStartQuestion={onRejectStartQuestion}
+              onApprovePTCAgent={onApprovePTCAgent}
+              onRejectPTCAgent={onRejectPTCAgent}
+              onApproveSecretaryAction={onApproveSecretaryAction}
+              onRejectSecretaryAction={onRejectSecretaryAction}
+              ptcAgentProposals={(message.ptcAgentProposals as Record<string, Record<string, unknown>>) || EMPTY_OBJ}
+              secretaryActionProposals={(message.secretaryActionProposals as Record<string, Record<string, unknown>>) || EMPTY_OBJ}
               onWidgetSendPrompt={onWidgetSendPrompt}
               htmlWidgetProcesses={(message.htmlWidgetProcesses as Record<string, Record<string, unknown>>) || EMPTY_OBJ}
               textOnly={true}
@@ -854,6 +874,12 @@ interface MessageContentSegmentsProps {
   onRejectCreateWorkspace?: (proposalData: Record<string, unknown>) => void;
   onApproveStartQuestion?: (proposalData: Record<string, unknown>) => void;
   onRejectStartQuestion?: (proposalData: Record<string, unknown>) => void;
+  onApprovePTCAgent?: (proposalData: Record<string, unknown>) => void;
+  onRejectPTCAgent?: (proposalData: Record<string, unknown>) => void;
+  onApproveSecretaryAction?: (proposalData: Record<string, unknown>) => void;
+  onRejectSecretaryAction?: (proposalData: Record<string, unknown>) => void;
+  ptcAgentProposals?: Record<string, Record<string, unknown>>;
+  secretaryActionProposals?: Record<string, Record<string, unknown>>;
   onWidgetSendPrompt?: (text: string) => void;
   htmlWidgetProcesses?: Record<string, Record<string, unknown>>;
   textOnly?: boolean;
@@ -864,7 +890,7 @@ const MAX_IN_PROGRESS_MS = 15000; // max time a tool call can stay in-progress i
 /** Tools that should stay in the live zone for their entire duration (no MAX_IN_PROGRESS_MS cap) */
 const ALWAYS_LIVE_TOOLS = new Set(['TaskOutput', 'WebFetch']);
 /** Tool calls that are never rendered as visible activity items — they have dedicated UI or are internal */
-const HIDDEN_TOOL_CALL_NAMES = new Set(['TodoWrite', 'task', 'Task', 'SubmitPlan', 'AskUserQuestion', 'create_workspace', 'start_question', 'ShowWidget']);
+const HIDDEN_TOOL_CALL_NAMES = new Set(['TodoWrite', 'task', 'Task', 'SubmitPlan', 'AskUserQuestion', 'create_workspace', 'start_question', 'manage_workspaces', 'ptc_agent', 'agent_output', 'manage_threads', 'ShowWidget']);
 
 /** Render block types for the textOnly activity grouping */
 interface ActivityRenderBlock {
@@ -908,6 +934,16 @@ interface StartQuestionRenderBlock {
   key: string;
   segment: ContentSegmentRecord;
 }
+interface PTCAgentRenderBlock {
+  type: 'ptc_agent';
+  key: string;
+  segment: ContentSegmentRecord;
+}
+interface SecretaryActionRenderBlock {
+  type: 'delete_workspace' | 'stop_workspace' | 'delete_thread';
+  key: string;
+  segment: ContentSegmentRecord;
+}
 interface NotificationRenderBlock {
   type: 'notification';
   key: string;
@@ -928,10 +964,12 @@ type RenderBlock =
   | UserQuestionRenderBlock
   | CreateWorkspaceRenderBlock
   | StartQuestionRenderBlock
+  | PTCAgentRenderBlock
+  | SecretaryActionRenderBlock
   | NotificationRenderBlock
   | HtmlWidgetRenderBlock;
 
-const MessageContentSegments = memo(function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesses, todoListProcesses, subagentTasks, planApprovals = EMPTY_OBJ, userQuestions = EMPTY_OBJ, workspaceProposals = EMPTY_OBJ, questionProposals = EMPTY_OBJ, pendingToolCallChunks = EMPTY_OBJ, isStreaming, hasError, isAssistant = false, compactToolCalls = false, isSubagentView = false, readOnly = false, allowFiles = false, onOpenSubagentTask, onOpenFile, onOpenDir, onToolCallDetailClick, onApprovePlan, onRejectPlan, onPlanDetailClick, onAnswerQuestion, onSkipQuestion, onApproveCreateWorkspace, onRejectCreateWorkspace, onApproveStartQuestion, onRejectStartQuestion, onWidgetSendPrompt, htmlWidgetProcesses = EMPTY_OBJ, textOnly = false }: MessageContentSegmentsProps): React.ReactElement {
+const MessageContentSegments = memo(function MessageContentSegments({ segments, reasoningProcesses, toolCallProcesses, todoListProcesses, subagentTasks, planApprovals = EMPTY_OBJ, userQuestions = EMPTY_OBJ, workspaceProposals = EMPTY_OBJ, questionProposals = EMPTY_OBJ, pendingToolCallChunks = EMPTY_OBJ, isStreaming, hasError, isAssistant = false, compactToolCalls = false, isSubagentView = false, readOnly = false, allowFiles = false, onOpenSubagentTask, onOpenFile, onOpenDir, onToolCallDetailClick, onApprovePlan, onRejectPlan, onPlanDetailClick, onAnswerQuestion, onSkipQuestion, onApproveCreateWorkspace, onRejectCreateWorkspace, onApproveStartQuestion, onRejectStartQuestion, onApprovePTCAgent, onRejectPTCAgent, onApproveSecretaryAction, onRejectSecretaryAction, ptcAgentProposals = EMPTY_OBJ, secretaryActionProposals = EMPTY_OBJ, onWidgetSendPrompt, htmlWidgetProcesses = EMPTY_OBJ, textOnly = false }: MessageContentSegmentsProps): React.ReactElement {
   // Force re-render timer for recently-completed tool calls that need minimum exposure
   const [tick, setTick] = useState(0);
   const expiryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1004,6 +1042,10 @@ const MessageContentSegments = memo(function MessageContentSegments({ segments, 
         if (s.type === 'user_question') return true;
         if (s.type === 'create_workspace') return true;
         if (s.type === 'start_question') return true;
+        if (s.type === 'ptc_agent') return true;
+        if (s.type === 'delete_workspace') return true;
+        if (s.type === 'stop_workspace') return true;
+        if (s.type === 'delete_thread') return true;
         if (s.type === 'html_widget') return true;
         if (s.type === 'tool_call') {
           const toolName = toolCallProcesses[s.toolCallId!]?.toolName as string | undefined;
@@ -1145,6 +1187,12 @@ const MessageContentSegments = memo(function MessageContentSegments({ segments, 
         } else if (seg.type === 'start_question') {
           flushActivity();
           blocks.push({ type: 'start_question', key: `start-question-${seg.proposalId}`, segment: seg });
+        } else if (seg.type === 'ptc_agent') {
+          flushActivity();
+          blocks.push({ type: 'ptc_agent', key: `ptc-agent-${seg.proposalId}`, segment: seg });
+        } else if (seg.type === 'delete_workspace' || seg.type === 'stop_workspace' || seg.type === 'delete_thread') {
+          flushActivity();
+          blocks.push({ type: seg.type, key: `secretary-${seg.type}-${seg.proposalId}`, segment: seg });
         } else if (seg.type === 'html_widget') {
           flushActivity();
           blocks.push({ type: 'html_widget', key: `widget-${seg.widgetId}`, segment: seg });
@@ -1376,6 +1424,34 @@ const MessageContentSegments = memo(function MessageContentSegments({ segments, 
             );
           }
 
+          if (block.type === 'ptc_agent') {
+            if (readOnly) return null;
+            const pad = ptcAgentProposals[(block as PTCAgentRenderBlock).segment.proposalId!];
+            if (!pad) return null;
+            return (
+              <PTCAgentCard
+                key={block.key}
+                proposalData={pad as any}
+                onApprove={onApprovePTCAgent ? () => onApprovePTCAgent(pad) : undefined}
+                onReject={onRejectPTCAgent ? () => onRejectPTCAgent(pad) : undefined}
+              />
+            );
+          }
+
+          if (block.type === 'delete_workspace' || block.type === 'stop_workspace' || block.type === 'delete_thread') {
+            if (readOnly) return null;
+            const sad = secretaryActionProposals[(block as SecretaryActionRenderBlock).segment.proposalId!];
+            if (!sad) return null;
+            return (
+              <SecretaryConfirmCard
+                key={block.key}
+                proposalData={sad as any}
+                onApprove={onApproveSecretaryAction ? () => onApproveSecretaryAction(sad) : undefined}
+                onReject={onRejectSecretaryAction ? () => onRejectSecretaryAction(sad) : undefined}
+              />
+            );
+          }
+
           return null;
         })}
         {/* Standalone preparingToolCall when no activity blocks exist yet */}
@@ -1505,6 +1581,32 @@ const MessageContentSegments = memo(function MessageContentSegments({ segments, 
                 proposalData={sqd as any} // TODO: type properly — ProposalData not exported
                 onApprove={onApproveStartQuestion ? () => onApproveStartQuestion(sqd) : undefined}
                 onReject={onRejectStartQuestion ? () => onRejectStartQuestion(sqd) : undefined}
+              />
+            );
+          }
+          return null;
+        } else if (segment.type === 'ptc_agent') {
+          const pad = ptcAgentProposals[segment.proposalId!];
+          if (pad) {
+            return (
+              <PTCAgentCard
+                key={`ptc-agent-${segment.proposalId}`}
+                proposalData={pad as any}
+                onApprove={onApprovePTCAgent ? () => onApprovePTCAgent(pad) : undefined}
+                onReject={onRejectPTCAgent ? () => onRejectPTCAgent(pad) : undefined}
+              />
+            );
+          }
+          return null;
+        } else if (segment.type === 'delete_workspace' || segment.type === 'stop_workspace' || segment.type === 'delete_thread') {
+          const sad = secretaryActionProposals[segment.proposalId!];
+          if (sad) {
+            return (
+              <SecretaryConfirmCard
+                key={`secretary-${segment.type}-${segment.proposalId}`}
+                proposalData={sad as any}
+                onApprove={onApproveSecretaryAction ? () => onApproveSecretaryAction(sad) : undefined}
+                onReject={onRejectSecretaryAction ? () => onRejectSecretaryAction(sad) : undefined}
               />
             );
           }
