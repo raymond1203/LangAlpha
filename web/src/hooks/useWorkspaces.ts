@@ -6,6 +6,7 @@ interface UseWorkspacesOptions {
   limit?: number;
   offset?: number;
   sortBy?: string;
+  includeFlash?: boolean;
   enabled?: boolean;
 }
 
@@ -14,11 +15,11 @@ interface UseWorkspacesOptions {
  * Uses keepPreviousData for smooth pagination transitions.
  * All consumers with the same params share one cached entry.
  */
-export function useWorkspaces({ limit = 20, offset = 0, sortBy = 'custom', enabled = true }: UseWorkspacesOptions = {}) {
-  const params = { limit, offset, sortBy };
+export function useWorkspaces({ limit = 20, offset = 0, sortBy = 'custom', includeFlash = false, enabled = true }: UseWorkspacesOptions = {}) {
+  const params = { limit, offset, sortBy, includeFlash };
   return useQuery({
     queryKey: queryKeys.workspaces.list(params),
-    queryFn: () => getWorkspaces(limit, offset, sortBy),
+    queryFn: () => getWorkspaces(limit, offset, sortBy, includeFlash),
     enabled,
     staleTime: 30_000,
     placeholderData: keepPreviousData,

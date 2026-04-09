@@ -177,7 +177,8 @@ function NavigationPanel({
             const isPinned = ws.is_pinned;
             const isCurrent = wsId === currentWorkspaceId;
             const threadsData = workspaceThreads[wsId];
-            const threads = threadsData?.threads || [];
+            const allThreads = threadsData?.threads || [];
+            const threads = isFlash ? allThreads.slice(0, 3) : allThreads;
             const threadsLoading = threadsData?.loading || false;
 
             return (

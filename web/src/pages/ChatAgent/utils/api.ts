@@ -17,9 +17,9 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 
 // --- Workspaces ---
 
-export async function getWorkspaces(limit: number = 20, offset: number = 0, sortBy: string = 'custom') {
+export async function getWorkspaces(limit: number = 20, offset: number = 0, sortBy: string = 'custom', includeFlash: boolean = false) {
   const { data } = await api.get('/api/v1/workspaces', {
-    params: { limit, offset, sort_by: sortBy },
+    params: { limit, offset, sort_by: sortBy, ...(includeFlash ? { include_flash: true } : {}) },
   });
   return data;
 }

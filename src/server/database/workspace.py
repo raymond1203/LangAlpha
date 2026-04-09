@@ -198,6 +198,7 @@ async def get_workspaces_for_user(
     offset: int = 0,
     include_deleted: bool = False,
     sort_by: str = "custom",
+    include_flash: bool = False,
     conn=None,
 ) -> Tuple[List[Dict[str, Any]], int]:
     """
@@ -208,6 +209,8 @@ async def get_workspaces_for_user(
         limit: Maximum number of results
         offset: Number of results to skip
         include_deleted: Whether to include deleted workspaces
+        sort_by: Sort mode
+        include_flash: Whether to include flash workspaces in results
         conn: Optional database connection to reuse
 
     Returns:
@@ -215,8 +218,8 @@ async def get_workspaces_for_user(
     """
     try:
         status_filter = "" if include_deleted else "AND status != 'deleted'"
-        # Exclude flash workspaces from gallery listings
-        flash_filter = "AND status != 'flash'"
+        # Exclude flash workspaces from gallery listings unless explicitly requested
+        flash_filter = "" if include_flash else "AND status != 'flash'"
 
         async def _execute(cur):
             # Get total count
