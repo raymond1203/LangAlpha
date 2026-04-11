@@ -142,29 +142,28 @@ async def _flash_report_back(ptc_thread_id: str, workspace_id: str) -> None:
                         f"[FLASH_REPORT_BACK] Sent completion to flash thread "
                         f"{flash_thread_id} for PTC thread {ptc_thread_id}"
                     )
-                    # Notify any watching frontend via Redis pub/sub
-                    try:
-                        await cache.client.publish(
-                            f"thread:wake:{flash_thread_id}",
-                            json.dumps({"thread_id": flash_thread_id}),
-                        )
-                    except Exception:
-                        pass  # Best-effort; frontend will fall back to reconnect on page load
 
-                    # Clean up origin key and remove this PTC thread from
-                    # the flash watch set.  Only delete the set key when empty
-                    # (other dispatches may still be pending).
-                    try:
-                        await cache.delete(f"ptc_origin:{ptc_thread_id}")
-                        if flash_thread_id:
-                            watch_key = f"flash_watch:{flash_thread_id}"
-                            await cache.client.srem(watch_key, ptc_thread_id)
-                            # Delete the set only if empty
-                            remaining = await cache.client.scard(watch_key)
-                            if remaining == 0:
-                                await cache.client.delete(watch_key)
-                    except Exception:
-                        pass
+                # Clean up Redis state unconditionally (success or failure).
+                # On 4xx the flash thread may be gone, but we still need to
+                # remove the watch entry to avoid zombie connections.
+                try:
+                    await cache.client.publish(
+                        f"thread:wake:{flash_thread_id}",
+                        json.dumps({"thread_id": flash_thread_id}),
+                    )
+                except Exception:
+                    pass  # Best-effort; frontend will fall back to reconnect on page load
+
+                try:
+                    await cache.delete(f"ptc_origin:{ptc_thread_id}")
+                    if flash_thread_id:
+                        watch_key = f"flash_watch:{flash_thread_id}"
+                        await cache.client.srem(watch_key, ptc_thread_id)
+                        remaining = await cache.client.scard(watch_key)
+                        if remaining == 0:
+                            await cache.client.delete(watch_key)
+                except Exception:
+                    pass
     except Exception as e:
         logger.warning(f"[FLASH_REPORT_BACK] HTTP error: {e}")
 

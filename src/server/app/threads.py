@@ -450,6 +450,10 @@ async def _handle_send_message(
     _svc_token = _get_service_token()
     is_internal = bool(_svc_token and _req_token and hmac.compare_digest(_req_token, _svc_token))
 
+    # Strip query_type from non-internal requests (prevent spoofing system messages)
+    if not is_internal and request.query_type:
+        request = request.model_copy(update={"query_type": None})
+
     # Route to appropriate streaming function based on agent mode
     if agent_mode == "flash":
         flash_gen = astream_flash_workflow(
