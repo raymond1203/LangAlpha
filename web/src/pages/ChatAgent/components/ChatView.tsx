@@ -67,6 +67,8 @@ interface LocationState {
   isModifyingPreferences?: boolean;
   workspaceId?: string;
   workspaceName?: string;
+  fromThreadId?: string;
+  fromWorkspaceId?: string;
   [key: string]: unknown;
 }
 
@@ -292,6 +294,9 @@ function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName:
   const [workspaceName, setWorkspaceName] = useState(initialWorkspaceName || '');
   const [filePanelTargetFile, setFilePanelTargetFile] = useState<string | null>(null);
   const [filePanelTargetDir, setFilePanelTargetDir] = useState<string | null>(null);
+  // Cross-workspace file panel: in flash mode, files live in PTC workspaces.
+  // This tracks which workspace the file panel should fetch from.
+  const [filePanelWorkspaceId, setFilePanelWorkspaceId] = useState<string | null>(null);
   const isDraggingRef = useRef(false);
   const [isDragging, setIsDragging] = useState(false);
   // True for exactly one render after drag ends — forces transition duration:0
@@ -311,11 +316,12 @@ function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName:
 
   // Clear the drag-just-ended flag after each render so future transitions animate normally.
   useEffect(() => { dragJustEndedRef.current = false; });
-  // Clear preview cache when workspace changes to avoid leaking old workspace data.
+  // Clear preview cache and cross-workspace state when workspace changes to avoid leaking old workspace data.
   useEffect(() => {
     previewMapRef.current.clear();
     activePreviewPortRef.current = null;
     setPreviewData(null);
+    setFilePanelWorkspaceId(null);
   }, [workspaceId]);
   // Active agent in main view (default: 'main', or from URL taskId)
   const [activeAgentId, setActiveAgentId] = useState(
@@ -489,13 +495,15 @@ function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName:
 
   // Workspace files - shared between FilePanel and ChatInput
   // Must be declared before useChatMessages so refreshFiles can be passed as onFileArtifact
-  // Skip for flash mode — no sandbox
+  // For flash mode: use filePanelWorkspaceId (a PTC workspace) when set via cross-workspace file links.
+  // For PTC mode: always use the current workspaceId.
+  const effectiveFileWorkspaceId = isFlashMode ? filePanelWorkspaceId : workspaceId;
   const {
     files: workspaceFiles,
     loading: filesLoading,
     error: filesError,
     refresh: refreshFiles,
-  } = useWorkspaceFiles(isFlashMode ? null : workspaceId, { includeSystem: showSystemFiles });
+  } = useWorkspaceFiles(effectiveFileWorkspaceId, { includeSystem: showSystemFiles });
 
   // Navigation panel data — workspaces + threads for the overlay sidebar
   const {
@@ -552,6 +560,10 @@ function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName:
     handleRejectCreateWorkspace,
     handleApproveStartQuestion,
     handleRejectStartQuestion,
+    handleApprovePTCAgent,
+    handleRejectPTCAgent,
+    handleApproveSecretaryAction,
+    handleRejectSecretaryAction,
     tokenUsage,
     threadId: currentThreadId,
     threadModels,
@@ -942,7 +954,11 @@ function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName:
     };
   }, []);
 
-  const handleOpenFileFromChat = useCallback((filePath: string) => {
+  const handleOpenFileFromChat = useCallback((filePath: string, targetWorkspaceId?: string) => {
+    // For cross-workspace file references (ws:// links from flash), switch the file panel workspace
+    if (targetWorkspaceId) {
+      setFilePanelWorkspaceId(targetWorkspaceId);
+    }
     setRightPanelWidth(clampPanelWidth(850));
     setRightPanelType('file');
     setFilePanelTargetDir(null);
@@ -1597,6 +1613,16 @@ function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName:
               onClick={() => {
                 if (activeAgentId !== 'main') {
                   switchAgent('main');
+                } else if (state?.fromThreadId) {
+                  // Navigate back to the flash thread that dispatched this PTC thread
+                  intentionalExitRef.current = true;
+                  navigate(`/chat/t/${state.fromThreadId}`, {
+                    state: {
+                      workspaceId: state.fromWorkspaceId,
+                      agentMode: 'flash',
+                      workspaceStatus: 'flash',
+                    },
+                  });
                 } else {
                   intentionalExitRef.current = true;
                   onBack();
@@ -1604,7 +1630,7 @@ function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName:
               }}
               className="p-2 rounded-md transition-colors flex-shrink-0"
               style={{ color: 'var(--color-text-primary)' }}
-              title={activeAgentId !== 'main' ? t('chat.backToMain', 'Back to main') : t('workspace.backToThreads')}
+              title={activeAgentId !== 'main' ? t('chat.backToMain', 'Back to main') : state?.fromThreadId ? t('chat.backToFlash', 'Back to Flash') : t('workspace.backToThreads')}
               onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--color-border-muted)'; }}
               onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = ''; }}
             >
@@ -1624,7 +1650,7 @@ function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName:
             {currentThreadId && currentThreadId !== '__default__' && (
               <ShareButton threadId={currentThreadId} initialIsShared={threadIsShared} />
             )}
-            {!isFlashMode && (
+            {(!isFlashMode || filePanelWorkspaceId) && (
               <button
                 onClick={handleToggleFilePanel}
                 className="p-2 rounded-md transition-colors"
@@ -1823,6 +1849,11 @@ function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName:
                         onRejectCreateWorkspace={handleRejectCreateWorkspace}
                         onApproveStartQuestion={handleApproveStartQuestion}
                         onRejectStartQuestion={handleRejectStartQuestion}
+                        onApprovePTCAgent={handleApprovePTCAgent}
+                        onRejectPTCAgent={handleRejectPTCAgent}
+                        onApproveSecretaryAction={handleApproveSecretaryAction}
+                        onRejectSecretaryAction={handleRejectSecretaryAction}
+                        flashContext={isFlashMode && currentThreadId ? { threadId: currentThreadId, workspaceId } : null}
                         onEditMessage={(id, content) => handleEditMessage(id, content, chatInputRef.current?.getModelOptions?.())}
                         onRegenerate={(id) => handleRegenerate(id, chatInputRef.current?.getModelOptions?.())}
                         onRetry={() => handleRetry(chatInputRef.current?.getModelOptions?.())}
@@ -2092,8 +2123,9 @@ function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName:
           >
             <div className="flex-shrink-0 h-full" style={{ width: '100%' }}>
               <Suspense fallback={null}>
+                <WorkspaceProvider workspaceId={effectiveFileWorkspaceId || workspaceId} downloadFile={null}>
                 <FilePanel
-                  workspaceId={workspaceId}
+                  workspaceId={effectiveFileWorkspaceId || workspaceId}
                   onClose={() => { setRightPanelType(null); popPanelHistory(); }}
                   targetFile={filePanelTargetFile}
                   onTargetFileHandled={() => setFilePanelTargetFile(null)}
@@ -2111,7 +2143,10 @@ function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName:
                       return !v;
                     });
                   }}
+                  readOnly={isFlashMode}
+                  singleFileMode={isFlashMode && !!filePanelWorkspaceId}
                 />
+                </WorkspaceProvider>
               </Suspense>
             </div>
           </motion.div>
@@ -2141,8 +2176,9 @@ function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName:
               <div data-panel-inner className="flex-shrink-0 h-full" style={{ width: rightPanelWidth }}>
                 <Suspense fallback={null}>
                   {rightPanelType === 'file' ? (
+                    <WorkspaceProvider workspaceId={effectiveFileWorkspaceId || workspaceId} downloadFile={null}>
                     <FilePanel
-                      workspaceId={workspaceId}
+                      workspaceId={effectiveFileWorkspaceId || workspaceId}
                       onClose={() => { setRightPanelType(null); popPanelHistory(); }}
                       targetFile={filePanelTargetFile}
                       onTargetFileHandled={() => setFilePanelTargetFile(null)}
@@ -2160,7 +2196,10 @@ function ChatView({ workspaceId, threadId, initialTaskId, onBack, workspaceName:
                           return !v;
                         });
                       }}
+                      readOnly={isFlashMode}
+                      singleFileMode={isFlashMode && !!filePanelWorkspaceId}
                     />
+                    </WorkspaceProvider>
                   ) : rightPanelType === 'detail' && (detailToolCall || detailPlanData) ? (
                     <DetailPanel
                       toolCallProcess={detailToolCall}

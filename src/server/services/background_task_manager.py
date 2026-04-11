@@ -382,6 +382,32 @@ class BackgroundTaskManager:
                 f"[BackgroundTaskManager] Cleaned up {len(to_remove)} tasks: {to_remove}"
             )
 
+    async def pre_register(self, thread_id: str) -> None:
+        """Pre-register a thread as QUEUED before the workflow generator starts.
+
+        Used by background dispatch (X-Dispatch: background) to close the timing
+        gap between the HTTP response and the generator reaching start_workflow().
+        Reconnecting clients see a QUEUED TaskInfo (with subscribable live_queues)
+        instead of a 404.
+        """
+        async with self.task_lock:
+            if thread_id in self.tasks:
+                existing = self.tasks[thread_id]
+                if existing.status in [TaskStatus.QUEUED, TaskStatus.RUNNING]:
+                    return  # Already registered or running
+                # Remove old completed/failed task so the placeholder can be inserted
+                del self.tasks[thread_id]
+
+            self.tasks[thread_id] = TaskInfo(
+                thread_id=thread_id,
+                status=TaskStatus.QUEUED,
+                created_at=datetime.now(),
+            )
+            logger.info(
+                f"[BackgroundTaskManager] Pre-registered dispatch placeholder "
+                f"for {thread_id}"
+            )
+
     async def start_workflow(
         self,
         thread_id: str,
@@ -411,6 +437,23 @@ class BackgroundTaskManager:
             # Check if already exists
             if thread_id in self.tasks:
                 existing = self.tasks[thread_id]
+                if existing.status == TaskStatus.QUEUED and existing.task is None:
+                    # Pre-registered dispatch placeholder — upgrade in-place so
+                    # any live_queues that reconnect clients subscribed to keep
+                    # receiving events from the same TaskInfo.
+                    existing.metadata = metadata or {}
+                    existing.completion_callback = completion_callback
+                    existing.graph = graph
+                    existing.task = asyncio.create_task(
+                        self._run_workflow_shielded(thread_id, workflow_generator)
+                    )
+                    existing.status = TaskStatus.RUNNING
+                    existing.started_at = datetime.now()
+                    logger.info(
+                        f"[BackgroundTaskManager] Upgraded pre-registered "
+                        f"workflow {thread_id} to RUNNING"
+                    )
+                    return existing
                 if existing.status in [TaskStatus.QUEUED, TaskStatus.RUNNING]:
                     raise RuntimeError(
                         f"Workflow {thread_id} already running with status {existing.status}"

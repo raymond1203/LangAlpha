@@ -17,9 +17,9 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 
 // --- Workspaces ---
 
-export async function getWorkspaces(limit: number = 20, offset: number = 0, sortBy: string = 'custom') {
+export async function getWorkspaces(limit: number = 20, offset: number = 0, sortBy: string = 'custom', includeFlash: boolean = false) {
   const { data } = await api.get('/api/v1/workspaces', {
-    params: { limit, offset, sort_by: sortBy },
+    params: { limit, offset, sort_by: sortBy, ...(includeFlash ? { include_flash: true } : {}) },
   });
   return data;
 }
@@ -281,6 +281,67 @@ export async function getWorkflowStatus(threadId: string) {
   if (!threadId) throw new Error('Thread ID is required');
   const { data } = await api.get(`/api/v1/threads/${threadId}/status`);
   return data;
+}
+
+/**
+ * Watch a thread for new workflow activity via SSE (Redis pub/sub backed).
+ * Returns an AbortController so the caller can close the connection.
+ * Calls onWorkflowStarted() when the backend signals a new workflow.
+ * @param {string} threadId - The thread ID to watch
+ * @param {Function} onWorkflowStarted - Callback when new workflow is detected
+ * @returns {{ abort: AbortController }} - Call abort.abort() to stop watching
+ */
+export function watchThread(
+  threadId: string,
+  onWorkflowStarted: () => void,
+): { abort: AbortController } {
+  const abort = new AbortController();
+  const MAX_RETRIES = 2;
+
+  (async () => {
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (abort.signal.aborted) return;
+      try {
+        const authHeaders = await getAuthHeaders();
+        const res = await fetch(`${baseURL}/api/v1/threads/${threadId}/watch`, {
+          method: 'GET',
+          headers: { ...authHeaders },
+          signal: abort.signal,
+        });
+
+        if (!res.ok || !res.body) return;
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          // Check for workflow_started event
+          if (buffer.includes('event: workflow_started')) {
+            reader.cancel();
+            onWorkflowStarted();
+            return;
+          }
+          // Discard processed keepalive lines to prevent buffer growth
+          const lastNewline = buffer.lastIndexOf('\n\n');
+          if (lastNewline >= 0) {
+            buffer = buffer.slice(lastNewline + 2);
+          }
+        }
+        return; // Stream ended cleanly without event — no retry
+      } catch (err: unknown) {
+        if ((err as Error).name === 'AbortError') return;
+        if (attempt < MAX_RETRIES) {
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        }
+      }
+    }
+  })();
+
+  return { abort };
 }
 
 /**

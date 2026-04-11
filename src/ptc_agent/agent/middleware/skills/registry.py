@@ -90,6 +90,14 @@ SKILL_REGISTRY: dict[str, SkillDefinition] = {
         skill_md_path="skills/onboarding/SKILL.md",
         exposure="hidden",
     ),
+    "secretary": SkillDefinition(
+        name="secretary",
+        description="Manage workspaces, dispatch research, monitor running analyses",
+        tools=[],
+        skill_md_path="skills/secretary/SKILL.md",
+        exposure="flash",
+        command="secretary",
+    ),
     "automation": SkillDefinition(
         name="automation",
         description="Create and manage scheduled automations (cron jobs, one-time tasks)",

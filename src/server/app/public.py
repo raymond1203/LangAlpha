@@ -130,6 +130,11 @@ async def replay_shared_thread(share_token: str):
                 "timestamp": q.get("created_at"),
                 "metadata": metadata,
             }
+            # Tag system queries so the frontend can hide the user bubble
+            query_type = q.get("type")
+            if query_type == "system":
+                payload["query_type"] = "system"
+
             yield (
                 f"id: {seq}\n"
                 f"event: user_message\n"

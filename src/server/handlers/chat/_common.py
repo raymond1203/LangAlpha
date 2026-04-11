@@ -113,15 +113,18 @@ async def _setup_fork_and_persistence(
 
     Shared by both flash and PTC handlers. Returns (query_type, is_fork, persistence_service).
     """
-    # Determine query type
-    is_resume = bool(request.hitl_response)
-    is_checkpoint_replay = bool(request.checkpoint_id and not request.messages)
-    if is_resume:
-        query_type = "resume_feedback"
-    elif is_checkpoint_replay:
-        query_type = "regenerate"
+    # Determine query type (allow explicit override for internal callers)
+    if request.query_type:
+        query_type = request.query_type
     else:
-        query_type = "initial"
+        is_resume = bool(request.hitl_response)
+        is_checkpoint_replay = bool(request.checkpoint_id and not request.messages)
+        if is_resume:
+            query_type = "resume_feedback"
+        elif is_checkpoint_replay:
+            query_type = "regenerate"
+        else:
+            query_type = "initial"
 
     # Fork cleanup: truncate app DB when branching from a checkpoint
     is_fork = request.fork_from_turn is not None and request.checkpoint_id

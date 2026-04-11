@@ -1,17 +1,14 @@
-"""
-Onboarding tools: user profile management + HITL workspace/question tools.
+"""Onboarding tools: user profile management.
 
-Combines USER_PROFILE_TOOLS with create_workspace and start_question
-for the complete onboarding flow.
+Note: manage_workspaces and ptc_agent are registered as direct flash tools
+via SECRETARY_TOOLS in flash/agent.py. They are NOT included here to avoid
+duplicate tool registration which causes create_agent to drop them.
 """
 
-from src.tools.onboarding.tools import create_workspace, start_question
 from src.tools.user_profile import USER_PROFILE_TOOLS
 
-ONBOARDING_TOOLS = [*USER_PROFILE_TOOLS, create_workspace, start_question]
+ONBOARDING_TOOLS = [*USER_PROFILE_TOOLS]
 
 __all__ = [
-    "create_workspace",
-    "start_question",
     "ONBOARDING_TOOLS",
 ]

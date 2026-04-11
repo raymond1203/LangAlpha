@@ -79,6 +79,96 @@ from .llm_config import resolve_llm_config
 from .steering import backfill_steering_queries
 
 
+async def _flash_report_back(ptc_thread_id: str, workspace_id: str | None) -> None:
+    """Send a message to the originating flash thread when PTC completes.
+
+    Checks Redis for origin metadata stored by the ptc_agent secretary tool.
+    If ``report_back`` is enabled, POSTs a synthetic user message to the flash
+    thread, triggering flash to call ``agent_output`` and summarize results.
+    """
+    import os
+
+    import aiohttp
+
+    from src.utils.cache.redis_cache import get_cache_client
+
+    cache = get_cache_client()
+    origin = await cache.get(f"ptc_origin:{ptc_thread_id}")
+    if not origin or origin.get("origin") != "flash" or not origin.get("report_back"):
+        return
+
+    flash_thread_id = origin.get("flash_thread_id")
+    flash_workspace_id = origin.get("flash_workspace_id")
+    user_id = origin.get("user_id")
+    if not flash_thread_id or not user_id:
+        return
+
+    self_base_url = os.environ.get("GINLIXFLOW_BASE_URL", "http://localhost:8000")
+    service_token = os.environ.get("INTERNAL_SERVICE_TOKEN", "")
+
+    ws_label = workspace_id or "an auto-created workspace"
+    message = (
+        "<system>\n"
+        f"The analysis you dispatched (thread {ptc_thread_id} in workspace "
+        f"{ws_label}) has completed. Use agent_output to retrieve and "
+        f"summarize the results for the user.\n"
+        "</system>"
+    )
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{self_base_url}/api/v1/threads/{flash_thread_id}/messages",
+                json={
+                    "messages": [{"role": "user", "content": message}],
+                    "agent_mode": "flash",
+                    "workspace_id": flash_workspace_id,
+                    "query_type": "system",
+                },
+                headers={
+                    "X-Service-Token": service_token,
+                    "X-User-Id": user_id,
+                    "X-Dispatch": "background",
+                },
+                timeout=aiohttp.ClientTimeout(connect=10, sock_read=30),
+            ) as resp:
+                if resp.status >= 400:
+                    body = await resp.text()
+                    logger.warning(
+                        f"[FLASH_REPORT_BACK] Failed to POST to flash thread "
+                        f"{flash_thread_id}: {resp.status} {body[:200]}"
+                    )
+                else:
+                    logger.info(
+                        f"[FLASH_REPORT_BACK] Sent completion to flash thread "
+                        f"{flash_thread_id} for PTC thread {ptc_thread_id}"
+                    )
+
+                # Clean up Redis state before publishing the wake notification.
+                # This ordering ensures the frontend sees consistent state
+                # (flash_watch cleared) when it reacts to the wake event.
+                try:
+                    await cache.delete(f"ptc_origin:{ptc_thread_id}")
+                    if flash_thread_id:
+                        watch_key = f"flash_watch:{flash_thread_id}"
+                        await cache.client.srem(watch_key, ptc_thread_id)
+                        remaining = await cache.client.scard(watch_key)
+                        if remaining == 0:
+                            await cache.client.delete(watch_key)
+                except Exception:
+                    pass
+
+                try:
+                    await cache.client.publish(
+                        f"thread:wake:{flash_thread_id}",
+                        json.dumps({"thread_id": flash_thread_id}),
+                    )
+                except Exception:
+                    pass  # Best-effort; frontend will fall back to reconnect on page load
+    except Exception as e:
+        logger.warning(f"[FLASH_REPORT_BACK] HTTP error: {e}")
+
+
 async def astream_ptc_workflow(
     request: ChatRequest,
     thread_id: str,
@@ -619,6 +709,16 @@ async def astream_ptc_workflow(
                     f"duration={execution_time:.2f}s"
                 )
 
+                # Flash report-back: if this PTC thread was dispatched by a
+                # flash agent with report_back=True, send a message to the
+                # flash thread so it can summarize the results.
+                try:
+                    await _flash_report_back(thread_id, request.workspace_id)
+                except Exception as e:
+                    logger.warning(
+                        f"[PTC_COMPLETE] Flash report-back failed for {thread_id}: {e}"
+                    )
+
                 # Post-completion sandbox housekeeping (parallel)
                 ws_manager = WorkspaceManager.get_instance()
                 housekeeping = [ws_manager._backup_files_to_db(request.workspace_id)]
@@ -683,6 +783,15 @@ async def astream_ptc_workflow(
             log_prefix="PTC_CHAT",
         ):
             yield event
+
+    except (asyncio.CancelledError, GeneratorExit):
+        # Client disconnected before start_workflow() shielded the task.
+        # Log so the silent failure is diagnosable.
+        logger.warning(
+            f"[PTC_CHAT] Generator cancelled (client disconnect?) before "
+            f"workflow started: thread_id={thread_id} workspace_id={workspace_id}"
+        )
+        raise
 
     except Exception as e:
         # =====================================================================

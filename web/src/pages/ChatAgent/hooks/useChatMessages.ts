@@ -17,7 +17,7 @@ import type React from 'react';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useUser } from '@/hooks/useUser';
-import { sendChatMessageStream, replayThreadHistory, getWorkflowStatus, reconnectToWorkflowStream, sendHitlResponse, streamSubagentTaskEvents, fetchThreadTurns, submitFeedback, removeFeedback, getThreadFeedback } from '../utils/api';
+import { sendChatMessageStream, replayThreadHistory, getWorkflowStatus, reconnectToWorkflowStream, sendHitlResponse, streamSubagentTaskEvents, fetchThreadTurns, submitFeedback, removeFeedback, getThreadFeedback, watchThread } from '../utils/api';
 import { buildRateLimitError, type StructuredError } from '@/utils/rateLimitError';
 import { getStoredThreadId, setStoredThreadId } from './utils/threadStorage';
 export { removeStoredThreadId } from './utils/threadStorage';
@@ -73,6 +73,25 @@ interface TokenUsage {
   threshold: number;
 }
 
+/** Interrupt types that map to proposal-based HITL cards (workspace, question, ptc, secretary). */
+const PROPOSAL_INTERRUPT_TYPES = new Set([
+  'create_workspace', 'start_question', 'ptc_agent',
+  'delete_workspace', 'stop_workspace', 'delete_thread',
+]);
+
+/** Maps interrupt types to their proposal bucket key on AssistantMessage. */
+const PROPOSAL_DATA_KEY_MAP: Record<string, string> = {
+  create_workspace: 'workspaceProposals',
+  start_question: 'questionProposals',
+  ptc_agent: 'ptcAgentProposals',
+  delete_workspace: 'secretaryActionProposals',
+  stop_workspace: 'secretaryActionProposals',
+  delete_thread: 'secretaryActionProposals',
+};
+
+/** Secretary action interrupt types (for type guard in handlers). */
+const SECRETARY_ACTION_TYPES = new Set(['delete_workspace', 'stop_workspace', 'delete_thread']);
+
 /** Pending HITL interrupt state. */
 interface PendingInterrupt {
   type?: string;
@@ -84,6 +103,7 @@ interface PendingInterrupt {
   planMode?: boolean;
   actionRequests?: ActionRequest[];
   threadId?: string;
+  toolCallId?: string;
 }
 
 /** Pending rejection (user rejected a plan). */
@@ -142,6 +162,7 @@ interface WorkflowStatusResponse {
   status: string;
   active_tasks?: string[];
   is_shared?: boolean;
+  pending_report_back?: boolean;
   [key: string]: unknown;
 }
 
@@ -547,6 +568,15 @@ export function useChatMessages(
   // and collect individual responses until all are answered, then resume at once.
   const pendingInterruptIdsRef = useRef(new Set<string>());
   const collectedHitlResponsesRef = useRef<Record<string, { decisions: Array<{ type: string; message?: string }> }>>({});
+
+  // Track approved PTC agent proposals waiting for thread_id backfill from tool_call_result.
+  // Set by handleApprovePTCAgent, consumed by tool_call_result handler in the stream processor.
+  // Maps tool_call_id → proposalId for exact matching (safe under concurrent dispatches).
+  const pendingPTCBackfillRef = useRef<Map<string, string>>(new Map());
+
+  // Report-back watch: after PTC dispatch, watch for the flash report-back workflow via SSE
+  const awaitingReportBackRef = useRef(false);
+  const reportBackWatchAbortRef = useRef<AbortController | null>(null);
 
   // Track the last received SSE event ID for reconnection
   const lastEventIdRef = useRef<number | string | null>(null);
@@ -1233,25 +1263,33 @@ export function useChatMessages(
             }
           }
 
-          // Resolve pending create_workspace or start_question interrupt from tool_call_result
+          // Resolve pending create_workspace, start_question, ptc_agent, or secretary action interrupt from tool_call_result
           {
-            const idx = pendingHistoryInterrupts.findIndex((p) => p.type === 'create_workspace' || p.type === 'start_question');
+            const idx = pendingHistoryInterrupts.findIndex((p) => PROPOSAL_INTERRUPT_TYPES.has(p.type));
             if (idx !== -1 && typeof event.content === 'string') {
               const matched = pendingHistoryInterrupts[idx];
               const content = event.content;
-              const dataKey = matched.type === 'create_workspace' ? 'workspaceProposals' : 'questionProposals';
+              const dataKey = PROPOSAL_DATA_KEY_MAP[matched.type] || 'questionProposals';
 
               let resolvedStatus = 'approved';
-              if (content === 'User declined workspace creation.' || content === 'User declined starting the question.') {
+              let resultPayload: Record<string, unknown> | null = null;
+              if (content.startsWith('User declined')) {
                 resolvedStatus = 'rejected';
               } else {
                 try {
                   const parsed = JSON.parse(content);
                   if (parsed?.success === false) resolvedStatus = 'rejected';
+                  resultPayload = parsed;
                 } catch { /* non-JSON → treat as approved */ }
               }
 
               const pKey = matched.proposalId!;
+              // Extract thread_id/workspace_id from ptc_agent result for navigation
+              const extraFields: Record<string, unknown> = {};
+              if (matched.type === 'ptc_agent' && resultPayload) {
+                if (resultPayload.thread_id) extraFields.thread_id = resultPayload.thread_id;
+                if (resultPayload.workspace_id) extraFields.workspace_id = resultPayload.workspace_id;
+              }
               setMessages((prev) =>
                 updateMessage(prev,matched.assistantMessageId, (msg) => {
                   if (msg.role !== 'assistant') return msg;
@@ -1264,6 +1302,7 @@ export function useChatMessages(
                       [pKey]: {
                         ...(existing[pKey] || {}),
                         status: resolvedStatus,
+                        ...extraFields,
                       },
                     },
                   };
@@ -1381,6 +1420,73 @@ export function useChatMessages(
 
               pendingHistoryInterrupts.push({
                 type: 'start_question',
+                assistantMessageId: interruptAssistantId,
+                proposalId,
+                interruptId: event.interrupt_id,
+              });
+            } else if (actionType === 'ptc_agent') {
+              // --- PTC agent interrupt (history) ---
+              const proposalId = event.interrupt_id || `ptc-agent-history-${Date.now()}`;
+              const proposalData = actionRequests[0];
+              const order = event._eventId != null ? Number(event._eventId) : ++pairState.contentOrderCounter;
+
+              setMessages((prev) =>
+                updateMessage(prev,interruptAssistantId, (m) => {
+                  if (m.role !== 'assistant') return m;
+                  const msg = m as AssistantMessage;
+                  return {
+                    ...msg,
+                    contentSegments: [...(msg.contentSegments || []), { type: 'ptc_agent' as const, proposalId, order }],
+                    ptcAgentProposals: {
+                      ...(msg.ptcAgentProposals || {}),
+                      [proposalId]: {
+                        workspace_id: proposalData.workspace_id,
+                        workspace_name: proposalData.workspace_name,
+                        question: proposalData.question,
+                        report_back: proposalData.report_back ?? true,
+                        interruptId: event.interrupt_id,
+                        status: 'pending',
+                      },
+                    },
+                  };
+                })
+              );
+
+              pendingHistoryInterrupts.push({
+                type: 'ptc_agent',
+                assistantMessageId: interruptAssistantId,
+                proposalId,
+                interruptId: event.interrupt_id,
+              });
+            } else if (actionType === 'delete_workspace' || actionType === 'stop_workspace' || actionType === 'delete_thread') {
+              // --- Secretary action interrupt (history) ---
+              const proposalId = event.interrupt_id || `secretary-${actionType}-history-${Date.now()}`;
+              const proposalData = actionRequests[0];
+              const order = event._eventId != null ? Number(event._eventId) : ++pairState.contentOrderCounter;
+
+              setMessages((prev) =>
+                updateMessage(prev,interruptAssistantId, (m) => {
+                  if (m.role !== 'assistant') return m;
+                  const msg = m as AssistantMessage;
+                  return {
+                    ...msg,
+                    contentSegments: [...(msg.contentSegments || []), { type: actionType as 'delete_workspace' | 'stop_workspace' | 'delete_thread', proposalId, order }],
+                    secretaryActionProposals: {
+                      ...(msg.secretaryActionProposals || {}),
+                      [proposalId]: {
+                        actionType: actionType as 'delete_workspace' | 'stop_workspace' | 'delete_thread',
+                        workspace_id: proposalData.workspace_id,
+                        thread_id: proposalData.thread_id,
+                        interruptId: event.interrupt_id,
+                        status: 'pending',
+                      },
+                    },
+                  };
+                })
+              );
+
+              pendingHistoryInterrupts.push({
+                type: actionType,
                 assistantMessageId: interruptAssistantId,
                 proposalId,
                 interruptId: event.interrupt_id,
@@ -1969,6 +2075,54 @@ export function useChatMessages(
     setReloadTrigger((n) => n + 1);
   };
 
+  // --- Report-back watch helpers ---
+  // After PTC agent dispatch, the backend fires a report-back flash workflow
+  // once the PTC analysis completes. We open a lightweight SSE watch connection
+  // that receives a push notification (via Redis pub/sub) when this happens.
+
+  const stopReportBackWatch = () => {
+    if (reportBackWatchAbortRef.current) {
+      reportBackWatchAbortRef.current.abort();
+      reportBackWatchAbortRef.current = null;
+    }
+  };
+
+  const startReportBackWatch = () => {
+    stopReportBackWatch();
+
+    const tid = threadIdRef.current;
+    if (!tid || tid === '__default__') return;
+
+    if (process.env.NODE_ENV === 'development') console.log('[ReportBack] Opening watch connection for thread:', tid);
+
+    const { abort } = watchThread(tid, async () => {
+      reportBackWatchAbortRef.current = null;
+      awaitingReportBackRef.current = false;
+
+      // If flash is currently streaming, the report-back system message was
+      // steered into the active turn — no separate reconnect needed.
+      if (isStreamingRef.current) {
+        if (process.env.NODE_ENV === 'development') console.log('[ReportBack] Steered into active stream, skipping reconnect');
+        return;
+      }
+
+      if (process.env.NODE_ENV === 'development') console.log('[ReportBack] Report-back workflow detected, reconnecting');
+
+      // Small delay to let the workflow buffer initial events
+      await new Promise((r) => setTimeout(r, 500));
+
+      try {
+        const status = await getWorkflowStatus(tid);
+        if (status.can_reconnect) {
+          await reconnectToStream({ activeTasks: status.active_tasks || [] });
+        }
+      } catch (err) {
+        if (process.env.NODE_ENV === 'development') console.log('[ReportBack] Reconnect after watch failed:', (err as Error).message);
+      }
+    });
+    reportBackWatchAbortRef.current = abort;
+  };
+
   // Load history when workspace or threadId changes, then check for reconnection
   useEffect(() => {
     console.log('[History] useEffect triggered, workspaceId:', workspaceId, 'threadId:', threadId, 'isStreaming:', isStreamingRef.current);
@@ -2060,6 +2214,20 @@ export function useChatMessages(
               assistantMessageId: intInfo.assistantMessageId,
               proposalId: intInfo.proposalId,
             });
+          } else if (intInfo.type === 'ptc_agent') {
+            setPendingInterrupt({
+              type: 'ptc_agent',
+              interruptId: intInfo.interruptId,
+              assistantMessageId: intInfo.assistantMessageId,
+              proposalId: intInfo.proposalId,
+            });
+          } else if (intInfo.type === 'delete_workspace' || intInfo.type === 'stop_workspace' || intInfo.type === 'delete_thread') {
+            setPendingInterrupt({
+              type: intInfo.type,
+              interruptId: intInfo.interruptId,
+              assistantMessageId: intInfo.assistantMessageId,
+              proposalId: intInfo.proposalId,
+            });
           } else {
             // plan_approval
             setPendingInterrupt({
@@ -2123,6 +2291,13 @@ export function useChatMessages(
         if (finalizePendingTodos) finalizePendingTodos();
         // Also patch inline todoListProcesses in messages
         setMessages((prev) => finalizeTodoListProcessesInMessages(prev));
+
+        // Re-open watch if a PTC report-back is still pending (e.g., user navigated away and back)
+        if (status.pending_report_back) {
+          if (process.env.NODE_ENV === 'development') console.log('[ReportBack] Pending report-back detected on load, opening watch');
+          awaitingReportBackRef.current = true;
+          startReportBackWatch();
+        }
       }
     };
 
@@ -2135,6 +2310,8 @@ export function useChatMessages(
       historyLoadingRef.current = false;
       closeAllSubagentStreams();
       subagentStateRefsRef.current = {};
+      stopReportBackWatch();
+      awaitingReportBackRef.current = false;
     };
     // Note: loadConversationHistory is not in deps because it uses workspaceId and threadId from closure
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2266,6 +2443,11 @@ export function useChatMessages(
     // Finalize pending todos as stale
     if (finalizePendingTodos) finalizePendingTodos();
     setMessages((prev) => finalizeTodoListProcessesInMessages(prev, assistantMessageId));
+
+    // Open watch connection for report-back if a PTC agent was dispatched with report_back enabled
+    if (awaitingReportBackRef.current) {
+      startReportBackWatch();
+    }
   };
 
   /**
@@ -2877,26 +3059,33 @@ export function useChatMessages(
         if (unresolvedList && unresolvedList.length > 0 && typeof event.content === 'string') {
           const content = event.content as string;
 
-          // Try create_workspace / start_question
-          const matchIdx = unresolvedList.findIndex((u: HistoryInterruptInfo) => u.type === 'create_workspace' || u.type === 'start_question');
+          // Try create_workspace / start_question / ptc_agent / secretary actions
+          const matchIdx = unresolvedList.findIndex((u: HistoryInterruptInfo) => PROPOSAL_INTERRUPT_TYPES.has(u.type));
           if (matchIdx !== -1) {
             const matched = unresolvedList[matchIdx];
-            const dataKey = matched.type === 'create_workspace' ? 'workspaceProposals' : 'questionProposals';
+            const dataKey = PROPOSAL_DATA_KEY_MAP[matched.type] || 'questionProposals';
             let resolvedStatus = 'approved';
-            if (content === 'User declined workspace creation.' || content === 'User declined starting the question.') {
+            let resultPayload: Record<string, unknown> | null = null;
+            if (content.startsWith('User declined')) {
               resolvedStatus = 'rejected';
             } else {
-              try { if (JSON.parse(content)?.success === false) resolvedStatus = 'rejected'; } catch { /* not JSON */ }
+              try { const p = JSON.parse(content); if (p?.success === false) resolvedStatus = 'rejected'; resultPayload = p; } catch { /* not JSON */ }
             }
             const proposalId = matched.proposalId!;
+            const extraFields: Record<string, unknown> = {};
+            if (matched.type === 'ptc_agent' && resultPayload) {
+              if (resultPayload.thread_id) extraFields.thread_id = resultPayload.thread_id;
+              if (resultPayload.workspace_id) extraFields.workspace_id = resultPayload.workspace_id;
+            }
             setMessages((prev) =>
               updateMessage(prev,matched.assistantMessageId, (m) => { if (m.role !== 'assistant') return m; const msg = m as AssistantMessage; return {
                 ...msg,
                 [dataKey]: {
-                  ...(msg[dataKey] || {}),
+                  ...((msg as unknown as Record<string, Record<string, unknown>>)[dataKey] || {}),
                   [proposalId]: {
-                    ...(msg[dataKey]?.[proposalId] || {}),
+                    ...((msg as unknown as Record<string, Record<string, Record<string, unknown>>>)[dataKey]?.[proposalId] || {}),
                     status: resolvedStatus,
+                    ...extraFields,
                   },
                 },
               }; })
@@ -2946,6 +3135,49 @@ export function useChatMessages(
               onWorkspaceCreated({ workspaceId: parsed.workspace_id, question: parsed.question });
             }
           } catch { /* not JSON, ignore */ }
+        }
+
+        // Update ptcAgentProposals with thread_id/workspace_id from tool result.
+        // After HITL resume, the tool_call_result arrives on a NEW assistant message
+        // while the proposals live on the OLD one (from the interrupt turn).
+        // Match by tool_call_id for exact correlation (safe under concurrent dispatches).
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[Stream] tool_call_result received:', {
+            pendingBackfill: [...pendingPTCBackfillRef.current.entries()],
+            toolCallId,
+            contentType: typeof event.content,
+            content: typeof event.content === 'string' ? event.content.slice(0, 100) : event.content,
+          });
+        }
+        if (pendingPTCBackfillRef.current.size > 0 && typeof event.content === 'string') {
+          const backfillPid = toolCallId ? pendingPTCBackfillRef.current.get(toolCallId) : undefined;
+          if (backfillPid) {
+            try {
+              const parsed = JSON.parse(event.content);
+              if (parsed?.success && parsed?.thread_id && parsed?.workspace_id) {
+                pendingPTCBackfillRef.current.delete(toolCallId);
+                setMessages((prev) =>
+                  prev.map((m) => {
+                    if (m.role !== 'assistant') return m;
+                    const msg = m as AssistantMessage;
+                    const proposals = msg.ptcAgentProposals;
+                    if (!proposals?.[backfillPid]) return m;
+                    return {
+                      ...msg,
+                      ptcAgentProposals: {
+                        ...proposals,
+                        [backfillPid]: {
+                          ...proposals[backfillPid],
+                          thread_id: parsed.thread_id,
+                          workspace_id: parsed.workspace_id,
+                        },
+                      },
+                    };
+                  })
+                );
+              }
+            } catch { /* not JSON, ignore */ }
+          }
         }
       } else if (eventType === 'interrupt') {
         const actionRequests = event.action_requests || [];
@@ -3048,6 +3280,76 @@ export function useChatMessages(
           pendingInterruptIdsRef.current.add(event.interrupt_id!);
           setPendingInterrupt({
             type: 'start_question',
+            interruptId: event.interrupt_id,
+            assistantMessageId,
+            proposalId,
+          });
+        } else if (actionType === 'ptc_agent') {
+          // --- PTC agent interrupt ---
+          const proposalId = event.interrupt_id || `ptc-agent-${Date.now()}`;
+          const proposalData = actionRequests[0];
+          const order = event._eventId != null ? Number(event._eventId) : ++refs.contentOrderCounterRef.current;
+
+          setMessages((prev) =>
+            updateMessage(prev,assistantMessageId, (m) => { if (m.role !== 'assistant') return m; const msg = m as AssistantMessage; return {
+              ...msg,
+              contentSegments: [
+                ...(msg.contentSegments || []),
+                { type: 'ptc_agent' as const, proposalId, order },
+              ],
+              ptcAgentProposals: {
+                ...(msg.ptcAgentProposals || {}),
+                [proposalId]: {
+                  workspace_id: proposalData.workspace_id,
+                  workspace_name: proposalData.workspace_name,
+                  question: proposalData.question,
+                  report_back: proposalData.report_back ?? true,
+                  interruptId: event.interrupt_id,
+                  status: 'pending',
+                },
+              },
+              isStreaming: false,
+            }; })
+          );
+
+          pendingInterruptIdsRef.current.add(event.interrupt_id!);
+          setPendingInterrupt({
+            type: 'ptc_agent',
+            interruptId: event.interrupt_id,
+            assistantMessageId,
+            proposalId,
+            toolCallId: proposalData.tool_call_id,
+          });
+        } else if (actionType === 'delete_workspace' || actionType === 'stop_workspace' || actionType === 'delete_thread') {
+          // --- Secretary action interrupt ---
+          const proposalId = event.interrupt_id || `secretary-${actionType}-${Date.now()}`;
+          const proposalData = actionRequests[0];
+          const order = event._eventId != null ? Number(event._eventId) : ++refs.contentOrderCounterRef.current;
+
+          setMessages((prev) =>
+            updateMessage(prev,assistantMessageId, (m) => { if (m.role !== 'assistant') return m; const msg = m as AssistantMessage; return {
+              ...msg,
+              contentSegments: [
+                ...(msg.contentSegments || []),
+                { type: actionType as 'delete_workspace' | 'stop_workspace' | 'delete_thread', proposalId, order },
+              ],
+              secretaryActionProposals: {
+                ...(msg.secretaryActionProposals || {}),
+                [proposalId]: {
+                  actionType: actionType as 'delete_workspace' | 'stop_workspace' | 'delete_thread',
+                  workspace_id: proposalData.workspace_id,
+                  thread_id: proposalData.thread_id,
+                  interruptId: event.interrupt_id,
+                  status: 'pending',
+                },
+              },
+              isStreaming: false,
+            }; })
+          );
+
+          pendingInterruptIdsRef.current.add(event.interrupt_id!);
+          setPendingInterrupt({
+            type: actionType,
             interruptId: event.interrupt_id,
             assistantMessageId,
             proposalId,
@@ -3559,121 +3861,87 @@ export function useChatMessages(
     }
   }, [resumeWithHitlResponse]);
 
-  const handleApproveCreateWorkspace = useCallback(() => {
-    if (!pendingInterrupt || pendingInterrupt.type !== 'create_workspace') return;
-    const { interruptId, proposalId } = pendingInterrupt;
-    const pid = proposalId!;
-
+  // Shared helper: update a proposal's status within an AssistantMessage.
+  // Used by all HITL approve/reject handlers below.
+  const resolveProposal = useCallback((proposalKey: string, pid: string, status: string) => {
     setMessages((prev) =>
       prev.map((m) => {
         if (m.role !== 'assistant') return m;
         const msg = m as AssistantMessage;
-        if (!msg.workspaceProposals?.[pid]) return m;
-        return {
-          ...msg,
-          workspaceProposals: {
-            ...msg.workspaceProposals,
-            [pid]: {
-              ...msg.workspaceProposals[pid],
-              status: 'approved',
-            },
-          },
-        };
+        const proposals = (msg as unknown as Record<string, Record<string, Record<string, unknown>>>)[proposalKey];
+        if (!proposals?.[pid]) return m;
+        return { ...msg, [proposalKey]: { ...proposals, [pid]: { ...proposals[pid], status } } };
       })
     );
+  }, []);
 
-    const hitlResponse = {
-      [interruptId!]: { decisions: [{ type: 'approve' }] },
-    };
-    resumeWithHitlResponse(hitlResponse, false);
-  }, [pendingInterrupt, resumeWithHitlResponse]);
+  const handleApproveCreateWorkspace = useCallback(() => {
+    if (!pendingInterrupt || pendingInterrupt.type !== 'create_workspace') return;
+    resolveProposal('workspaceProposals', pendingInterrupt.proposalId!, 'approved');
+    resumeWithHitlResponse({ [pendingInterrupt.interruptId!]: { decisions: [{ type: 'approve' }] } }, false);
+  }, [pendingInterrupt, resumeWithHitlResponse, resolveProposal]);
 
   const handleRejectCreateWorkspace = useCallback(() => {
     if (!pendingInterrupt || pendingInterrupt.type !== 'create_workspace') return;
-    const { interruptId, proposalId } = pendingInterrupt;
-    const pid = proposalId!;
-
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (m.role !== 'assistant') return m;
-        const msg = m as AssistantMessage;
-        if (!msg.workspaceProposals?.[pid]) return m;
-        return {
-          ...msg,
-          workspaceProposals: {
-            ...msg.workspaceProposals,
-            [pid]: {
-              ...msg.workspaceProposals[pid],
-              status: 'rejected',
-            },
-          },
-        };
-      })
-    );
-
-    const hitlResponse = {
-      [interruptId!]: { decisions: [{ type: 'reject' }] },
-    };
-    resumeWithHitlResponse(hitlResponse, false);
-  }, [pendingInterrupt, resumeWithHitlResponse]);
+    resolveProposal('workspaceProposals', pendingInterrupt.proposalId!, 'rejected');
+    resumeWithHitlResponse({ [pendingInterrupt.interruptId!]: { decisions: [{ type: 'reject' }] } }, false);
+  }, [pendingInterrupt, resumeWithHitlResponse, resolveProposal]);
 
   const handleApproveStartQuestion = useCallback(() => {
     if (!pendingInterrupt || pendingInterrupt.type !== 'start_question') return;
-    const { interruptId, proposalId } = pendingInterrupt;
-    const pid = proposalId!;
-
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (m.role !== 'assistant') return m;
-        const msg = m as AssistantMessage;
-        if (!msg.questionProposals?.[pid]) return m;
-        return {
-          ...msg,
-          questionProposals: {
-            ...msg.questionProposals,
-            [pid]: {
-              ...msg.questionProposals[pid],
-              status: 'approved',
-            },
-          },
-        };
-      })
-    );
-
-    const hitlResponse = {
-      [interruptId!]: { decisions: [{ type: 'approve' }] },
-    };
-    resumeWithHitlResponse(hitlResponse, false);
-  }, [pendingInterrupt, resumeWithHitlResponse]);
+    resolveProposal('questionProposals', pendingInterrupt.proposalId!, 'approved');
+    resumeWithHitlResponse({ [pendingInterrupt.interruptId!]: { decisions: [{ type: 'approve' }] } }, false);
+  }, [pendingInterrupt, resumeWithHitlResponse, resolveProposal]);
 
   const handleRejectStartQuestion = useCallback(() => {
     if (!pendingInterrupt || pendingInterrupt.type !== 'start_question') return;
-    const { interruptId, proposalId } = pendingInterrupt;
-    const pid = proposalId!;
+    resolveProposal('questionProposals', pendingInterrupt.proposalId!, 'rejected');
+    resumeWithHitlResponse({ [pendingInterrupt.interruptId!]: { decisions: [{ type: 'reject' }] } }, false);
+  }, [pendingInterrupt, resumeWithHitlResponse, resolveProposal]);
 
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (m.role !== 'assistant') return m;
-        const msg = m as AssistantMessage;
-        if (!msg.questionProposals?.[pid]) return m;
-        return {
-          ...msg,
-          questionProposals: {
-            ...msg.questionProposals,
-            [pid]: {
-              ...msg.questionProposals[pid],
-              status: 'rejected',
-            },
-          },
-        };
-      })
-    );
+  // --- PTC Agent approve/reject ---
+  const handleApprovePTCAgent = useCallback((_pad?: Record<string, unknown>, overrides?: { report_back?: boolean }) => {
+    if (!pendingInterrupt || pendingInterrupt.type !== 'ptc_agent') return;
+    const pid = pendingInterrupt.proposalId!;
 
-    const hitlResponse = {
-      [interruptId!]: { decisions: [{ type: 'reject' }] },
-    };
-    resumeWithHitlResponse(hitlResponse, false);
-  }, [pendingInterrupt, resumeWithHitlResponse]);
+    // Track this proposal for thread_id backfill from the resumed stream's tool_call_result.
+    // Maps tool_call_id → proposalId for exact matching when the result arrives.
+    if (pendingInterrupt.toolCallId) {
+      pendingPTCBackfillRef.current.set(pendingInterrupt.toolCallId, pid);
+    }
+
+    // Enable report-back polling if report_back is not explicitly disabled
+    if (overrides?.report_back !== false) {
+      awaitingReportBackRef.current = true;
+    }
+
+    resolveProposal('ptcAgentProposals', pid, 'approved');
+
+    const decision: { type: string; message?: string; overrides?: { report_back?: boolean } } = { type: 'approve' };
+    if (overrides) {
+      decision.overrides = overrides;
+    }
+    resumeWithHitlResponse({ [pendingInterrupt.interruptId!]: { decisions: [decision] } }, false);
+  }, [pendingInterrupt, resumeWithHitlResponse, resolveProposal]);
+
+  const handleRejectPTCAgent = useCallback(() => {
+    if (!pendingInterrupt || pendingInterrupt.type !== 'ptc_agent') return;
+    resolveProposal('ptcAgentProposals', pendingInterrupt.proposalId!, 'rejected');
+    resumeWithHitlResponse({ [pendingInterrupt.interruptId!]: { decisions: [{ type: 'reject' }] } }, false);
+  }, [pendingInterrupt, resumeWithHitlResponse, resolveProposal]);
+
+  // --- Secretary action approve/reject (delete_workspace, stop_workspace, delete_thread) ---
+  const handleApproveSecretaryAction = useCallback(() => {
+    if (!pendingInterrupt || !SECRETARY_ACTION_TYPES.has(pendingInterrupt.type!)) return;
+    resolveProposal('secretaryActionProposals', pendingInterrupt.proposalId!, 'approved');
+    resumeWithHitlResponse({ [pendingInterrupt.interruptId!]: { decisions: [{ type: 'approve' }] } }, false);
+  }, [pendingInterrupt, resumeWithHitlResponse, resolveProposal]);
+
+  const handleRejectSecretaryAction = useCallback(() => {
+    if (!pendingInterrupt || !SECRETARY_ACTION_TYPES.has(pendingInterrupt.type!)) return;
+    resolveProposal('secretaryActionProposals', pendingInterrupt.proposalId!, 'rejected');
+    resumeWithHitlResponse({ [pendingInterrupt.interruptId!]: { decisions: [{ type: 'reject' }] } }, false);
+  }, [pendingInterrupt, resumeWithHitlResponse, resolveProposal]);
 
   const insertNotification = useCallback((text: string, variant: 'info' | 'success' | 'warning' = 'info') => {
     setMessages((prev) => appendMessage(prev, createNotificationMessage(text, variant)));
@@ -3994,6 +4262,10 @@ export function useChatMessages(
     handleRejectCreateWorkspace,
     handleApproveStartQuestion,
     handleRejectStartQuestion,
+    handleApprovePTCAgent,
+    handleRejectPTCAgent,
+    handleApproveSecretaryAction,
+    handleRejectSecretaryAction,
     tokenUsage,
     isShared,
     insertNotification,

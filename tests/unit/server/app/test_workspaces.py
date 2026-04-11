@@ -230,7 +230,8 @@ async def test_list_workspaces_with_params(client):
 
     assert resp.status_code == 200
     mock_list.assert_awaited_once_with(
-        user_id="test-user-123", limit=5, offset=10, sort_by="activity"
+        user_id="test-user-123", limit=5, offset=10, sort_by="activity",
+        include_flash=False,
     )
 
 

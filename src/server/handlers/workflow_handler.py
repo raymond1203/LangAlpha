@@ -263,6 +263,20 @@ async def get_workflow_status(thread_id: str) -> dict:
         except Exception as e:
             logger.debug(f"Could not fetch share status for {thread_id}: {e}")
 
+        # Check if this flash thread has pending PTC report-backs
+        # (flash_watch is a Redis SET of dispatched ptc_thread_ids)
+        pending_report_back = False
+        try:
+            from src.utils.cache.redis_cache import get_cache_client
+
+            cache = get_cache_client()
+            if cache.enabled and cache.client:
+                count = await cache.client.scard(f"flash_watch:{thread_id}")
+                if count and count > 0:
+                    pending_report_back = True
+        except Exception:
+            pass
+
         response = {
             "thread_id": thread_id,
             "status": status,
@@ -274,6 +288,7 @@ async def get_workflow_status(thread_id: str) -> dict:
             "active_tasks": active_tasks,
             "soft_interrupted": soft_interrupted,
             "is_shared": is_shared,
+            "pending_report_back": pending_report_back,
         }
 
         logger.debug(f"Status check for {thread_id}: {status}")

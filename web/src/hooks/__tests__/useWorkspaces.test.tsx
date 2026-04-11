@@ -25,7 +25,7 @@ describe('useWorkspaces', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(mockData);
-    expect(mockGetWorkspaces).toHaveBeenCalledWith(20, 0, 'custom');
+    expect(mockGetWorkspaces).toHaveBeenCalledWith(20, 0, 'custom', false);
   });
 
   it('passes custom limit, offset, and sortBy', async () => {
@@ -36,7 +36,7 @@ describe('useWorkspaces', () => {
     );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(mockGetWorkspaces).toHaveBeenCalledWith(10, 5, 'name');
+    expect(mockGetWorkspaces).toHaveBeenCalledWith(10, 5, 'name', false);
   });
 
   it('does not fetch when enabled is false', () => {
@@ -68,7 +68,7 @@ describe('useWorkspaces', () => {
 
     // The query key should match queryKeys.workspaces.list(params)
     const cachedData = queryClient.getQueryData([
-      'workspaces', 'list', { limit: 5, offset: 0, sortBy: 'custom' },
+      'workspaces', 'list', { limit: 5, offset: 0, sortBy: 'custom', includeFlash: false },
     ]);
     expect(cachedData).toEqual({ workspaces: [], total: 0 });
   });

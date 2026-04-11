@@ -78,9 +78,12 @@ async def reconnect_to_workflow_stream(
     for event in buffered_events:
         yield event
 
-    # Attach to live stream if still running or tailing
+    # Attach to live stream if still running, tailing, or queued (dispatch
+    # pre-registered but generator hasn't reached start_workflow() yet).
+    # QUEUED tasks have live_queues ready — once start_workflow() upgrades
+    # the TaskInfo in-place, events flow to already-subscribed queues.
     status = await manager.get_task_status(thread_id)
-    if status == TaskStatus.RUNNING:
+    if status in [TaskStatus.RUNNING, TaskStatus.QUEUED]:
         live_queue: asyncio.Queue = asyncio.Queue(maxsize=get_live_queue_maxsize())
         await manager.subscribe_to_live_events(thread_id, live_queue)
         await manager.increment_connection(thread_id)

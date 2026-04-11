@@ -135,6 +135,11 @@ class FlashAgent:
             ]
         )
 
+        # Secretary tools (workspace management, PTC dispatch, output monitoring)
+        from src.tools.secretary import SECRETARY_TOOLS
+
+        tools.extend(SECRETARY_TOOLS)
+
         return tools
 
     def _build_system_prompt(

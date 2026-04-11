@@ -255,6 +255,12 @@ class ChatRequest(BaseModel):
         description="When True, enables priority service tier for faster responses (Codex OAuth models only)",
     )
 
+    # Internal: query type override (e.g., "system" for report-back invocations)
+    query_type: Optional[str] = Field(
+        default=None,
+        description="Override query_type for this request. Internal use only.",
+    )
+
     # External thread identity (for channel integrations like Telegram, Slack)
     external_thread_id: Optional[str] = Field(
         default=None,

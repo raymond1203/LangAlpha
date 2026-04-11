@@ -151,6 +151,7 @@ async def list_workspaces(
     sort_by: Literal["activity", "name", "custom"] = Query(
         "custom", description="Sort mode: activity, name, or custom"
     ),
+    include_flash: bool = Query(False, description="Include flash workspaces in results"),
 ):
     """
     List workspaces for a user.
@@ -160,6 +161,7 @@ async def list_workspaces(
         limit: Maximum number of results (1-100)
         offset: Number of results to skip
         sort_by: Sort mode — 'activity' (updated_at), 'name' (alphabetical), 'custom' (sort_order)
+        include_flash: Whether to include flash workspaces (default false)
 
     Returns:
         Paginated list of workspaces
@@ -170,6 +172,7 @@ async def list_workspaces(
             limit=limit,
             offset=offset,
             sort_by=sort_by,
+            include_flash=include_flash,
         )
 
         return WorkspaceListResponse(

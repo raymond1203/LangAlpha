@@ -19,20 +19,58 @@ export const KNOWN_EXTS = new Set([
   'zip', 'tar', 'gz',
 ]);
 
+/** Prefix used for cross-workspace file references: __wsref__/{workspaceId}/path */
+const WSREF_PREFIX = '__wsref__/';
+
 /**
- * Check if an href looks like a sandbox file path (not an external URL).
+ * Parse a __wsref__/{workspaceId}/path reference.
+ * Returns { workspaceId, path } or null if not a workspace-qualified path.
+ *
+ * Expects pre-normalized input (no file:// or /home/workspace/ inside the path).
+ * Use normalizeFileRefs() at the content level to clean paths before they reach here.
  */
-export function isFilePath(href: string | undefined): boolean {
-  if (!href || href.startsWith('http') || href.startsWith('//') || href.startsWith('mailto:') || href.startsWith('#')) return false;
-  const ext = href.split('.').pop()?.split(/[?#]/)[0]?.toLowerCase();
+export function parseWsPath(href: string | undefined): { workspaceId: string; path: string } | null {
+  if (!href || !href.startsWith(WSREF_PREFIX)) return null;
+  const rest = href.slice(WSREF_PREFIX.length);
+  const slashIdx = rest.indexOf('/');
+  if (slashIdx < 1) return null;
+  return {
+    workspaceId: rest.slice(0, slashIdx),
+    path: rest.slice(slashIdx + 1),
+  };
+}
+
+function hasKnownExt(path: string): boolean {
+  const ext = path.split('.').pop()?.split(/[?#]/)[0]?.toLowerCase();
   return !!ext && KNOWN_EXTS.has(ext);
 }
 
 /**
- * Normalize a sandbox file path: strip /home/workspace/ prefix.
+ * Check if an href looks like a sandbox file path (not an external URL).
+ *
+ * Expects pre-normalized input (normalizeFileRefs already stripped file://
+ * and /home/workspace/ prefixes). Only needs to distinguish relative paths
+ * and __wsref__/ paths from external URLs.
+ */
+export function isFilePath(href: string | undefined): boolean {
+  if (!href) return false;
+  if (href.startsWith(WSREF_PREFIX)) {
+    const parsed = parseWsPath(href);
+    return !!parsed && hasKnownExt(parsed.path);
+  }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//') || href.startsWith('#')) return false;
+  return hasKnownExt(href);
+}
+
+/**
+ * Normalize a file path for API calls: strip __wsref__ prefix, return relative path.
+ *
+ * Expects pre-normalized input (no file:// or /home/workspace/ prefixes).
  */
 export function normalizeFilePath(path: string): string {
-  return path.replace(/^\/home\/workspace\//, '');
+  const ws = parseWsPath(path);
+  if (ws) return ws.path;
+  return path;
 }
 
 const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp']);
@@ -47,31 +85,27 @@ export function isImagePath(href: string | undefined): boolean {
 }
 
 /**
- * Extract file paths from message text.
- * Matches patterns like dir/file.ext, dir/subdir/file.ext, /home/workspace/results/file.ext.
- * Requires at least one `/` and a known file extension to avoid false positives.
+ * Extract workspace-qualified file paths from message text.
+ *
+ * Only extracts __wsref__/ paths (backend-qualified, guaranteed real).
+ * General bare-text file detection is disabled to avoid false positives
+ * from hallucinated/system paths. This catches __wsref__ links even when
+ * the agent wraps them in backticks (code spans).
  */
 export function extractFilePaths(text: string | undefined): string[] {
   if (!text) return [];
-  // Match paths: must have at least one /, end with .extension
-  // Handles relative (dir/file.ext) and absolute (/home/workspace/file.ext) paths
-  // Handles paths in backticks, quotes, or bare
-  const regex = /(?:^|[\s`"'([])(\/[a-zA-Z_][^\s`"')\]<>]*\/[^\s`"')\]<>]*\.[a-zA-Z0-9]{1,10}|[a-zA-Z_][^\s`"')\]<>]*\/[^\s`"')\]<>]*\.[a-zA-Z0-9]{1,10})(?=[\s`"')\],:;!?|]|$)/gm;
-  const paths = new Set<string>();
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(text)) !== null) {
-    let path = match[1];
-    // Trim trailing punctuation
-    path = path.replace(/[,:;!?]+$/, '');
-    const ext = path.split('.').pop()!.toLowerCase();
-    if (!KNOWN_EXTS.has(ext)) continue;
-    // Skip URLs
-    if (path.startsWith('http') || path.startsWith('www.') || path.startsWith('//')) continue;
-    // Normalize absolute sandbox paths to relative
-    path = path.replace(/^\/home\/workspace\//, '');
-    paths.add(path);
+  const paths: string[] = [];
+  const seen = new Set<string>();
+  const re = /\((__wsref__\/[^)\s]+)\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const p = m[1];
+    if (!seen.has(p)) {
+      seen.add(p);
+      paths.push(p);
+    }
   }
-  return Array.from(paths);
+  return paths;
 }
 
 interface FileCardProps {
@@ -80,13 +114,16 @@ interface FileCardProps {
 }
 
 function FileCard({ path, onOpen }: FileCardProps): React.ReactElement {
-  const ext = path.split('.').pop()!.toLowerCase();
-  const fileName = path.split('/').pop();
-  const dirPath = path.split('/').slice(0, -1).join('/');
+  // Strip __wsref__/{workspaceId}/ prefix for display
+  const wsRef = parseWsPath(path);
+  const displayPath = wsRef ? wsRef.path : path;
+  const ext = displayPath.split('.').pop()!.toLowerCase();
+  const fileName = displayPath.split('/').pop();
+  const dirPath = displayPath.split('/').slice(0, -1).join('/');
   const Icon = EXT_ICONS[ext] || FileText;
 
   return (
-    <button className="file-mention-card" onClick={onOpen} title={`Open ${path}`}>
+    <button className="file-mention-card" onClick={onOpen} title={`Open ${displayPath}`}>
       <Icon className="file-mention-card-icon" />
       <div className="file-mention-card-info">
         <span className="file-mention-card-name">{fileName}</span>
@@ -118,8 +155,18 @@ function DirCard({ dir, fileCount, onOpen }: DirCardProps): React.ReactElement {
 
 interface FileMentionCardsProps {
   filePaths: string[] | null;
-  onOpenFile: (path: string) => void;
+  onOpenFile: (path: string, workspaceId?: string) => void;
   onOpenDir?: (dir: string) => void;
+}
+
+/** Open a file card — parses __wsref__ prefix to extract workspace context. */
+function openFileCard(path: string, onOpenFile: (path: string, workspaceId?: string) => void) {
+  const wsRef = parseWsPath(path);
+  if (wsRef) {
+    onOpenFile(wsRef.path, wsRef.workspaceId);
+  } else {
+    onOpenFile(path);
+  }
 }
 
 /**
@@ -134,17 +181,19 @@ export function FileMentionCards({ filePaths, onOpenFile, onOpenDir }: FileMenti
     return (
       <div className="file-mention-cards">
         {filePaths.map((path) => (
-          <FileCard key={path} path={path} onOpen={() => onOpenFile(path)} />
+          <FileCard key={path} path={path} onOpen={() => openFileCard(path, onOpenFile)} />
         ))}
       </div>
     );
   }
 
-  // Group by top-level directory
+  // Group by top-level directory (use display path for grouping)
   const groups: Record<string, string[]> = {};
   const rootFiles: string[] = [];
   for (const path of filePaths) {
-    const parts = path.split('/');
+    const wsRef = parseWsPath(path);
+    const displayPath = wsRef ? wsRef.path : path;
+    const parts = displayPath.split('/');
     if (parts.length > 1) {
       const dir = parts[0];
       if (!groups[dir]) groups[dir] = [];
@@ -166,14 +215,14 @@ export function FileMentionCards({ filePaths, onOpenFile, onOpenDir }: FileMenti
   return (
     <div className="file-mention-cards">
       {rootFiles.map((path) => (
-        <FileCard key={path} path={path} onOpen={() => onOpenFile(path)} />
+        <FileCard key={path} path={path} onOpen={() => openFileCard(path, onOpenFile)} />
       ))}
       {sortedDirs.map(([dir, files]) => (
         <DirCard
           key={dir}
           dir={dir}
           fileCount={files.length}
-          onOpen={() => onOpenDir ? onOpenDir(dir) : onOpenFile(files[0])}
+          onOpen={() => onOpenDir ? onOpenDir(dir) : openFileCard(files[0], onOpenFile)}
         />
       ))}
     </div>

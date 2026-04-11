@@ -30,7 +30,7 @@ interface ThreadsResponse {
   [key: string]: unknown;
 }
 
-const NAV_WS_PARAMS = { limit: 20, sortBy: 'custom' };
+const NAV_WS_PARAMS = { limit: 20, sortBy: 'custom', includeFlash: true };
 
 export function useNavigationData(currentWorkspaceId: string) {
   const queryClient = useQueryClient();
@@ -129,7 +129,7 @@ export function useNavigationData(currentWorkspaceId: string) {
 
     if (allFetched.length < totalCount) {
       try {
-        const data = await getWorkspaces(100, allFetched.length, 'custom') as WorkspacesResponse;
+        const data = await getWorkspaces(100, allFetched.length, 'custom', true) as WorkspacesResponse;
         queryClient.setQueryData(queryKeys.workspaces.list({ ...NAV_WS_PARAMS, offset: 0 }), (old: unknown) => {
           const oldData = old as WorkspacesResponse | undefined;
           if (!oldData) return data;

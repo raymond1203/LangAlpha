@@ -33,6 +33,8 @@ interface LocationState {
   workspaceStatus?: string | null;
   agentMode?: string;
   initialMessage?: string;
+  fromThreadId?: string;
+  fromWorkspaceId?: string;
   [key: string]: unknown;
 }
 
