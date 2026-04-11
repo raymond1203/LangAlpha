@@ -142,10 +142,10 @@ describe('filterModelsByAccess', () => {
   it('excludes groupKey fallback when variant requires own key (regional variant)', () => {
     // z-ai-cn models grouped under z-ai — both api_key but different env_key
     const providerMap = makeProviderMap({
-      'z-ai': ['glm-5', 'glm-5-turbo-cn'],
+      'z-ai': ['glm-5.1', 'glm-5-turbo-cn'],
     });
     const metadata: Record<string, ModelMetadataEntry> = {
-      'glm-5': { provider: 'z-ai', access_type: 'api_key' },
+      'glm-5.1': { provider: 'z-ai', access_type: 'api_key' },
       'glm-5-turbo-cn': { provider: 'z-ai-cn', access_type: 'api_key', requires_own_key: 'true' },
     };
     const { configuredSet, configuredTypeMap } = makeConfigured([
@@ -154,8 +154,8 @@ describe('filterModelsByAccess', () => {
 
     const result = filterModelsByAccess(providerMap, metadata, configuredSet, configuredTypeMap);
 
-    // glm-5 included (direct match), glm-5-turbo-cn excluded (requires own key)
-    expect(result['z-ai']?.models).toEqual(['glm-5']);
+    // glm-5.1 included (direct match), glm-5-turbo-cn excluded (requires own key)
+    expect(result['z-ai']?.models).toEqual(['glm-5.1']);
   });
 
   it('includes model when metadata is missing access_type (defaults to api_key)', () => {
