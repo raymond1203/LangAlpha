@@ -396,6 +396,7 @@ async def ptc_agent(
             "thread_id": thread_id,
             "question": question,
             "report_back": report_back,
+            "tool_call_id": tool_call_id,
         },
     )
 

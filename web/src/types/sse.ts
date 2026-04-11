@@ -161,6 +161,7 @@ export interface ActionRequest {
   workspace_id?: string;
   thread_id?: string;
   report_back?: boolean;
+  tool_call_id?: string;
 }
 
 export interface InterruptEvent extends BaseSSEEvent {

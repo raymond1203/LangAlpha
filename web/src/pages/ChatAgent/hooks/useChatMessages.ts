@@ -103,6 +103,7 @@ interface PendingInterrupt {
   planMode?: boolean;
   actionRequests?: ActionRequest[];
   threadId?: string;
+  toolCallId?: string;
 }
 
 /** Pending rejection (user rejected a plan). */
@@ -570,8 +571,8 @@ export function useChatMessages(
 
   // Track approved PTC agent proposals waiting for thread_id backfill from tool_call_result.
   // Set by handleApprovePTCAgent, consumed by tool_call_result handler in the stream processor.
-  // Uses a Set to support multiple rapid dispatches without overwriting.
-  const pendingPTCBackfillRef = useRef<Set<string>>(new Set());
+  // Maps tool_call_id → proposalId for exact matching (safe under concurrent dispatches).
+  const pendingPTCBackfillRef = useRef<Map<string, string>>(new Map());
 
   // Report-back watch: after PTC dispatch, watch for the flash report-back workflow via SSE
   const awaitingReportBackRef = useRef(false);
@@ -3139,42 +3140,44 @@ export function useChatMessages(
         // Update ptcAgentProposals with thread_id/workspace_id from tool result.
         // After HITL resume, the tool_call_result arrives on a NEW assistant message
         // while the proposals live on the OLD one (from the interrupt turn).
-        // Use the ref-tracked proposal ID for reliable matching across messages.
+        // Match by tool_call_id for exact correlation (safe under concurrent dispatches).
         if (process.env.NODE_ENV === 'development') {
           console.log('[Stream] tool_call_result received:', {
-            pendingBackfill: [...pendingPTCBackfillRef.current],
+            pendingBackfill: [...pendingPTCBackfillRef.current.entries()],
+            toolCallId,
             contentType: typeof event.content,
             content: typeof event.content === 'string' ? event.content.slice(0, 100) : event.content,
           });
         }
         if (pendingPTCBackfillRef.current.size > 0 && typeof event.content === 'string') {
-          try {
-            const parsed = JSON.parse(event.content);
-            if (parsed?.success && parsed?.thread_id && parsed?.workspace_id) {
-              // Find the first pending proposal that matches this result
-              const backfillPid = [...pendingPTCBackfillRef.current][0];
-              pendingPTCBackfillRef.current.delete(backfillPid);
-              setMessages((prev) =>
-                prev.map((m) => {
-                  if (m.role !== 'assistant') return m;
-                  const msg = m as AssistantMessage;
-                  const proposals = msg.ptcAgentProposals;
-                  if (!proposals?.[backfillPid]) return m;
-                  return {
-                    ...msg,
-                    ptcAgentProposals: {
-                      ...proposals,
-                      [backfillPid]: {
-                        ...proposals[backfillPid],
-                        thread_id: parsed.thread_id,
-                        workspace_id: parsed.workspace_id,
+          const backfillPid = toolCallId ? pendingPTCBackfillRef.current.get(toolCallId) : undefined;
+          if (backfillPid) {
+            try {
+              const parsed = JSON.parse(event.content);
+              if (parsed?.success && parsed?.thread_id && parsed?.workspace_id) {
+                pendingPTCBackfillRef.current.delete(toolCallId);
+                setMessages((prev) =>
+                  prev.map((m) => {
+                    if (m.role !== 'assistant') return m;
+                    const msg = m as AssistantMessage;
+                    const proposals = msg.ptcAgentProposals;
+                    if (!proposals?.[backfillPid]) return m;
+                    return {
+                      ...msg,
+                      ptcAgentProposals: {
+                        ...proposals,
+                        [backfillPid]: {
+                          ...proposals[backfillPid],
+                          thread_id: parsed.thread_id,
+                          workspace_id: parsed.workspace_id,
+                        },
                       },
-                    },
-                  };
-                })
-              );
-            }
-          } catch { /* not JSON, ignore */ }
+                    };
+                  })
+                );
+              }
+            } catch { /* not JSON, ignore */ }
+          }
         }
       } else if (eventType === 'interrupt') {
         const actionRequests = event.action_requests || [];
@@ -3315,6 +3318,7 @@ export function useChatMessages(
             interruptId: event.interrupt_id,
             assistantMessageId,
             proposalId,
+            toolCallId: proposalData.tool_call_id,
           });
         } else if (actionType === 'delete_workspace' || actionType === 'stop_workspace' || actionType === 'delete_thread') {
           // --- Secretary action interrupt ---
@@ -3900,8 +3904,11 @@ export function useChatMessages(
     if (!pendingInterrupt || pendingInterrupt.type !== 'ptc_agent') return;
     const pid = pendingInterrupt.proposalId!;
 
-    // Track this proposal for thread_id backfill from the resumed stream's tool_call_result
-    pendingPTCBackfillRef.current.add(pid);
+    // Track this proposal for thread_id backfill from the resumed stream's tool_call_result.
+    // Maps tool_call_id → proposalId for exact matching when the result arrives.
+    if (pendingInterrupt.toolCallId) {
+      pendingPTCBackfillRef.current.set(pendingInterrupt.toolCallId, pid);
+    }
 
     // Enable report-back polling if report_back is not explicitly disabled
     if (overrides?.report_back !== false) {

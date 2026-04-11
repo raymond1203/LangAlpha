@@ -144,17 +144,9 @@ async def _flash_report_back(ptc_thread_id: str, workspace_id: str | None) -> No
                         f"{flash_thread_id} for PTC thread {ptc_thread_id}"
                     )
 
-                # Clean up Redis state unconditionally (success or failure).
-                # On 4xx the flash thread may be gone, but we still need to
-                # remove the watch entry to avoid zombie connections.
-                try:
-                    await cache.client.publish(
-                        f"thread:wake:{flash_thread_id}",
-                        json.dumps({"thread_id": flash_thread_id}),
-                    )
-                except Exception:
-                    pass  # Best-effort; frontend will fall back to reconnect on page load
-
+                # Clean up Redis state before publishing the wake notification.
+                # This ordering ensures the frontend sees consistent state
+                # (flash_watch cleared) when it reacts to the wake event.
                 try:
                     await cache.delete(f"ptc_origin:{ptc_thread_id}")
                     if flash_thread_id:
@@ -165,6 +157,14 @@ async def _flash_report_back(ptc_thread_id: str, workspace_id: str | None) -> No
                             await cache.client.delete(watch_key)
                 except Exception:
                     pass
+
+                try:
+                    await cache.client.publish(
+                        f"thread:wake:{flash_thread_id}",
+                        json.dumps({"thread_id": flash_thread_id}),
+                    )
+                except Exception:
+                    pass  # Best-effort; frontend will fall back to reconnect on page load
     except Exception as e:
         logger.warning(f"[FLASH_REPORT_BACK] HTTP error: {e}")
 
