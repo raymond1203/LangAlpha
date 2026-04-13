@@ -23,6 +23,8 @@ from ptc_agent.config import AgentConfig
 from ptc_agent.core.sandbox.runtime import SandboxGoneError
 from ptc_agent.core.session import Session, SessionManager
 
+from src.server.services.background_task_manager import BackgroundTaskManager
+
 from src.server.database.workspace import (
     create_workspace as db_create_workspace,
     delete_workspace as db_delete_workspace,
@@ -1295,6 +1297,8 @@ class WorkspaceManager:
         # Get running workspaces
         running_workspaces = await get_workspaces_by_status("running", limit=1000)
 
+        task_mgr = BackgroundTaskManager.get_instance()
+
         for workspace in running_workspaces:
             last_activity = workspace.get("last_activity_at")
             if not last_activity:
@@ -1309,6 +1313,15 @@ class WorkspaceManager:
 
             if idle_seconds > self.idle_timeout:
                 workspace_id = str(workspace["workspace_id"])
+
+                # Skip workspaces that still have an active agent workflow
+                if await task_mgr.has_active_tasks_for_workspace(workspace_id):
+                    logger.info(
+                        f"Workspace {workspace_id} idle for {idle_seconds:.0f}s "
+                        "but has active workflow, skipping"
+                    )
+                    continue
+
                 logger.info(
                     f"Workspace {workspace_id} idle for {idle_seconds:.0f}s, stopping"
                 )
