@@ -1,7 +1,7 @@
 """Integration tests for PTC message hot path — cold and warm session paths.
 
 Exercises WorkspaceManager session resolution with real PostgreSQL and a
-memory sandbox provider.  Verifies that:
+real sandbox provider (Daytona in CI, memory locally).  Verifies that:
 
 - **Cold path** (first message): creates a new session, hits DB, initializes
   sandbox, syncs assets.
@@ -10,10 +10,15 @@ memory sandbox provider.  Verifies that:
 - **`update_workspace_activity` conditional SQL**: first call writes, second
   call within 60 seconds is a no-op.
 - **`has_ready_session` accuracy**: reflects actual session/sandbox state.
+
+Provider selection:
+  SANDBOX_TEST_PROVIDER=daytona  (CI — requires DAYTONA_API_KEY)
+  SANDBOX_TEST_PROVIDER=memory   (local default — no external deps)
 """
 
 from __future__ import annotations
 
+import os
 import time
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -34,22 +39,37 @@ from ptc_agent.core.session import SessionManager
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
+# ---------------------------------------------------------------------------
+# Provider detection
+# ---------------------------------------------------------------------------
+
+_PROVIDER = os.getenv("SANDBOX_TEST_PROVIDER", "memory").strip().lower()
+
+
+def _is_daytona() -> bool:
+    return _PROVIDER == "daytona"
+
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Config builders
 # ---------------------------------------------------------------------------
 
 
-def _make_agent_config(working_directory: str) -> AgentConfig:
-    """Build a minimal AgentConfig for testing with memory provider."""
+def _make_agent_config(
+    working_directory: str,
+    provider: str = "daytona",
+    api_key: str = "test-key",
+    base_url: str = "https://app.daytona.io/api",
+) -> AgentConfig:
+    """Build an AgentConfig for the given provider."""
     return AgentConfig(
         security=SecurityConfig(),
         logging=LoggingConfig(),
         sandbox=SandboxConfig(
-            provider="daytona",  # value ignored — create_provider is patched
+            provider=provider if provider in ("daytona", "docker") else "daytona",
             daytona=DaytonaConfig(
-                api_key="test-key",
-                base_url="https://test.example.com",
+                api_key=api_key,
+                base_url=base_url,
                 snapshot_enabled=False,
             ),
         ),
@@ -62,6 +82,30 @@ def _make_agent_config(working_directory: str) -> AgentConfig:
     )
 
 
+def _build_agent_config(sandbox_base_dir: str) -> AgentConfig:
+    """Build an AgentConfig adapted to the active provider."""
+    if _is_daytona():
+        api_key = os.environ.get("DAYTONA_API_KEY", "")
+        if not api_key:
+            pytest.skip("DAYTONA_API_KEY not set")
+        base_url = os.environ.get(
+            "DAYTONA_BASE_URL", "https://app.daytona.io/api"
+        )
+        return _make_agent_config(
+            working_directory="/home/workspace",
+            provider="daytona",
+            api_key=api_key,
+            base_url=base_url,
+        )
+
+    # Memory provider — use temp dir as working directory
+    return _make_agent_config(
+        working_directory=sandbox_base_dir,
+        provider="daytona",  # value ignored — create_provider is patched
+        api_key="test-key",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -69,28 +113,27 @@ def _make_agent_config(working_directory: str) -> AgentConfig:
 
 @pytest.fixture
 def sandbox_base_dir(tmp_path):
-    """Temporary directory for sandbox working dirs (memory provider)."""
+    """Temporary directory for sandbox working dirs (memory provider only)."""
     d = tmp_path / "sandboxes"
     d.mkdir()
     return str(d)
 
 
 @pytest.fixture
-def memory_provider(sandbox_base_dir):
-    """Create a fresh MemoryProvider for sandbox operations."""
+def _patch_create_provider(sandbox_base_dir):
+    """Patch create_provider for memory provider. No-op for Daytona."""
+    if _is_daytona():
+        yield None
+        return
+
     from tests.integration.sandbox.memory_provider import MemoryProvider
 
-    return MemoryProvider(base_dir=sandbox_base_dir)
-
-
-@pytest.fixture
-def _patch_create_provider(memory_provider):
-    """Patch create_provider so PTCSandbox uses the memory provider."""
+    provider = MemoryProvider(base_dir=sandbox_base_dir)
     with patch(
         "ptc_agent.core.sandbox.ptc_sandbox.create_provider",
-        return_value=memory_provider,
+        return_value=provider,
     ):
-        yield memory_provider
+        yield provider
 
 
 @pytest_asyncio.fixture
@@ -99,9 +142,10 @@ async def workspace_manager(
     _patch_create_provider,
     patched_get_db_connection,
 ):
-    """Create a fresh WorkspaceManager wired to test DB and memory sandbox.
+    """Create a fresh WorkspaceManager wired to test DB and sandbox provider.
 
-    Resets the singleton and SessionManager cache on teardown.
+    Uses Daytona in CI (SANDBOX_TEST_PROVIDER=daytona) or memory provider
+    locally. Resets the singleton and SessionManager cache on teardown.
     """
     from src.server.services.workspace_manager import WorkspaceManager
 
@@ -109,7 +153,7 @@ async def workspace_manager(
     WorkspaceManager.reset_instance()
     SessionManager._sessions.clear()
 
-    config = _make_agent_config(sandbox_base_dir)
+    config = _build_agent_config(sandbox_base_dir)
     manager = WorkspaceManager.get_instance(config=config)
 
     yield manager
@@ -129,7 +173,7 @@ async def workspace_manager(
 
 @pytest_asyncio.fixture
 async def running_workspace(seed_user, patched_get_db_connection):
-    """Create a workspace in 'running' status (simulates Daytona-provisioned)."""
+    """Create a workspace in 'running' status."""
     from src.server.database.workspace import create_workspace
 
     ws = await create_workspace(
@@ -233,7 +277,7 @@ class TestColdWarmSessionPath:
     async def test_cold_path_populates_user_mappings(
         self, workspace_manager, running_workspace
     ):
-        """Cold path records workspace↔user bidirectional mappings."""
+        """Cold path records workspace-user bidirectional mappings."""
         ws_id = str(running_workspace["workspace_id"])
         user_id = running_workspace["user_id"]
 

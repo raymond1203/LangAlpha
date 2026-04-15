@@ -57,6 +57,9 @@ jobs:
       DB_USER: postgres
       DB_PASSWORD: postgres
       REDIS_URL: redis://localhost:6379
+      SANDBOX_TEST_PROVIDER: daytona
+      DAYTONA_API_KEY: ${{ secrets.DAYTONA_API_KEY }}
+      DAYTONA_BASE_URL: ${{ secrets.DAYTONA_BASE_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6

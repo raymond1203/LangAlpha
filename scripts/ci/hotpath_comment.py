@@ -25,7 +25,7 @@ _CLASS_DISPLAY = {
 
 # Map test class names to a description of what the category tests
 _CLASS_DESCRIPTION = {
-    "TestColdWarmSessionPath": "Session resolution with real PostgreSQL + memory sandbox",
+    "TestColdWarmSessionPath": "Session resolution with real PostgreSQL + Daytona sandbox",
     "TestHasReadySession": "Sync check accuracy for various session states",
     "TestUpdateWorkspaceActivityConditional": "60-second conditional SQL UPDATE behavior",
     "TestMarkUserDataStale": "User data invalidation across workspaces",
