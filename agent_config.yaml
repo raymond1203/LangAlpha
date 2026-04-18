@@ -8,9 +8,9 @@
 llm:
   # Model name from src/llms/manifest/models.json
   name: "qwen3.5-plus"
-  flash: "qwen3.5-flash"
-  summarization: "qwen3.5-flash" # defaults to flash model
-  fetch: "qwen3.5-flash"         # defaults to flash model
+  flash: "qwen3.6-flash"
+  summarization: "qwen3.6-flash" # defaults to flash model
+  fetch: "qwen3.6-flash"         # defaults to flash model
   fallback:
     - "kimi-k2.5"
     - "minimax-m2.7"
