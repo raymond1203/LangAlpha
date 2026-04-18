@@ -39,6 +39,16 @@ _BLOCKED_SIGNALS = [
 ]
 
 
+def _log_close_task_exception(task: asyncio.Task) -> None:
+    # Observes close_task after outer cancel so asyncio doesn't emit
+    # "Task exception was never retrieved" when close() raises post-cancel.
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.warning(f"Browser session close failed post-cancel: {exc!r}")
+
+
 def _needs_browser(html_body: str, status: int) -> bool:
     """Detect if HTTP-only fetch returned blocked/empty content."""
     if status >= 400:
@@ -225,8 +235,10 @@ class ScraplingCrawler:
                 await asyncio.shield(close_task)
             except asyncio.CancelledError:
                 # Outer task cancelled. close_task survives (shield) and will
-                # complete in the background, freeing the browser. The
-                # CancelledError will re-propagate out of this finally.
+                # complete in the background, freeing the browser. Attach a
+                # done-callback so its exception (if any) is logged instead of
+                # surfacing as asyncio's "Task exception was never retrieved".
+                close_task.add_done_callback(_log_close_task_exception)
                 pass
             except Exception as e:
                 # tini (init: true in compose) reaps leaked helpers in prod;

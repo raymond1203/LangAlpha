@@ -43,4 +43,9 @@ COPY skills/ skills/
 
 EXPOSE 8000
 
+# tini reaps orphaned browser subprocesses. `-s` registers as child
+# subreaper so tini works even when not PID 1 (e.g. under compose's
+# `init: true`, which puts docker-init at PID 1 and our tini at PID 7).
+# Without `-s`, tini warns it can't reap and no-ops.
+ENTRYPOINT ["/usr/bin/tini", "-s", "--"]
 CMD ["uv", "run", "python", "server.py", "--host", "0.0.0.0", "--port", "8000"]

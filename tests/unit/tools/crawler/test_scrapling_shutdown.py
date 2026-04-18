@@ -119,6 +119,53 @@ class TestFetchWithSession:
         assert session._is_alive is True
 
     @pytest.mark.asyncio
+    async def test_post_cancel_close_exception_is_logged(self, caplog):
+        """REGRESSION: close_task raising after outer cancel is observed, not dropped.
+
+        Without the done-callback, asyncio emits 'Task exception was never
+        retrieved' when close() raises post-cancel. The done-callback turns
+        that into a structured WARNING log.
+        """
+        import logging
+
+        crawler = ScraplingCrawler()
+
+        fetch_started = asyncio.Event()
+        close_raised = asyncio.Event()
+
+        async def slow_close():
+            await asyncio.sleep(0.05)
+            close_raised.set()
+            raise RuntimeError("post-cancel close boom")
+
+        async def slow_fetch(*_, **__):
+            fetch_started.set()
+            await asyncio.sleep(10)
+
+        session = _make_session()
+        session.fetch.side_effect = slow_fetch
+        session.close.side_effect = slow_close
+
+        async def run():
+            await crawler._fetch_with_session(session, "http://x")
+
+        outer = asyncio.create_task(run())
+        await fetch_started.wait()
+        outer.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await outer
+
+        with caplog.at_level(logging.WARNING, logger="src.tools.crawler.scrapling_crawler"):
+            await asyncio.wait_for(close_raised.wait(), timeout=5.0)
+            # Yield once so the done-callback fires before assertion.
+            await asyncio.sleep(0)
+
+        assert any(
+            "post-cancel" in rec.message for rec in caplog.records
+        ), f"expected post-cancel warning, got: {[r.message for r in caplog.records]}"
+
+    @pytest.mark.asyncio
     async def test_outer_cancellation_keeps_close_alive(self):
         """CRITICAL: when outer task is cancelled mid-fetch, close() still runs.
 
