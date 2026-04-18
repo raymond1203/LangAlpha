@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Input } from '../../components/ui/input';
-import { useTranslation } from 'react-i18next';
+import { useTranslation, Trans } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import WavesBackground from './WavesBackground';
 import './LoginPage.css';
@@ -249,6 +250,13 @@ function LoginPage() {
             <span>GitHub</span>
           </button>
         </div>
+
+        <p className="login-page__legal">
+          <Trans
+            i18nKey="auth.agreeToPrivacy"
+            components={{ 1: <Link to="/privacy" /> }}
+          />
+        </p>
       </div>
     </div>
   );
