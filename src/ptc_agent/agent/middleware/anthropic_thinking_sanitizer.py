@@ -17,7 +17,7 @@ continuity is preserved; the schema is satisfied.
 """
 
 from collections.abc import Awaitable, Callable
-from copy import copy
+from copy import deepcopy
 import logging
 from typing import Any
 
@@ -63,7 +63,7 @@ def _sanitize_message(msg: AnyMessage) -> tuple[AnyMessage, int]:
     if not changed:
         return msg, 0
 
-    new_msg = copy(msg)
+    new_msg = deepcopy(msg)
     new_msg.content = new_blocks
     return new_msg, repaired_count
 
