@@ -275,9 +275,13 @@ async def test_manual_compact_forwards_subsidiary_oauth_client(base_config):
 
     kwargs = compact_mock.await_args.kwargs
     assert kwargs["model_name"] == "user-compaction-model"
-    assert kwargs["llm_client"] is oauth_client, (
-        "Manual /compact must forward the OAuth/BYOK subsidiary compaction "
-        "client so compact_messages doesn't rebuild a bare system-auth client."
+    # Forwarded as a deep copy so _maybe_disable_streaming in compact_messages
+    # can't mutate streaming=False on the shared subsidiary client.
+    oauth_client.model_copy.assert_called_once_with()
+    assert kwargs["llm_client"] is oauth_client.model_copy.return_value, (
+        "Manual /compact must forward a copy of the OAuth/BYOK subsidiary "
+        "compaction client so compact_messages doesn't rebuild a bare "
+        "system-auth client."
     )
 
 
@@ -328,7 +332,56 @@ async def test_manual_compact_falls_back_to_main_llm_client(base_config):
         await trigger_compaction("thread-1", keep_messages=5, user_id="user-1")
 
     kwargs = compact_mock.await_args.kwargs
-    assert kwargs["llm_client"] is main_client
+    # Forwarded as a deep copy — _maybe_disable_streaming would otherwise
+    # permanently set streaming=False on the main agent's shared llm_client.
+    main_client.model_copy.assert_called_once_with()
+    assert kwargs["llm_client"] is main_client.model_copy.return_value
+
+
+@pytest.mark.asyncio
+async def test_manual_compact_copies_llm_client_before_forwarding(base_config):
+    """Regression: the llm_client passed to compact_messages MUST be a copy.
+
+    ``compact_messages`` calls ``_maybe_disable_streaming`` which sets
+    ``streaming = False`` in place on the client. If we hand over the shared
+    ``agent_cfg.llm_client`` directly, the main agent's model is permanently
+    mutated and all subsequent chat workflows lose SSE token streaming.
+    Mirrors the ``.model_copy()`` pattern in ``PTCAgent.create_agent``.
+    """
+    from src.server.handlers.workflow_handler import trigger_compaction
+
+    stub_resolve = _stub_resolve_graph_and_state()
+
+    compact_mock = AsyncMock(
+        return_value={
+            "event": {"summary_text": "ok"},
+            "summary_text": "ok",
+            "original_count": 2,
+            "preserved_count": 1,
+            "offloaded_arg_ids": set(),
+            "offloaded_read_ids": set(),
+        }
+    )
+
+    shared_client = MagicMock(name="shared-main-client")
+    base_config.llm_client = shared_client
+    base_config.subsidiary_llm_clients.pop("compaction", None)
+
+    with (
+        patch("src.server.app.setup.agent_config", base_config),
+        patch(f"{HANDLER}._resolve_graph_and_state", new=stub_resolve),
+        patch(f"{HANDLER}._persist_context_window_event", new=_noop_persist),
+        patch(
+            "ptc_agent.agent.middleware.compaction.compact_messages",
+            new=compact_mock,
+        ),
+    ):
+        await trigger_compaction("thread-1", keep_messages=5)
+
+    kwargs = compact_mock.await_args.kwargs
+    shared_client.model_copy.assert_called_once_with()
+    assert kwargs["llm_client"] is not shared_client
+    assert kwargs["llm_client"] is shared_client.model_copy.return_value
 
 
 # ---------------------------------------------------------------------------
