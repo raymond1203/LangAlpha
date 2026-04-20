@@ -1,18 +1,18 @@
 """Glob tool for file pattern matching."""
 
-from typing import Any
-
 import structlog
 from langchain_core.tools import BaseTool, tool
+
+from ptc_agent.agent.backends.sandbox import SandboxBackend
 
 logger = structlog.get_logger(__name__)
 
 
-def create_glob_tool(sandbox: Any) -> BaseTool:
+def create_glob_tool(backend: SandboxBackend) -> BaseTool:
     """Factory function to create Glob tool.
 
     Args:
-        sandbox: PTCSandbox instance
+        backend: SandboxBackend wrapping the sandbox
 
     Returns:
         Configured Glob tool function
@@ -34,24 +34,24 @@ def create_glob_tool(sandbox: Any) -> BaseTool:
         search_path = path if path is not None else "."
         try:
             # Normalize virtual path to absolute sandbox path
-            normalized_path = sandbox.normalize_path(search_path)
+            normalized_path = backend.normalize_path(search_path)
 
             logger.info("Globbing files", pattern=pattern, path=search_path, normalized_path=normalized_path)
 
             # Validate normalized path
-            if sandbox.config.filesystem.enable_path_validation and not sandbox.validate_path(normalized_path):
+            if backend.filesystem_config.enable_path_validation and not backend.validate_path(normalized_path):
                 error_msg = f"Access denied: {search_path} is not in allowed directories"
                 logger.error(error_msg, path=search_path)
                 return f"ERROR: {error_msg}"
 
-            matches = await sandbox.aglob_files(pattern, normalized_path)
+            matches = await backend.aglob_paths(pattern, normalized_path)
 
             if not matches:
                 logger.info("No files found", pattern=pattern, path=search_path)
                 return f"No files matching pattern '{pattern}' found in '{search_path}'"
 
             # Virtualize paths in output (strip working directory prefix)
-            virtual_matches = [sandbox.virtualize_path(m) for m in matches]
+            virtual_matches = [backend.virtualize_path(m) for m in matches]
 
             # Format output with virtual paths
             result = f"Found {len(virtual_matches)} file(s) matching '{pattern}':\n"

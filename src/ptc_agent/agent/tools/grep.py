@@ -1,19 +1,21 @@
 """Grep tool for content searching with ripgrep."""
 
 import re
-from typing import Any, Literal
+from typing import Literal
 
 import structlog
 from langchain_core.tools import BaseTool, tool
 
+from ptc_agent.agent.backends.sandbox import SandboxBackend
+
 logger = structlog.get_logger(__name__)
 
 
-def create_grep_tool(sandbox: Any) -> BaseTool:
+def create_grep_tool(backend: SandboxBackend) -> BaseTool:
     """Factory function to create Grep tool.
 
     Args:
-        sandbox: PTCSandbox instance
+        backend: SandboxBackend wrapping the sandbox
 
     Returns:
         Configured Grep tool function
@@ -69,7 +71,7 @@ def create_grep_tool(sandbox: Any) -> BaseTool:
                 return f"ERROR: {error_msg}"
 
             # Normalize virtual path to absolute sandbox path
-            normalized_path = sandbox.normalize_path(search_path)
+            normalized_path = backend.normalize_path(search_path)
 
             logger.info(
                 "Grepping content",
@@ -83,29 +85,26 @@ def create_grep_tool(sandbox: Any) -> BaseTool:
             )
 
             # Validate normalized path
-            if sandbox.config.filesystem.enable_path_validation and not sandbox.validate_path(normalized_path):
+            if backend.filesystem_config.enable_path_validation and not backend.validate_path(normalized_path):
                 error_msg = f"Access denied: {search_path} is not in allowed directories"
                 logger.error(error_msg, path=search_path)
                 return f"ERROR: {error_msg}"
 
-            # Build grep options with normalized path
-            options = {
-                "pattern": pattern,
-                "path": normalized_path,
-                "output_mode": output_mode,
-                "glob": glob,
-                "type": type,
-                "case_insensitive": i,
-                "show_line_numbers": n,
-                "lines_after": A,
-                "lines_before": B,
-                "lines_context": C,
-                "multiline": multiline,
-                "head_limit": head_limit,
-                "offset": offset,
-            }
-
-            results = await sandbox.agrep_content(**options)
+            results = await backend.agrep_rich(
+                pattern=pattern,
+                path=normalized_path,
+                output_mode=output_mode,
+                glob=glob,
+                type=type,
+                case_insensitive=i,
+                show_line_numbers=n,
+                lines_after=A,
+                lines_before=B,
+                lines_context=C,
+                multiline=multiline,
+                head_limit=head_limit,
+                offset=offset,
+            )
 
             if not results:
                 logger.info("No matches found", pattern=pattern, path=search_path)
@@ -115,7 +114,7 @@ def create_grep_tool(sandbox: Any) -> BaseTool:
             if output_mode == "files_with_matches":
                 result = f"Found matches in {len(results)} file(s):\n"
                 for file_path in results:
-                    virtual_path = sandbox.virtualize_path(file_path)
+                    virtual_path = backend.virtualize_path(file_path)
                     result += f"{virtual_path}\n"
             elif output_mode == "content":
                 result = f"Matches for pattern '{pattern}':\n\n"
@@ -125,13 +124,13 @@ def create_grep_tool(sandbox: Any) -> BaseTool:
                     if isinstance(entry, str) and ":" in entry:
                         parts = entry.split(":", 2)
                         if len(parts) >= 2:
-                            virtual_path = sandbox.virtualize_path(parts[0])
+                            virtual_path = backend.virtualize_path(parts[0])
                             entry = ":".join([virtual_path, *parts[1:]])
                     result += f"{entry}\n"
             elif output_mode == "count":
                 result = f"Match counts for pattern '{pattern}':\n"
                 for file_path, count in results:
-                    virtual_path = sandbox.virtualize_path(file_path)
+                    virtual_path = backend.virtualize_path(file_path)
                     result += f"{virtual_path}: {count}\n"
             else:
                 result = str(results)

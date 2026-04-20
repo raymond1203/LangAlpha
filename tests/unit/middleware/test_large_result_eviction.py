@@ -24,14 +24,8 @@ from ptc_agent.agent.middleware.large_result_eviction import (
 
 
 def _make_backend(write_error: str | None = None) -> MagicMock:
-    """Create a mock backend implementing the write interface."""
+    """Create a mock backend implementing the awrite interface."""
     backend = MagicMock()
-    write_result = MagicMock()
-    write_result.error = write_error
-    write_result.path = "/evicted/file.md" if not write_error else None
-    write_result.files_update = {"path": "data"} if not write_error else None
-    backend.write = MagicMock(return_value=write_result)
-
     awrite_result = MagicMock()
     awrite_result.error = write_error
     awrite_result.path = "/evicted/file.md" if not write_error else None
@@ -108,75 +102,52 @@ class TestDetectExtension:
 
 
 class TestEvictionDecision:
-    """Tests for _process_large_message size threshold."""
+    """Tests for _aprocess_large_message size threshold."""
 
-    def test_small_message_not_evicted(self):
+    @pytest.mark.asyncio
+    async def test_small_message_not_evicted(self):
         backend = _make_backend()
         mw = LargeResultEvictionMiddleware(backend=backend, tool_token_limit_before_evict=100)
         msg = ToolMessage(content="small output", tool_call_id="call_1", name="Tool")
-        processed, files_update = mw._process_large_message(msg)
+        processed, files_update = await mw._aprocess_large_message(msg)
         assert processed.content == "small output"
         assert files_update is None
-        backend.write.assert_not_called()
+        backend.awrite.assert_not_called()
 
-    def test_large_message_is_evicted(self):
+    @pytest.mark.asyncio
+    async def test_large_message_is_evicted(self):
         backend = _make_backend()
         limit = 10  # 10 tokens = 40 chars
         mw = LargeResultEvictionMiddleware(backend=backend, tool_token_limit_before_evict=limit)
         # Create content larger than 40 chars
         large_content = "x" * (NUM_CHARS_PER_TOKEN * limit + 100)
         msg = ToolMessage(content=large_content, tool_call_id="call_1", name="Tool")
-        processed, files_update = mw._process_large_message(msg)
+        processed, files_update = await mw._aprocess_large_message(msg)
         assert files_update is not None
         assert "saved in the filesystem" in processed.content
-        backend.write.assert_called_once()
+        backend.awrite.assert_called_once()
+        # Eviction paths overwrite prior writes by design.
+        assert backend.awrite.call_args.kwargs.get("overwrite") is True
 
-    def test_zero_limit_disables_eviction(self):
+    @pytest.mark.asyncio
+    async def test_zero_limit_disables_eviction(self):
         backend = _make_backend()
         mw = LargeResultEvictionMiddleware(backend=backend, tool_token_limit_before_evict=0)
         msg = ToolMessage(content="anything", tool_call_id="call_1", name="Tool")
-        processed, files_update = mw._process_large_message(msg)
+        processed, files_update = await mw._aprocess_large_message(msg)
         assert files_update is None
 
-    def test_write_failure_returns_original(self):
+    @pytest.mark.asyncio
+    async def test_write_failure_returns_original(self):
         backend = _make_backend(write_error="disk full")
         limit = 10
         mw = LargeResultEvictionMiddleware(backend=backend, tool_token_limit_before_evict=limit)
         large_content = "x" * (NUM_CHARS_PER_TOKEN * limit + 100)
         msg = ToolMessage(content=large_content, tool_call_id="call_1", name="Tool")
-        processed, files_update = mw._process_large_message(msg)
+        processed, files_update = await mw._aprocess_large_message(msg)
         assert files_update is None
         # Original content is returned since write failed
         assert processed.content == large_content
-
-
-class TestWrapToolCall:
-    """Tests for sync wrap_tool_call excluded-tool bypass."""
-
-    def test_excluded_tool_bypasses_eviction(self):
-        backend = _make_backend()
-        mw = LargeResultEvictionMiddleware(backend=backend, tool_token_limit_before_evict=10)
-        for tool_name in TOOLS_EXCLUDED_FROM_EVICTION:
-            request = _make_tool_request(tool_name)
-            large_msg = ToolMessage(content="x" * 10000, tool_call_id="call_1", name=tool_name)
-            handler = MagicMock(return_value=large_msg)
-            result = mw.wrap_tool_call(request, handler)
-            # Should pass through without eviction
-            assert result.content == "x" * 10000
-            handler.assert_called_once_with(request)
-
-    def test_non_excluded_tool_may_evict(self):
-        backend = _make_backend()
-        limit = 10
-        mw = LargeResultEvictionMiddleware(backend=backend, tool_token_limit_before_evict=limit)
-        request = _make_tool_request("CustomTool")
-        large_content = "x" * (NUM_CHARS_PER_TOKEN * limit + 100)
-        msg = ToolMessage(content=large_content, tool_call_id="call_1", name="CustomTool")
-        handler = MagicMock(return_value=msg)
-        result = mw.wrap_tool_call(request, handler)
-        # Should be evicted (result is a Command)
-        from langgraph.types import Command
-        assert isinstance(result, Command)
 
 
 class TestAwrapToolCall:
@@ -204,3 +175,63 @@ class TestAwrapToolCall:
         result = await mw.awrap_tool_call(request, handler)
         from langgraph.types import Command
         assert isinstance(result, Command)
+
+
+class TestAinterceptCommandBranch:
+    """Tests for `_aintercept_large_tool_result` handling pre-wrapped Commands.
+
+    Previously exercised indirectly via the sync `wrap_tool_call` path; after the
+    sync path was deleted, this Command-branch handling (tools that return a
+    Command with ToolMessages inside `update['messages']`) had no explicit test.
+    """
+
+    @pytest.mark.asyncio
+    async def test_large_tool_message_inside_command_is_evicted(self):
+        from langgraph.types import Command
+        backend = _make_backend()
+        limit = 10
+        mw = LargeResultEvictionMiddleware(
+            backend=backend, tool_token_limit_before_evict=limit
+        )
+        large_content = "x" * (NUM_CHARS_PER_TOKEN * limit + 100)
+        large_msg = ToolMessage(content=large_content, tool_call_id="c1", name="CustomTool")
+        cmd = Command(update={"messages": [large_msg], "files": {}})
+        result = await mw._aintercept_large_tool_result(cmd, runtime=MagicMock())
+        assert isinstance(result, Command)
+        assert result.update is not None
+        # The large message inside the Command is evicted
+        processed_msg = result.update["messages"][0]
+        assert "saved in the filesystem" in processed_msg.content
+
+    @pytest.mark.asyncio
+    async def test_command_branch_preserves_non_tool_messages(self):
+        from langchain_core.messages import AIMessage
+        from langgraph.types import Command
+        backend = _make_backend()
+        limit = 10
+        mw = LargeResultEvictionMiddleware(
+            backend=backend, tool_token_limit_before_evict=limit
+        )
+        large_content = "x" * (NUM_CHARS_PER_TOKEN * limit + 100)
+        large_msg = ToolMessage(content=large_content, tool_call_id="c1", name="X")
+        other_msg = AIMessage(content="some ai response")
+        cmd = Command(update={"messages": [other_msg, large_msg], "files": {}})
+        result = await mw._aintercept_large_tool_result(cmd, runtime=MagicMock())
+        assert isinstance(result, Command)
+        # AIMessage passes through untouched
+        assert result.update["messages"][0] is other_msg
+        # ToolMessage is evicted
+        assert "saved in the filesystem" in result.update["messages"][1].content
+
+    @pytest.mark.asyncio
+    async def test_command_branch_passes_through_when_no_update(self):
+        from langgraph.types import Command
+        backend = _make_backend()
+        mw = LargeResultEvictionMiddleware(
+            backend=backend, tool_token_limit_before_evict=10
+        )
+        # Command with no update dict should pass through unchanged
+        cmd = Command(update=None)
+        result = await mw._aintercept_large_tool_result(cmd, runtime=MagicMock())
+        assert result is cmd
+        backend.awrite.assert_not_called()

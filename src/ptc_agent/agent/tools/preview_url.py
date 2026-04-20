@@ -6,6 +6,8 @@ from typing import Any
 import structlog
 from langchain_core.tools import BaseTool, tool
 
+from ptc_agent.agent.backends.sandbox import SandboxBackend
+
 logger = structlog.get_logger(__name__)
 
 # Callback signature: (sandbox_id, port, signed_url) -> None
@@ -13,7 +15,7 @@ OnSignedUrl = Callable[[str, int, str], Awaitable[None]]
 
 
 def create_preview_url_tool(
-    sandbox: Any,
+    backend: SandboxBackend,
     *,
     workspace_id: str = "",
     on_signed_url: OnSignedUrl | None = None,
@@ -21,7 +23,7 @@ def create_preview_url_tool(
     """Factory function to create GetPreviewUrl tool with injected dependencies.
 
     Args:
-        sandbox: PTCSandbox instance for preview URL generation
+        backend: SandboxBackend wrapping the sandbox
         workspace_id: Workspace ID for preview URL generation
         on_signed_url: Optional async callback to cache signed URLs
 
@@ -64,13 +66,13 @@ def create_preview_url_tool(
 
         try:
             # Start the server process and wait for it to be ready
-            preview_info = await sandbox.start_and_get_preview_url(command, port)
+            preview_info = await backend.astart_preview_url(command, port)
             display_title = title or f"Port {port}"
 
             # Cache the fresh signed URL so frontend resolves it instantly
-            if on_signed_url:
+            if on_signed_url and backend.sandbox_id:
                 try:
-                    await on_signed_url(sandbox.sandbox_id, port, preview_info.url)
+                    await on_signed_url(backend.sandbox_id, port, preview_info.url)
                 except Exception:
                     logger.debug("Failed to cache signed URL for port %s", port, exc_info=True)
 

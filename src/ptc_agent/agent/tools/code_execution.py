@@ -5,14 +5,16 @@ from typing import Any
 import structlog
 from langchain_core.tools import BaseTool, tool
 
+from ptc_agent.agent.backends.sandbox import SandboxBackend
+
 logger = structlog.get_logger(__name__)
 
 
-def create_execute_code_tool(sandbox: Any, mcp_registry: Any, thread_id: str = "") -> BaseTool:
+def create_execute_code_tool(backend: SandboxBackend, mcp_registry: Any, thread_id: str = "") -> BaseTool:
     """Factory function to create execute_code tool with injected dependencies.
 
     Args:
-        sandbox: PTCSandbox instance for code execution
+        backend: SandboxBackend wrapping the sandbox
         mcp_registry: MCPRegistry instance with available MCP tools
         thread_id: Short thread ID (first 8 chars) for thread-scoped code storage
 
@@ -39,14 +41,14 @@ def create_execute_code_tool(sandbox: Any, mcp_registry: Any, thread_id: str = "
 
         Paths: Use RELATIVE paths (results/, data/). Never /results/ or /workspace/.
         """
-        if not sandbox:
+        if not backend:
             return "ERROR: Sandbox not initialized"
 
         try:
             logger.info("Executing code in sandbox", code_length=len(code), thread_id=thread_id)
 
             # Execute code in sandbox (thread_id from closure for thread-scoped storage)
-            result = await sandbox.execute(code, thread_id=thread_id or None)
+            result = await backend.aexecute_code(code, thread_id=thread_id or None)
 
             if result.success:
                 # Format success response

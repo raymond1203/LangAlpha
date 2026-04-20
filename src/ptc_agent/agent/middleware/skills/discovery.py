@@ -240,7 +240,8 @@ async def adiscover_skills(
     Self-healing: orphaned skill dirs (no lock entry) get a lock entry
     written back after SKILL.md parse.
     """
-    items = await backend.als_info(source_path)  # 1 API call
+    result = await backend.als(source_path)  # 1 API call
+    items = result.entries or []
     skill_dirs = [item["path"] for item in items if item.get("is_dir")]
 
     if not skill_dirs:

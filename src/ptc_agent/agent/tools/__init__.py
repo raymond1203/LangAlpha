@@ -16,10 +16,6 @@ glob, grep) are provided by the FilesystemMiddleware. These LangChain tool wrapp
 are available for alternative agent configurations.
 """
 
-from typing import Any
-
-from langchain_core.tools import BaseTool
-
 from .bash import create_execute_bash_tool
 from .bash_output import create_bash_output_tool
 from .code_execution import create_execute_code_tool
@@ -62,8 +58,6 @@ __all__ = [
     "create_preview_url_tool",
     # Show Widget
     "create_show_widget_tool",
-    # Helper
-    "get_all_tools",
     # Research
     "think_tool",
     # Todo tracking
@@ -81,32 +75,4 @@ __all__ = [
     "validate_single_in_progress",
     "validate_todo_list_dict",
 ]
-
-
-def get_all_tools(sandbox: Any, mcp_registry: Any) -> list[BaseTool]:
-    """Create and return all available tools for the PTC agent.
-
-    Args:
-        sandbox: PTCSandbox instance for code execution and file operations
-        mcp_registry: MCPRegistry instance for MCP tool access
-
-    Returns:
-        List of all configured tools ready for use by the agent
-    """
-    # Create filesystem tools
-    read_file, write_file, edit_file = create_filesystem_tools(sandbox)
-
-    return [
-        # Code execution tool (primary tool for complex operations)
-        create_execute_code_tool(sandbox, mcp_registry),
-        # Bash execution tool (for system commands and shell utilities)
-        create_execute_bash_tool(sandbox),
-        # File operation tools
-        read_file,
-        write_file,
-        edit_file,
-        # Search tools (file-based)
-        create_glob_tool(sandbox),
-        create_grep_tool(sandbox),
-    ]
 

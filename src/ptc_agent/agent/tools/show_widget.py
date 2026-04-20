@@ -10,6 +10,8 @@ from uuid import uuid4
 import structlog
 from langchain_core.tools import BaseTool, tool
 
+from ..backends.sandbox import SandboxBackend
+
 logger = structlog.get_logger(__name__)
 
 # Max total size for inline-embedded data when cloud storage is unavailable.
@@ -136,16 +138,16 @@ def _is_text_file(path: str) -> bool:
 
 
 async def _read_one_file(
-    sandbox: Any,
+    backend: Any,
     path: str,
 ) -> tuple[str, str | bytes | None]:
     """Read a single file from the sandbox, returning (path, content_or_None)."""
     is_text = _is_text_file(path)
     try:
         if is_text:
-            content = await sandbox.aread_file_text(path)
+            content = await backend.aread_text(path)
         else:
-            content = await sandbox.adownload_file_bytes(path)
+            content = await backend.adownload_file_bytes(path)
         if content is None:
             logger.warning("ShowWidget data_files: file not found", path=path)
         return path, content
@@ -155,10 +157,10 @@ async def _read_one_file(
 
 
 async def _resolve_data_files(
-    sandbox: Any,
+    backend: Any,
     data_files: list[str],
 ) -> dict[str, str]:
-    """Read *data_files* from *sandbox* and return inline data dict.
+    """Read *data_files* via *backend* and return inline data dict.
 
     Returns a mapping of filename → content string.  Text files are
     returned as raw strings; binary files as ``data:{mime};base64,...``
@@ -176,7 +178,7 @@ async def _resolve_data_files(
 
     # Read all files concurrently
     results = await asyncio.gather(
-        *(_read_one_file(sandbox, p) for p in valid_paths)
+        *(_read_one_file(backend, p) for p in valid_paths)
     )
 
     # Post-process: encode and apply size cap (order-preserving)
@@ -231,7 +233,7 @@ async def _resolve_data_files(
     return inline_data
 
 
-def create_show_widget_tool(sandbox: Any = None) -> BaseTool:
+def create_show_widget_tool(backend: SandboxBackend) -> BaseTool:
     """Factory function to create ShowWidget tool."""
 
     @tool(response_format="content_and_artifact")
@@ -297,8 +299,8 @@ def create_show_widget_tool(sandbox: Any = None) -> BaseTool:
         # tool return, so we don't duplicate large payloads in the
         # LangGraph checkpointer state.
         resolved_data: dict[str, str] | None = None
-        if data_files and sandbox is not None:
-            resolved_data = await _resolve_data_files(sandbox, data_files) or None
+        if data_files and backend is not None:
+            resolved_data = await _resolve_data_files(backend, data_files) or None
 
         if writer:
             stream_payload = artifact

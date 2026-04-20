@@ -126,74 +126,6 @@ class LargeResultEvictionMiddleware(AgentMiddleware):
         self._tool_token_limit_before_evict = tool_token_limit_before_evict
         self._eviction_dir = eviction_dir
 
-    def _process_large_message(
-        self,
-        message: ToolMessage,
-    ) -> tuple[ToolMessage, dict | None]:
-        """Process a large ToolMessage by evicting its content to filesystem.
-
-        Args:
-            message: The ToolMessage with large content to evict.
-
-        Returns:
-            A tuple of (processed_message, files_update):
-            - processed_message: New ToolMessage with truncated content and file reference
-            - files_update: Dict of file updates to apply to state, or None if eviction failed
-        """
-        # Early exit if eviction not configured
-        if not self._tool_token_limit_before_evict:
-            return message, None
-
-        # Convert content to string once for both size check and eviction
-        # Special case: single text block - extract text directly for readability
-        if (
-            isinstance(message.content, list)
-            and len(message.content) == 1
-            and isinstance(message.content[0], dict)
-            and message.content[0].get("type") == "text"
-            and "text" in message.content[0]
-        ):
-            content_str = str(message.content[0]["text"])
-        elif isinstance(message.content, str):
-            content_str = message.content
-        else:
-            # Multiple blocks or non-text content - stringify entire structure
-            content_str = str(message.content)
-
-        # Check if content exceeds eviction threshold
-        if (
-            len(content_str)
-            <= NUM_CHARS_PER_TOKEN * self._tool_token_limit_before_evict
-        ):
-            return message, None
-
-        # Write content to filesystem
-        sanitized_id = sanitize_tool_call_id(message.tool_call_id)
-        file_path = f"{self._eviction_dir}/{sanitized_id}{_detect_extension(content_str)}"
-        result = self.backend.write(file_path, content_str)
-        if result.error:
-            return message, None
-
-        # Create preview showing head and tail of the result
-        content_sample = _create_content_preview(content_str)
-        replacement_text = TOO_LARGE_TOOL_MSG.format(
-            tool_call_id=message.tool_call_id,
-            file_path=file_path,
-            content_sample=content_sample,
-        )
-
-        # Always return as plain string after eviction
-        # Preserve artifact from content_and_artifact tools
-        kwargs = dict(
-            content=replacement_text,
-            tool_call_id=message.tool_call_id,
-            name=message.name,
-        )
-        if hasattr(message, 'artifact') and message.artifact is not None:
-            kwargs['artifact'] = message.artifact
-        processed_message = ToolMessage(**kwargs)
-        return processed_message, result.files_update
-
     async def _aprocess_large_message(
         self,
         message: ToolMessage,
@@ -229,7 +161,9 @@ class LargeResultEvictionMiddleware(AgentMiddleware):
         # Write content to filesystem using async method
         sanitized_id = sanitize_tool_call_id(message.tool_call_id)
         file_path = f"{self._eviction_dir}/{sanitized_id}{_detect_extension(content_str)}"
-        result = await self.backend.awrite(file_path, content_str)
+        # Middleware rewrites by-id paths (same tool_call_id retries overwrite prior eviction);
+        # opt out of protocol's create-only default.
+        result = await self.backend.awrite(file_path, content_str, overwrite=True)
         if result.error:
             return message, None
 
@@ -251,59 +185,6 @@ class LargeResultEvictionMiddleware(AgentMiddleware):
             kwargs['artifact'] = message.artifact
         processed_message = ToolMessage(**kwargs)
         return processed_message, result.files_update
-
-    def _intercept_large_tool_result(
-        self, tool_result: ToolMessage | Command, runtime: ToolRuntime
-    ) -> ToolMessage | Command:
-        """Intercept and process large tool results before they're added to state.
-
-        Args:
-            tool_result: The tool result to potentially evict (ToolMessage or Command).
-            runtime: The tool runtime (unused, kept for API consistency).
-
-        Returns:
-            Either the original result (if small enough) or a Command with evicted
-            content written to filesystem and truncated message.
-        """
-        if isinstance(tool_result, ToolMessage):
-            processed_message, files_update = self._process_large_message(tool_result)
-            return (
-                Command(
-                    update={
-                        "files": files_update,
-                        "messages": [processed_message],
-                    }
-                )
-                if files_update is not None
-                else processed_message
-            )
-
-        if isinstance(tool_result, Command):
-            update = tool_result.update
-            if update is None:
-                return tool_result
-            command_messages = update.get("messages", [])
-            accumulated_file_updates = dict(update.get("files", {}))
-            processed_messages = []
-            for message in command_messages:
-                if not isinstance(message, ToolMessage):
-                    processed_messages.append(message)
-                    continue
-
-                processed_message, files_update = self._process_large_message(message)
-                processed_messages.append(processed_message)
-                if files_update is not None:
-                    accumulated_file_updates.update(files_update)
-            return Command(
-                update={
-                    **update,
-                    "messages": processed_messages,
-                    "files": accumulated_file_updates,
-                }
-            )
-        raise AssertionError(
-            f"Unreachable code in _intercept_large_tool_result: tool_result type {type(tool_result)}"
-        )
 
     async def _aintercept_large_tool_result(
         self, tool_result: ToolMessage | Command, runtime: ToolRuntime
@@ -352,29 +233,6 @@ class LargeResultEvictionMiddleware(AgentMiddleware):
         raise AssertionError(
             f"Unreachable code in _aintercept_large_tool_result: tool_result type {type(tool_result)}"
         )
-
-    def wrap_tool_call(
-        self,
-        request: ToolCallRequest,
-        handler: Callable[[ToolCallRequest], ToolMessage | Command],
-    ) -> ToolMessage | Command:
-        """Check the size of the tool call result and evict to filesystem if too large.
-
-        Args:
-            request: The tool call request being processed.
-            handler: The handler function to call with the request.
-
-        Returns:
-            The raw ToolMessage, or a Command with evicted content.
-        """
-        if (
-            self._tool_token_limit_before_evict is None
-            or request.tool_call["name"] in TOOLS_EXCLUDED_FROM_EVICTION
-        ):
-            return handler(request)
-
-        tool_result = handler(request)
-        return self._intercept_large_tool_result(tool_result, request.runtime)
 
     async def awrap_tool_call(
         self,

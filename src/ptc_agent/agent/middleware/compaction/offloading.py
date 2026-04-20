@@ -96,7 +96,7 @@ async def aoffload_to_backend(backend: Any, messages: list[AnyMessage]) -> str |
         file_content = f"# {msg.type}{tool_info}\n\n{content}\n"
 
         try:
-            result = await backend.awrite(path, file_content)
+            result = await backend.awrite(path, file_content, overwrite=True)
             if result is None or result.error:
                 error_msg = result.error if result else "backend returned None"
                 logger.warning(
@@ -161,7 +161,7 @@ async def aoffload_truncated_args(
         content = "\n".join(parts)
 
         try:
-            result = await backend.awrite(path, content)
+            result = await backend.awrite(path, content, overwrite=True)
             if result is None or result.error:
                 error_msg = result.error if result else "backend returned None"
                 logger.warning(

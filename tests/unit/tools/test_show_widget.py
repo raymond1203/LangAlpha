@@ -178,7 +178,7 @@ def _tool_call(args: dict, call_id: str = "call_test_123") -> dict:
 class TestShowWidgetTool:
     @pytest.fixture()
     def tool(self):
-        return create_show_widget_tool()
+        return create_show_widget_tool(MagicMock())
 
     @pytest.mark.asyncio
     async def test_valid_html_returns_content_and_artifact(self, tool):
@@ -266,53 +266,53 @@ from src.ptc_agent.agent.tools.show_widget import _resolve_data_files
 class TestResolveDataFiles:
     @pytest.mark.asyncio
     async def test_text_file_reads_via_aread_file_text(self):
-        sandbox = AsyncMock()
-        sandbox.aread_file_text.return_value = '{"key": "value"}'
+        backend = AsyncMock()
+        backend.aread_text.return_value = '{"key": "value"}'
 
-        result = await _resolve_data_files(sandbox, ["/work/data.json"])
+        result = await _resolve_data_files(backend, ["/work/data.json"])
 
-        sandbox.aread_file_text.assert_awaited_once_with("/work/data.json")
+        backend.aread_text.assert_awaited_once_with("/work/data.json")
         assert result == {"data.json": '{"key": "value"}'}
 
     @pytest.mark.asyncio
     async def test_binary_file_reads_via_adownload_file_bytes(self):
-        sandbox = AsyncMock()
+        backend = AsyncMock()
         raw_bytes = b"\x89PNG\r\n\x1a\n"
-        sandbox.adownload_file_bytes.return_value = raw_bytes
+        backend.adownload_file_bytes.return_value = raw_bytes
 
-        result = await _resolve_data_files(sandbox, ["/work/chart.png"])
+        result = await _resolve_data_files(backend, ["/work/chart.png"])
 
-        sandbox.adownload_file_bytes.assert_awaited_once_with("/work/chart.png")
+        backend.adownload_file_bytes.assert_awaited_once_with("/work/chart.png")
         assert "chart.png" in result
         value = result["chart.png"]
         assert value.startswith("data:image/png;base64,")
 
     @pytest.mark.asyncio
     async def test_empty_filename_is_skipped(self):
-        sandbox = AsyncMock()
+        backend = AsyncMock()
 
-        result = await _resolve_data_files(sandbox, ["/"])
+        result = await _resolve_data_files(backend, ["/"])
 
         assert result == {}
-        sandbox.aread_file_text.assert_not_awaited()
-        sandbox.adownload_file_bytes.assert_not_awaited()
+        backend.aread_text.assert_not_awaited()
+        backend.adownload_file_bytes.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_file_not_found_returns_none_skipped(self):
-        sandbox = AsyncMock()
-        sandbox.aread_file_text.return_value = None
+        backend = AsyncMock()
+        backend.aread_text.return_value = None
 
-        result = await _resolve_data_files(sandbox, ["/work/missing.json"])
+        result = await _resolve_data_files(backend, ["/work/missing.json"])
 
         assert result == {}
 
     @pytest.mark.asyncio
     async def test_read_exception_is_skipped_and_logs_warning(self):
-        sandbox = AsyncMock()
-        sandbox.aread_file_text.side_effect = OSError("disk error")
+        backend = AsyncMock()
+        backend.aread_text.side_effect = OSError("disk error")
 
         with patch.object(_mod.logger, "warning") as mock_warn:
-            result = await _resolve_data_files(sandbox, ["/work/bad.csv"])
+            result = await _resolve_data_files(backend, ["/work/bad.csv"])
 
         assert result == {}
         mock_warn.assert_called_once()
@@ -320,23 +320,23 @@ class TestResolveDataFiles:
 
     @pytest.mark.asyncio
     async def test_size_cap_exceeded_skips_file(self):
-        sandbox = AsyncMock()
-        sandbox.aread_file_text.return_value = "x" * 100
+        backend = AsyncMock()
+        backend.aread_text.return_value = "x" * 100
 
         with patch.object(_mod, "_INLINE_DATA_CAP", 50):
-            result = await _resolve_data_files(sandbox, ["/work/big.json"])
+            result = await _resolve_data_files(backend, ["/work/big.json"])
 
         assert result == {}
 
     @pytest.mark.asyncio
     async def test_multiple_files_returns_all(self):
-        sandbox = AsyncMock()
-        sandbox.aread_file_text.return_value = "text content"
+        backend = AsyncMock()
+        backend.aread_text.return_value = "text content"
         raw_bytes = b"\xff\xd8\xff\xe0"
-        sandbox.adownload_file_bytes.return_value = raw_bytes
+        backend.adownload_file_bytes.return_value = raw_bytes
 
         result = await _resolve_data_files(
-            sandbox, ["/work/notes.txt", "/work/thumb.jpg"]
+            backend, ["/work/notes.txt", "/work/thumb.jpg"]
         )
 
         assert "notes.txt" in result
@@ -353,10 +353,10 @@ class TestResolveDataFiles:
 class TestShowWidgetWithDataFiles:
     @pytest.mark.asyncio
     async def test_data_files_with_sandbox_resolves_data_in_stream(self):
-        mock_sandbox = AsyncMock()
-        mock_sandbox.aread_file_text.return_value = '["a","b"]'
+        mock_backend = AsyncMock()
+        mock_backend.aread_text.return_value = '["a","b"]'
 
-        tool = create_show_widget_tool(sandbox=mock_sandbox)
+        tool = create_show_widget_tool(backend=mock_backend)
         mock_writer = MagicMock()
 
         with patch("langgraph.config.get_stream_writer", return_value=mock_writer):
@@ -376,7 +376,7 @@ class TestShowWidgetWithDataFiles:
 
     @pytest.mark.asyncio
     async def test_data_files_without_sandbox_no_resolution(self):
-        tool = create_show_widget_tool(sandbox=None)
+        tool = create_show_widget_tool(backend=None)
         mock_writer = MagicMock()
 
         with patch("langgraph.config.get_stream_writer", return_value=mock_writer):

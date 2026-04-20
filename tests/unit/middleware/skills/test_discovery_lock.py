@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from deepagents.backends.protocol import LsResult
 
 from ptc_agent.agent.middleware.skills.discovery import (
     adiscover_skills,
@@ -68,10 +69,12 @@ class TestDiscoverSkillsWithLock:
         lock_json = _make_lock_json({"my-skill": lock_entry})
 
         backend = AsyncMock()
-        backend.als_info = AsyncMock(
-            return_value=[
-                {"path": f"{SKILLS_PATH}/my-skill", "is_dir": True},
-            ]
+        backend.als = AsyncMock(
+            return_value=LsResult(
+                entries=[
+                    {"path": f"{SKILLS_PATH}/my-skill", "is_dir": True},
+                ]
+            )
         )
         # First download call is for skills-lock.json
         backend.adownload_files = AsyncMock(
@@ -103,10 +106,12 @@ class TestDiscoverSkillsWithLock:
         )
 
         backend = AsyncMock()
-        backend.als_info = AsyncMock(
-            return_value=[
-                {"path": f"{SKILLS_PATH}/orphan-skill", "is_dir": True},
-            ]
+        backend.als = AsyncMock(
+            return_value=LsResult(
+                entries=[
+                    {"path": f"{SKILLS_PATH}/orphan-skill", "is_dir": True},
+                ]
+            )
         )
 
         # First call: lock file download fails
@@ -148,10 +153,12 @@ class TestDiscoverSkillsWithLock:
         )
 
         backend = AsyncMock()
-        backend.als_info = AsyncMock(
-            return_value=[
-                {"path": f"{SKILLS_PATH}/orphan-skill", "is_dir": True},
-            ]
+        backend.als = AsyncMock(
+            return_value=LsResult(
+                entries=[
+                    {"path": f"{SKILLS_PATH}/orphan-skill", "is_dir": True},
+                ]
+            )
         )
         backend.adownload_files = AsyncMock(
             side_effect=[

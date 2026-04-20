@@ -52,9 +52,6 @@ from ptc_agent.agent.middleware import (
     WorkspaceContextMiddleware,
 )
 from ptc_agent.agent.middleware.runtime_context import RuntimeContextMiddleware
-from ptc_agent.agent.middleware.anthropic_thinking_sanitizer import (
-    AnthropicThinkingSanitizerMiddleware,
-)
 from ptc_agent.agent.middleware.background_subagent.registry import (
     BackgroundTaskRegistry,
 )
@@ -291,39 +288,39 @@ class PTCAgent:
         # Compute short thread ID for thread-scoped storage
         short_thread_id = thread_id[:8] if thread_id else ""
 
+        # Single backend — tools, middleware, and skill discovery all route sandbox I/O through it.
+        backend = SandboxBackend(sandbox, operation_callback=operation_callback)
+
         # Create the execute_code tool for MCP invocation
         execute_code_tool = create_execute_code_tool(
-            sandbox, mcp_registry, thread_id=short_thread_id
+            backend, mcp_registry, thread_id=short_thread_id
         )
 
         # Create the Bash tool for shell command execution
-        bash_tool = create_execute_bash_tool(sandbox, thread_id=short_thread_id)
-        bash_output_tool = create_bash_output_tool(sandbox)
+        bash_tool = create_execute_bash_tool(backend, thread_id=short_thread_id)
+        bash_output_tool = create_bash_output_tool(backend)
 
         # Create the preview URL tool for sandbox service previews
         workspace_id = getattr(session, "conversation_id", "") if session else ""
-        preview_url_tool = create_preview_url_tool(sandbox, workspace_id=workspace_id, on_signed_url=on_signed_url)
+        preview_url_tool = create_preview_url_tool(backend, workspace_id=workspace_id, on_signed_url=on_signed_url)
 
         # Create the show widget tool for inline HTML visualizations
-        show_widget_tool = create_show_widget_tool(sandbox)
+        show_widget_tool = create_show_widget_tool(backend)
 
         # Start with base tools
         tools: list[Any] = [execute_code_tool, bash_tool, bash_output_tool, preview_url_tool, show_widget_tool, TodoWrite]
 
-        # Create backend for SkillsMiddleware and LargeResultEvictionMiddleware
-        backend = SandboxBackend(sandbox, operation_callback=operation_callback)
-
         # Create custom filesystem tools (override deepagents middleware tools)
         read_file, write_file, edit_file = create_filesystem_tools(
-            sandbox,
+            backend,
             operation_callback=operation_callback,
         )
         filesystem_tools = [
             read_file,  # overrides middleware read_file
             write_file,  # overrides middleware write_file
             edit_file,  # overrides middleware edit_file
-            create_glob_tool(sandbox),  # overrides middleware glob
-            create_grep_tool(sandbox),  # overrides middleware grep
+            create_glob_tool(backend),  # overrides middleware glob
+            create_grep_tool(backend),  # overrides middleware grep
         ]
         tools.extend(filesystem_tools)
 
@@ -403,10 +400,10 @@ class PTCAgent:
         # Extract pre-parsed skill metadata from the sandbox's cached manifest
         # so the middleware can skip re-downloading SKILL.md files it already knows about.
         known_skills: dict[str, Any] = {}
-        if sandbox.skills_manifest and sandbox.skills_manifest.get("skills"):
+        if backend.skills_manifest and backend.skills_manifest.get("skills"):
             known_skills = {
                 name: SkillMetadata(**meta)
-                for name, meta in sandbox.skills_manifest["skills"].items()
+                for name, meta in backend.skills_manifest["skills"].items()
             }
 
         skill_loader_middleware = SkillsMiddleware(
@@ -579,7 +576,6 @@ class PTCAgent:
                 AnthropicPromptCachingMiddleware(unsupported_model_behavior="ignore"),
                 EmptyToolCallRetryMiddleware(),
                 PatchToolCallsMiddleware(),
-                AnthropicThinkingSanitizerMiddleware(),
             ]
             if m is not None
         ]
@@ -627,7 +623,6 @@ class PTCAgent:
                 PatchToolCallsMiddleware(),
                 *workspace_context_middleware,
                 *runtime_context_middleware,
-                AnthropicThinkingSanitizerMiddleware(),
             ]
             if m is not None
         ]

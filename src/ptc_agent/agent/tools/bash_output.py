@@ -1,18 +1,20 @@
 """Get output and status of background bash commands."""
 
-from typing import Any, Literal
+from typing import Literal
 
 import structlog
 from langchain_core.tools import BaseTool, tool
 
+from ptc_agent.agent.backends.sandbox import SandboxBackend
+
 logger = structlog.get_logger(__name__)
 
 
-def create_bash_output_tool(sandbox: Any) -> BaseTool:
+def create_bash_output_tool(backend: SandboxBackend) -> BaseTool:
     """Factory function to create BashOutput tool with injected dependencies.
 
     Args:
-        sandbox: PTCSandbox instance for querying background command output
+        backend: SandboxBackend wrapping the sandbox
 
     Returns:
         Configured BashOutput tool function
@@ -33,12 +35,12 @@ def create_bash_output_tool(sandbox: Any) -> BaseTool:
         """
         try:
             if action == "stop":
-                stopped = await sandbox.stop_background_command(command_id)
+                stopped = await backend.astop_background_command(command_id)
                 if stopped:
                     return f"Background command {command_id} stopped."
                 return f"No running background command found with id {command_id}."
 
-            result = await sandbox.get_background_command_status(command_id)
+            result = await backend.aget_background_command_status(command_id)
 
             is_running = result["is_running"]
             exit_code = result["exit_code"]

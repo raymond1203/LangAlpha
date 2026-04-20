@@ -1,18 +1,18 @@
 """Execute bash commands in the sandbox."""
 
-from typing import Any
-
 import structlog
 from langchain_core.tools import BaseTool, tool
+
+from ptc_agent.agent.backends.sandbox import SandboxBackend
 
 logger = structlog.get_logger(__name__)
 
 
-def create_execute_bash_tool(sandbox: Any, thread_id: str = "") -> BaseTool:
+def create_execute_bash_tool(backend: SandboxBackend, thread_id: str = "") -> BaseTool:
     """Factory function to create Bash tool with injected dependencies.
 
     Args:
-        sandbox: PTCSandbox instance for bash command execution
+        backend: SandboxBackend wrapping the sandbox
         thread_id: Short thread ID (first 8 chars) for thread-scoped script storage
 
     Returns:
@@ -20,7 +20,7 @@ def create_execute_bash_tool(sandbox: Any, thread_id: str = "") -> BaseTool:
     """
 
     # Resolve the default working directory from sandbox config at tool creation time
-    _default_working_dir = sandbox.config.filesystem.working_directory
+    _default_working_dir = backend.filesystem_config.working_directory
 
     @tool
     async def Bash(
@@ -61,7 +61,7 @@ def create_execute_bash_tool(sandbox: Any, thread_id: str = "") -> BaseTool:
             timeout_seconds = int(timeout / 1000) if timeout else 120
 
             # Execute bash command in sandbox
-            result = await sandbox.execute_bash_command(
+            result = await backend.aexecute_bash(
                 command,
                 working_dir=working_dir,
                 timeout=timeout_seconds,
