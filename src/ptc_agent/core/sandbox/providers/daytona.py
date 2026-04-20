@@ -518,7 +518,13 @@ class DaytonaProvider(SandboxProvider):
                 "uv pip install --system --override /tmp/overrides.txt "
                 + " ".join(dependencies),
                 "rm /tmp/overrides.txt",
-                # Scrapling browser setup (Camoufox for StealthyFetcher)
+                # Scrapling browser setup:
+                # patchright: Chromium for DynamicFetcher (Tier 2). PLAYWRIGHT_BROWSERS_PATH
+                # must match the export in the npm playwright install step above so both
+                # revisions land in /usr/local/ms-playwright and patchright finds its binary.
+                "PLAYWRIGHT_BROWSERS_PATH=/usr/local/ms-playwright"
+                " patchright install --with-deps chromium || true",
+                # scrapling install: Camoufox for StealthyFetcher (Tier 3)
                 "scrapling install || true",
             )
             .run_commands(
