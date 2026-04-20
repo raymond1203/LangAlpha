@@ -62,7 +62,7 @@ dependencies = [
     "edgartools>=5.7.2",
     "langsmith-fetch>=0.3.1",
     "structlog",
-    "deepagents>=0.3.5",
+    "deepagents>=0.5.3",
     "daytona-sdk>=0.130.0",
     "boto3>=1.42.28",
     "tavily-python>=0.7.18",
