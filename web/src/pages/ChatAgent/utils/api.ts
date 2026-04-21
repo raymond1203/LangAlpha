@@ -790,3 +790,26 @@ export async function deleteVaultSecret(workspaceId: string, name: string) {
   const { data } = await api.delete(`/api/v1/workspaces/${workspaceId}/vault/secrets/${name}`);
   return data;
 }
+
+// --- Vault Blueprints (credentials recommended but not yet set) ---
+
+export interface VaultBlueprint {
+  name: string;
+  label: string;
+  description: string;
+  docs_url: string | null;
+  regex: string | null;
+  sources: string[];
+}
+
+export interface VaultBlueprintsResponse {
+  blueprints: VaultBlueprint[];
+  remaining_slots: number;
+}
+
+export async function getVaultBlueprints(workspaceId: string): Promise<VaultBlueprintsResponse> {
+  const { data } = await api.get<VaultBlueprintsResponse>(
+    `/api/v1/workspaces/${workspaceId}/vault/blueprints`,
+  );
+  return data;
+}

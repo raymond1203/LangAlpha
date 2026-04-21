@@ -1,11 +1,15 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X, Cpu, MemoryStick, HardDrive, MonitorCog, Play, Square,
   Package, Search, RefreshCw, ChevronDown, ChevronRight,
   Server, Loader2, BookOpen, Archive, KeyRound,
-  Plus, Trash2, Pencil, Eye, EyeOff,
+  Plus, Trash2, Pencil, Eye, EyeOff, ExternalLink, Sparkles,
 } from 'lucide-react';
-import { getSandboxStats, installSandboxPackages, refreshWorkspace, getVaultSecrets, createVaultSecret, updateVaultSecret, deleteVaultSecret, revealVaultSecret } from '../utils/api';
+import {
+  getSandboxStats, installSandboxPackages, refreshWorkspace,
+  getVaultSecrets, createVaultSecret, updateVaultSecret, deleteVaultSecret, revealVaultSecret,
+  getVaultBlueprints, type VaultBlueprint,
+} from '../utils/api';
 import { api } from '@/api/client';
 
 interface SandboxSettingsPanelProps {
@@ -833,6 +837,8 @@ interface VaultSecret {
 
 function SecretsTab({ workspaceId }: { workspaceId: string }) {
   const [secrets, setSecrets] = useState<VaultSecret[]>([]);
+  const [blueprints, setBlueprints] = useState<VaultBlueprint[]>([]);
+  const [remainingSlots, setRemainingSlots] = useState<number>(MAX_SECRETS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -842,6 +848,9 @@ function SecretsTab({ workspaceId }: { workspaceId: string }) {
   const [newValue, setNewValue] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [saving, setSaving] = useState(false);
+  // When opened via a blueprint "Set up" click, carry the docs link + regex
+  // for inline hint rendering. Cleared when the form closes or save succeeds.
+  const [presetBlueprint, setPresetBlueprint] = useState<VaultBlueprint | null>(null);
 
   // Edit state
   const [editingName, setEditingName] = useState<string | null>(null);
@@ -858,20 +867,75 @@ function SecretsTab({ workspaceId }: { workspaceId: string }) {
   const [revealedSecrets, setRevealedSecrets] = useState<Record<string, string>>({});
   const [revealingName, setRevealingName] = useState<string | null>(null);
 
+  // Generation counter: guards against a stale in-flight load clobbering state
+  // when workspaceId changes rapidly (A → B → A). Increment on entry, check on
+  // every resolution path before writing state.
+  const loadGenRef = useRef(0);
+
   async function load() {
+    const myGen = ++loadGenRef.current;
     setLoading(true);
     setError(null);
     try {
-      const data = await getVaultSecrets(workspaceId);
-      setSecrets(data);
+      // Fetch both in parallel. Blueprints is secondary — a failure there
+      // must not block the primary secrets list (graceful degradation).
+      const [secretsData, blueprintsData] = await Promise.all([
+        getVaultSecrets(workspaceId),
+        getVaultBlueprints(workspaceId).catch(() => null),
+      ]);
+      if (loadGenRef.current !== myGen) return; // superseded, drop this result
+      setSecrets(secretsData);
+      if (blueprintsData) {
+        setBlueprints(blueprintsData.blueprints);
+        setRemainingSlots(blueprintsData.remaining_slots);
+      } else {
+        setBlueprints([]); // hide Recommended section on blueprint fetch failure
+        setRemainingSlots(MAX_SECRETS - secretsData.length);
+      }
     } catch (err: any) {
+      if (loadGenRef.current !== myGen) return;
       setError(err?.response?.data?.detail || err.message || 'Failed to load secrets');
     } finally {
-      setLoading(false);
+      if (loadGenRef.current === myGen) {
+        setLoading(false);
+      }
     }
   }
 
   useEffect(() => { load(); }, [workspaceId]);
+
+  // Safe regex compile for the active preset blueprint. Invalid patterns from a
+  // misconfigured agent_config.yaml must not crash the UI — on failure we just
+  // skip the hint.
+  const presetRegex = useMemo<RegExp | null>(() => {
+    if (!presetBlueprint?.regex) return null;
+    try {
+      return new RegExp(presetBlueprint.regex);
+    } catch {
+      return null;
+    }
+  }, [presetBlueprint]);
+  const valueHintFailing =
+    presetRegex !== null && newValue.length > 0 && !presetRegex.test(newValue);
+
+  function openAddForBlueprint(bp: VaultBlueprint) {
+    setError(null);
+    setPresetBlueprint(bp);
+    setNewName(bp.name);
+    setNewValue('');
+    setNewDesc(bp.description || '');
+    setShowNewValue(false);
+    setShowAdd(true);
+  }
+
+  function closeAddForm() {
+    setShowAdd(false);
+    setNewName('');
+    setNewValue('');
+    setNewDesc('');
+    setShowNewValue(false);
+    setPresetBlueprint(null);
+  }
 
   async function handleCreate() {
     if (!newName || !newValue) return;
@@ -887,11 +951,7 @@ function SecretsTab({ workspaceId }: { workspaceId: string }) {
         value: newValue,
         description: newDesc,
       });
-      setNewName('');
-      setNewValue('');
-      setNewDesc('');
-      setShowNewValue(false);
-      setShowAdd(false);
+      closeAddForm();
       await load();
     } catch (err: any) {
       setError(err?.response?.data?.detail || err.message || 'Failed to create secret');
@@ -1005,12 +1065,77 @@ function SecretsTab({ workspaceId }: { workspaceId: string }) {
         </div>
       )}
 
+      {/* Recommended credentials — blueprints declared by enabled MCP servers */}
+      {blueprints.length > 0 && !showAdd && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-1.5 text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+            <Sparkles className="h-3 w-3" />
+            Recommended credentials
+          </div>
+          {blueprints.map(bp => {
+            const disabled = remainingSlots <= 0;
+            return (
+              <button
+                key={bp.name}
+                type="button"
+                onClick={() => !disabled && openAddForBlueprint(bp)}
+                disabled={disabled}
+                className="flex flex-col items-start gap-0.5 p-3 rounded-lg text-left transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: 'var(--color-bg-card)',
+                  border: '1px dashed var(--color-border-default)',
+                }}
+                title={disabled ? `Vault at ${MAX_SECRETS}/${MAX_SECRETS} — remove a secret first` : undefined}
+              >
+                <div className="flex items-center justify-between w-full gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-sm font-medium truncate" style={{ color: 'var(--color-text-primary)' }}>
+                      {bp.label}
+                    </span>
+                    <span className="text-xs font-mono px-1.5 py-0.5 rounded flex-shrink-0" style={{ color: 'var(--color-text-tertiary)', backgroundColor: 'var(--color-bg-default)' }}>
+                      {bp.name}
+                    </span>
+                  </div>
+                  <span className="text-xs flex items-center gap-1 flex-shrink-0" style={{ color: 'var(--color-accent-primary)' }}>
+                    <Plus className="h-3 w-3" />
+                    Set up
+                  </span>
+                </div>
+                {bp.description && (
+                  <div className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
+                    {bp.description}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Add form */}
       {showAdd && (
         <div
           className="flex flex-col gap-2 p-3 rounded-lg"
           style={{ backgroundColor: 'var(--color-bg-card)', border: '1px solid var(--color-border-muted)' }}
         >
+          {presetBlueprint && (
+            <div className="flex items-center justify-between text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+              <span>
+                Setting up <span style={{ color: 'var(--color-text-primary)' }}>{presetBlueprint.label}</span>
+              </span>
+              {presetBlueprint.docs_url && (
+                <a
+                  href={presetBlueprint.docs_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 hover:underline"
+                  style={{ color: 'var(--color-accent-primary)' }}
+                >
+                  Docs <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+            </div>
+          )}
           <input
             type="text"
             value={newName}
@@ -1040,6 +1165,13 @@ function SecretsTab({ workspaceId }: { workspaceId: string }) {
               {showNewValue ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
             </button>
           </div>
+          {valueHintFailing && (
+            <div className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
+              This doesn&apos;t look like a valid {presetBlueprint?.label ?? 'token'}
+              {presetBlueprint?.docs_url ? ' — check the docs link above.' : '.'}
+              <span className="ml-1 opacity-70">You can still save.</span>
+            </div>
+          )}
           <input
             type="text"
             value={newDesc}
@@ -1051,7 +1183,7 @@ function SecretsTab({ workspaceId }: { workspaceId: string }) {
           />
           <div className="flex justify-end gap-2 mt-1">
             <button
-              onClick={() => { setShowAdd(false); setNewName(''); setNewValue(''); setNewDesc(''); setShowNewValue(false); }}
+              onClick={closeAddForm}
               className="px-3 py-1.5 text-xs rounded-md transition-colors hover:bg-foreground/10"
               style={{ color: 'var(--color-text-tertiary)' }}
             >
