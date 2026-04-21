@@ -86,10 +86,12 @@ class TodoWriteMiddleware(AgentMiddleware):
         try:
             result = await handler(request)
 
-            # Calculate status counts
+            # Calculate status counts. Lowercase to mirror the TodoItem
+            # validator's normalize_status — an LLM-sent "PENDING" would
+            # otherwise fall through as uncounted.
             status_counts = {"pending": 0, "in_progress": 0, "completed": 0}
             for todo in todos:
-                status = todo.get("status", "unknown")
+                status = str(todo.get("status", "")).lower()
                 if status in status_counts:
                     status_counts[status] += 1
 
