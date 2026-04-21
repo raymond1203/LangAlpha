@@ -96,27 +96,29 @@ class TodoWriteMiddleware(AgentMiddleware):
             # Continue with tool execution even if streaming fails
             return await handler(request)
 
+        # Restrict payload to the TodoItem schema: strip any legacy
+        # or unknown fields the LLM may still send, and lowercase status
+        # so the frontend's strict equality (status === 'pending') holds
+        # regardless of case variance. Anything non-dict is dropped.
+        # Computed before the try block so the failed-event path below
+        # ships the same normalized shape instead of raw LLM input.
+        status_counts = {"pending": 0, "in_progress": 0, "completed": 0}
+        normalized_todos = []
+        for todo in todos:
+            if not isinstance(todo, dict):
+                continue
+            status = str(todo.get("status", "")).lower()
+            if status in status_counts:
+                status_counts[status] += 1
+            normalized_todos.append({
+                "content": todo.get("content", ""),
+                "activeForm": todo.get("activeForm", ""),
+                "status": status,
+            })
+
         # Execute the actual tool
         try:
             result = await handler(request)
-
-            # Restrict payload to the TodoItem schema: strip any legacy
-            # or unknown fields the LLM may still send, and lowercase status
-            # so the frontend's strict equality (status === 'pending') holds
-            # regardless of case variance. Anything non-dict is dropped.
-            status_counts = {"pending": 0, "in_progress": 0, "completed": 0}
-            normalized_todos = []
-            for todo in todos:
-                if not isinstance(todo, dict):
-                    continue
-                status = str(todo.get("status", "")).lower()
-                if status in status_counts:
-                    status_counts[status] += 1
-                normalized_todos.append({
-                    "content": todo.get("content", ""),
-                    "activeForm": todo.get("activeForm", ""),
-                    "status": status,
-                })
 
             # Build completed event with structure expected by streaming_handler
             # Must include artifact_type for handler to recognize and emit as SSE artifact event
@@ -166,8 +168,11 @@ class TodoWriteMiddleware(AgentMiddleware):
                 "timestamp": failed_timestamp,
                 "status": "failed",
                 "payload": {
-                    "todos": todos,
-                    "total": len(todos),
+                    "todos": normalized_todos,
+                    "total": len(normalized_todos),
+                    "completed": status_counts["completed"],
+                    "in_progress": status_counts["in_progress"],
+                    "pending": status_counts["pending"],
                     "error": str(e),
                 },
             }

@@ -191,3 +191,57 @@ async def test_handler_exception_emits_failed_event(middleware):
     assert emitted[0]["status"] == "failed"
     assert emitted[0]["payload"]["total"] == 0
     assert "simulated validation failure" in emitted[0]["payload"]["error"]
+
+
+@pytest.mark.asyncio
+async def test_failed_event_whitelists_and_lowercases_payload(middleware):
+    """Failed events must apply the same normalization as completed events —
+    strip legacy fields and lowercase status — so the frontend's strict
+    `status === 'pending'` checks hold on the error path too."""
+    todos = [
+        {**_todo(status="PENDING"), "id": "legacy-1", "created_at": "2026-01-01"},
+        _todo(status="In_Progress"),
+    ]
+    emitted = []
+
+    async def failing_handler(_req):
+        raise ValueError("boom")
+
+    with patch(
+        "ptc_agent.agent.middleware.todo_operations.sse_middleware.get_stream_writer",
+        return_value=emitted.append,
+    ):
+        with pytest.raises(ValueError):
+            await middleware.awrap_tool_call(_make_request(todos), failing_handler)
+
+    payload = emitted[0]["payload"]
+    assert all(set(t.keys()) == {"content", "activeForm", "status"} for t in payload["todos"])
+    assert [t["status"] for t in payload["todos"]] == ["pending", "in_progress"]
+    assert payload["total"] == 2
+    assert payload["pending"] == 1
+    assert payload["in_progress"] == 1
+    assert payload["completed"] == 0
+    assert "boom" in payload["error"]
+
+
+@pytest.mark.asyncio
+async def test_failed_event_drops_non_dict_items_from_total(middleware):
+    """total on the failed event should match normalized length, not the raw
+    list length — otherwise non-dict garbage inflates the count inconsistently
+    with the completed path."""
+    todos = [_todo(status="pending"), "not-a-dict", 42, _todo(status="completed")]
+    emitted = []
+
+    async def failing_handler(_req):
+        raise RuntimeError("x")
+
+    with patch(
+        "ptc_agent.agent.middleware.todo_operations.sse_middleware.get_stream_writer",
+        return_value=emitted.append,
+    ):
+        with pytest.raises(RuntimeError):
+            await middleware.awrap_tool_call(_make_request(todos), failing_handler)
+
+    payload = emitted[0]["payload"]
+    assert payload["total"] == 2
+    assert len(payload["todos"]) == 2
