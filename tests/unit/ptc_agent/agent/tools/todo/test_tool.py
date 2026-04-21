@@ -99,9 +99,37 @@ class TestTodoWriteRejectsMalformedItems:
         with pytest.raises(ValidationError):
             TodoWrite.invoke({"todos": [bad]})
 
-    def test_item_must_be_dict_not_string(self):
+    @pytest.mark.parametrize("junk", [None, 42, 3.14, "string", ["nested"]])
+    def test_non_dict_list_element_rejected(self, junk):
         with pytest.raises(ValidationError):
-            TodoWrite.invoke({"todos": ["just a string"]})
+            TodoWrite.invoke({"todos": [junk]})
+
+
+class TestTodoWriteCompatAndNormalization:
+    """Behaviors the schema relies on: extras ignored, status normalization."""
+
+    def test_legacy_fields_silently_ignored(self):
+        """LLMs with cached tool schemas may still send id/created_at/updated_at.
+        Pydantic's default extra='ignore' must accept and drop these fields —
+        flipping to extra='forbid' later would break in-flight calls, so lock it in.
+        """
+        legacy = {
+            "content": "Fetch Q3 earnings",
+            "activeForm": "Fetching Q3 earnings",
+            "status": "in_progress",
+            "id": "legacy-abc-123",
+            "created_at": "2026-01-01T00:00:00",
+            "updated_at": "2026-01-01T00:00:00",
+        }
+        result = TodoWrite.invoke({"todos": [legacy]})
+        assert "Todos have been modified successfully" in result
+
+    @pytest.mark.parametrize("raw", ["PENDING", "In_Progress", "COMPLETED", "Pending"])
+    def test_status_normalization_is_case_insensitive(self, raw):
+        todo = {"content": "X", "activeForm": "Xing", "status": raw}
+        result = TodoWrite.invoke({"todos": [todo]})
+        assert ("Todos have been modified successfully" in result
+                or "All tasks completed" in result)
 
 
 class TestTodoWriteValidationErrorMessageIsUsable:
@@ -117,6 +145,7 @@ class TestTodoWriteValidationErrorMessageIsUsable:
         bad = {"content": "X", "activeForm": "Xing", "status": "archived"}
         with pytest.raises(ValidationError) as exc:
             TodoWrite.invoke({"todos": [bad]})
-        # Enum error mentions the invalid value or valid choices
         msg = str(exc.value).lower()
         assert "status" in msg
+        # The message should name at least one valid option so the LLM can self-correct
+        assert any(opt in msg for opt in ("pending", "in_progress", "completed"))
