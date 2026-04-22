@@ -53,6 +53,8 @@ These constraints apply throughout all DCF model building. Review before startin
 
 ## DCF Process Workflow
 
+**Execution pattern**: build the DCF as a saved Python script (e.g., `work/<task_name>/build_dcf.py`) rather than inline `ExecuteCode`. Model building is iterative — you will debug formulas, tweak assumptions, and rerun. Writing to a file + running via `Bash` lets you `Edit` specific sections and rerun cheaply; resubmitting the whole openpyxl block inline on every iteration is wasteful.
+
 ### Step 1: Data Retrieval and Validation
 
 Fetch data from MCP servers, user provided data, and the web.

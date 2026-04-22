@@ -13,9 +13,11 @@ Two ways to scrape in the sandbox:
 1. **MCP tool wrappers** (recommended for simple fetches) — call `get()`, `fetch()`, `stealthy_fetch()` directly. Synchronous, returns dicts.
 2. **Direct Python API** (for advanced use) — import Scrapling classes for selectors, sessions, spiders. Async, returns Page objects.
 
-## MCP Tool Wrappers (via execute_code)
+## MCP Tool Wrappers (via Python)
 
 Auto-registered as top-level functions in the sandbox. No imports needed. **Synchronous** — no `await`.
+
+Quick fetches can run inline via `ExecuteCode`. For spiders, multi-URL crawls, or anything you'll iterate on, write the scraper to `work/<task_name>/scraper.py` and run it via `Bash` — edit-and-rerun beats resubmitting code.
 
 ### Basic Usage
 

@@ -130,6 +130,9 @@ sheet['D20'] = '=AVERAGE(D2:D19)'
 This applies to ALL calculations - totals, percentages, ratios, differences, etc. The spreadsheet should be able to recalculate when source data changes.
 
 ## Common Workflow
+
+**Execution pattern**: for any non-trivial workbook (multi-sheet, formulas, styling loops, sensitivity grids), write the builder to `work/<task_name>/build_workbook.py` and run via `Bash` rather than sending the openpyxl code inline via `ExecuteCode`. You will iterate on styling, formulas, and layout — `Edit`+rerun is cheaper than resubmitting inline code.
+
 1. **Choose tool**: pandas for data, openpyxl for formulas/formatting
 2. **Create/Load**: Create new workbook or load existing file
 3. **Modify**: Add/edit data, formulas, and formatting
