@@ -192,27 +192,25 @@ setInterval(function() {
 
 ## File Data
 
-Use `data_files` to load data from sandbox files instead of inlining everything in the HTML string. This is especially useful for larger datasets produced by `execute_code`.
+Use `data_files` to load data from sandbox files instead of inlining everything in the HTML string. This is especially useful for larger datasets.
 
 ### Workflow
 
-1. Use `execute_code` to generate data files in the sandbox
+1. Generate data files via Python
 2. Pass file paths to `ShowWidget` via `data_files`
 3. Access data in the widget via `window.__WIDGET_DATA__["filename"]`
 
 ```python
-# Step 1: Agent generates data via execute_code
-execute_code("""
+# Step 1: Generate data
 import json
 data = {"labels": ["Q1", "Q2", "Q3"], "values": [100, 150, 200]}
-with open("/home/workspace/work/chart_data.json", "w") as f:
+with open("work/<task_name>/chart_data.json", "w") as f:
     json.dump(data, f)
-""")
 
 # Step 2: Agent calls ShowWidget with data_files
 ShowWidget(
     html='<div id="chart">...</div><script>var d = JSON.parse(__WIDGET_DATA__["chart_data.json"]); ...</script>',
-    data_files=["/home/workspace/work/chart_data.json"]
+    data_files=["work/<task_name>/chart_data.json"]
 )
 ```
 

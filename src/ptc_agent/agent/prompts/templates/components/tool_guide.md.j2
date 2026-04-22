@@ -11,7 +11,7 @@ Call these directly as tool calls for all fundamental operations:
 | Read / Write / Edit | File operations |
 | Glob / Grep | File search and content search |
 | Bash | Shell commands |
-| ExecuteCode | Run Python code (also used to invoke MCP tools) |
+| ExecuteCode | Run Python code |
 | WebSearch | Search the web |
 | WebFetch | Fetch and extract content from URLs |
 | TodoWrite | Track task progress |
@@ -45,9 +45,9 @@ Call these directly for quick data retrieval. No complex post-processing — jus
 
 **When to use**: Quick lookups, answering direct questions, gathering data for a report.
 
-## MCP Tools (via ExecuteCode)
+## MCP Tools (via Python)
 
-These servers expose raw data APIs for complex work — batch processing, modeling, calculations, and sophisticated analysis. Invoke them through ExecuteCode Python code:
+These servers expose raw data APIs for complex work — batch processing, modeling, calculations, and sophisticated analysis. Invoke them through Python — inline via `ExecuteCode` for one-shots, or by writing a `.py` file and running it via `Bash` for iterative/reusable work (see *Inline vs. file-based execution* below):
 
 {{ tool_summary }}
 
@@ -66,10 +66,23 @@ print(result)
 
 **When to use MCP tools**: When you need raw time-series data for calculations, multi-ticker batch analysis, financial modeling, charting with matplotlib/plotly, or any task requiring programmatic data manipulation.
 
+## Inline vs. file-based execution
+
+Two ways to run Python — pick based on how disposable the code is:
+
+- **Inline via `ExecuteCode`** — for one-shot, disposable work: a quick MCP call, a small transform, a sanity check, printing a single result. You don't plan to rerun it. Keep it short.
+- **`Write` a `.py` file + `Bash`** — when any of these is true:
+  - The code is long (~40+ lines) or has non-trivial structure
+  - You expect to iterate: debug, tweak parameters, rerun on new inputs
+  - The script is reusable logic (valuation model, data pipeline, openpyxl builder, scraper)
+  - You'll want to `Edit` specific sections after an error rather than resubmit the whole block
+
+Pattern: `Write("work/<task_name>/dcf.py", ...)` → `Bash("python work/<task_name>/dcf.py")` → `Edit` on failure → rerun. Edit-then-rerun is cheaper than resubmitting inline code.
+
 ## Tool Selection Principles
 
 - **Direct question about a stock/company** → Financial Tools (direct call)
-- **Need to compute, compare, or model data** → MCP Tools (via ExecuteCode)
+- **Need to compute, compare, or model data** → MCP Tools (via Python)
 - **File/web/search operations** → Core Tools (direct call)
 - Don't guess MCP tool parameters — always read the doc file first
 - Don't read entire .py files to find a signature — read the .md doc
