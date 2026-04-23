@@ -60,6 +60,24 @@ def mock_ohlcv_with_nan():
     )
 
 
+@pytest.fixture
+def mock_single_row_df():
+    """Single-row DataFrame — no previous close available."""
+    dates = pd.DatetimeIndex(["2024-01-04"])
+    return pd.DataFrame(
+        {
+            "시가": [76000],
+            "고가": [77000],
+            "저가": [75500],
+            "종가": [76500],
+            "거래량": [11000000],
+            "거래대금": [841500000000],
+            "등락률": [0.66],
+        },
+        index=dates,
+    )
+
+
 # ============================================================================
 # _strip_suffix
 # ============================================================================
@@ -74,6 +92,10 @@ class TestStripSuffix:
 
     def test_lowercase(self):
         assert _strip_suffix("005930.ks") == "005930"
+
+    def test_mixed_case(self):
+        assert _strip_suffix("005930.Ks") == "005930"
+        assert _strip_suffix("263750.kQ") == "263750"
 
     def test_no_suffix(self):
         assert _strip_suffix("005930") == "005930"
@@ -189,15 +211,49 @@ class TestGetSnapshots:
 
     @pytest.mark.asyncio
     @patch("src.data_client.korean.data_source.stock")
-    async def test_success(self, mock_stock, source, mock_ohlcv_df):
+    async def test_ks_symbol_preserved(self, mock_stock, source, mock_ohlcv_df):
         mock_stock.get_market_ohlcv.return_value = mock_ohlcv_df
 
         result = await source.get_snapshots(["005930.KS"])
 
         assert len(result) == 1
+        assert result[0]["symbol"] == "005930.KS"
+        assert result[0]["price"] > 0
+
+    @pytest.mark.asyncio
+    @patch("src.data_client.korean.data_source.stock")
+    async def test_kq_symbol_preserved(self, mock_stock, source, mock_ohlcv_df):
+        mock_stock.get_market_ohlcv.return_value = mock_ohlcv_df
+
+        result = await source.get_snapshots(["263750.KQ"])
+
+        assert len(result) == 1
+        assert result[0]["symbol"] == "263750.KQ"
+
+    @pytest.mark.asyncio
+    @patch("src.data_client.korean.data_source.stock")
+    async def test_previous_close_with_multi_row(self, mock_stock, source, mock_ohlcv_df):
+        mock_stock.get_market_ohlcv.return_value = mock_ohlcv_df
+
+        result = await source.get_snapshots(["005930.KS"])
+
         snap = result[0]
-        assert snap["symbol"] == "005930.KS"
-        assert snap["price"] > 0
+        # Last row close=76500, second-to-last close=76000
+        assert snap["price"] == 76500.0
+        assert snap["previous_close"] == 76000.0
+        assert snap["change"] == 500.0
+
+    @pytest.mark.asyncio
+    @patch("src.data_client.korean.data_source.stock")
+    async def test_single_row_no_previous_close(self, mock_stock, source, mock_single_row_df):
+        mock_stock.get_market_ohlcv.return_value = mock_single_row_df
+
+        result = await source.get_snapshots(["005930.KS"])
+
+        snap = result[0]
+        assert snap["previous_close"] == 0.0
+        assert snap["change"] == 0.0
+        assert snap["change_percent"] == 0.0
 
     @pytest.mark.asyncio
     @patch("src.data_client.korean.data_source.stock")

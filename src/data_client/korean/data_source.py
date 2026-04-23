@@ -23,11 +23,14 @@ logger = logging.getLogger(__name__)
 
 _KST = ZoneInfo("Asia/Seoul")
 
+_KR_SUFFIXES = (".KS", ".KQ")
+
 
 def _strip_suffix(symbol: str) -> str:
-    """Remove .KS / .KQ suffix, returning the bare 6-digit ticker."""
-    for suffix in (".KS", ".KQ", ".ks", ".kq"):
-        if symbol.endswith(suffix):
+    """Remove .KS / .KQ suffix (case-insensitive), returning the bare ticker."""
+    upper = symbol.upper()
+    for suffix in _KR_SUFFIXES:
+        if upper.endswith(suffix):
             return symbol[: -len(suffix)]
     return symbol
 
@@ -89,18 +92,21 @@ def _fetch_daily(
     return [_normalize_bar(idx, row) for idx, row in df.iterrows()]
 
 
-def _fetch_single_snapshot(ticker: str, name: str | None) -> dict[str, Any] | None:
-    """Fetch latest-day snapshot for a single Korean ticker."""
+def _fetch_single_snapshot(
+    ticker: str, original_symbol: str,
+) -> dict[str, Any] | None:
+    """Fetch latest-day snapshot for a single Korean ticker.
+
+    Fetches a 7-day range to ensure we always have the previous trading
+    day for change/change_pct calculation.
+    """
     try:
         today = datetime.now(_KST).strftime("%Y%m%d")
-        df = stock.get_market_ohlcv(today, today, ticker)
+        start = (datetime.now(_KST) - timedelta(days=7)).strftime("%Y%m%d")
+        df = stock.get_market_ohlcv(start, today, ticker)
 
         if df is None or df.empty:
-            # Try previous trading day
-            yesterday = (datetime.now(_KST) - timedelta(days=7)).strftime("%Y%m%d")
-            df = stock.get_market_ohlcv(yesterday, today, ticker)
-            if df is None or df.empty:
-                return None
+            return None
 
         row = df.iloc[-1]
         price = _to_float_safe(row["종가"])
@@ -113,8 +119,8 @@ def _fetch_single_snapshot(ticker: str, name: str | None) -> dict[str, Any] | No
         change_pct = (change / prev_close * 100) if prev_close else 0.0
 
         return {
-            "symbol": f"{ticker}.KS",
-            "name": name,
+            "symbol": original_symbol,
+            "name": None,
             "price": round(price, 4),
             "change": round(change, 4),
             "change_percent": round(change_pct, 4),
@@ -168,11 +174,12 @@ class KoreanDataSource:
         if not symbols:
             return []
 
-        prepared = [(_strip_suffix(s), s) for s in symbols]
         results = await asyncio.gather(
             *(
-                asyncio.to_thread(_fetch_single_snapshot, ticker, None)
-                for ticker, _ in prepared
+                asyncio.to_thread(
+                    _fetch_single_snapshot, _strip_suffix(s), s,
+                )
+                for s in symbols
             )
         )
         return [r for r in results if r is not None]
