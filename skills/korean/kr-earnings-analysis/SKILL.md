@@ -29,7 +29,7 @@ license: "Apache-2.0"
 ### Step 1: 기업 식별 및 데이터 수집
 
 ```python
-from tools.kr_dart import search_dart_corp, get_dart_financials
+from tools.kr_dart import search_dart_corp, get_dart_financials, get_dart_financials_all
 from tools.kr_price import get_kr_stock_ohlcv, get_kr_fundamental
 
 # 기업 식별
