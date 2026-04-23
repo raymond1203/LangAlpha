@@ -145,6 +145,8 @@ market_data:
       markets: [us]          # US equities only
     - name: fmp
       markets: [all]         # FMP — global coverage, catch-all fallback
+    - name: korean
+      markets: [kr]          # FORK: 한국 시장 전용 (pykrx, daily only)
     - name: yfinance
       markets: [all]         # Free fallback — no API key required
 
