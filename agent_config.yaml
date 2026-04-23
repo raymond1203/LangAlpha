@@ -228,6 +228,17 @@ mcp:
       env:
         DART_API_KEY: "${DART_API_KEY}"
 
+    - name: "kr_ecos"
+      enabled: true
+      description: "Korean macroeconomic data from Bank of Korea ECOS — base rate, GDP, CPI, exchange rates, treasury yields"
+      instruction: "Use for Korean macro data: BOK base rate (for WACC), GDP growth, CPI, unemployment, KRW exchange rates, and government bond yields. Essential for Korean DCF models."
+      tool_exposure_mode: "detailed"
+      transport: "stdio"
+      command: "uv"
+      args: ["run", "python", "mcp_servers/korean/kr_ecos_mcp_server.py"]
+      env:
+        ECOS_API_KEY: "${ECOS_API_KEY}"
+
   # Tool discovery settings
   tool_discovery_enabled: true
   lazy_load: true # Load tools on-demand
