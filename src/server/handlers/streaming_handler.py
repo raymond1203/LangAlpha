@@ -68,7 +68,13 @@ MERGED_STREAM_CHUNK_MAX_BYTES_DEFAULT = get_merged_chunk_max_bytes()
 # exception in the chain sourced from a known provider SDK flips the whole
 # failure to ``upstream``.
 
+# Provider SDK and LangChain-wrapper module prefixes. Any exception in the
+# cause chain whose ``__module__`` matches one of these flips the whole
+# failure to ``upstream``. Keep in sync with the SDKs wired up in
+# ``src/llms/llm.py`` — missing a prefix means the user sees "our service
+# failed" for what's really a provider error.
 _UPSTREAM_MODULE_PREFIXES: tuple[str, ...] = (
+    # Raw provider SDKs
     "anthropic",
     "openai",
     "google.api_core",
@@ -76,6 +82,18 @@ _UPSTREAM_MODULE_PREFIXES: tuple[str, ...] = (
     "google.generativeai",
     "cohere",
     "httpx",
+    # LangChain wrappers — their exceptions may not chain through the raw SDK
+    # when the wrapper normalizes errors, so match them directly.
+    "langchain_openai",
+    "langchain_anthropic",
+    "langchain_deepseek",
+    "langchain_qwq",
+    "langchain_google_genai",
+    "langchain_google_vertexai",
+    "langchain_mistralai",
+    "langchain_together",
+    "langchain_groq",
+    "groq",
 )
 
 _STATUS_CODE_RE = re.compile(r"\b([45]\d{2})\b")

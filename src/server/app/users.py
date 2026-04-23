@@ -323,12 +323,15 @@ def _validate_custom_models(custom_models: list, custom_providers: list | None =
 
     Raises HTTPException 400 on invalid data.
     """
-    from src.llms.llm import ModelConfig, CUSTOM_MODEL_NAME_RE
+    from src.llms.llm import LLM, CUSTOM_MODEL_NAME_RE
 
     if not isinstance(custom_models, list):
         raise HTTPException(status_code=400, detail="custom_models must be a list")
 
-    mc = ModelConfig()
+    # Reuse the process-wide singleton — building a fresh ModelConfig on every
+    # preferences PUT re-parses models.json + re-scans _flat_providers for
+    # nothing (the manifest is static).
+    mc = LLM.get_model_config()
     name_re = re.compile(CUSTOM_MODEL_NAME_RE)
     seen_names: set[str] = set()
 
@@ -425,9 +428,9 @@ def _validate_custom_providers(custom_providers: list) -> None:
     if not isinstance(custom_providers, list):
         raise HTTPException(status_code=400, detail="custom_providers must be a list")
 
-    from src.llms.llm import ModelConfig
+    from src.llms.llm import LLM
 
-    mc = ModelConfig()
+    mc = LLM.get_model_config()
     builtin = set(mc.get_byok_eligible_providers())
     name_re = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$")
     seen: set[str] = set()

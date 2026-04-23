@@ -2917,7 +2917,11 @@ export function useChatMessages(
                 message: errorMessage as string,
                 kind,
                 statusCode: typeof event.status_code === 'number' ? event.status_code : undefined,
-                hints: Array.isArray(event.hints)
+                // ``hints`` are only meaningful for upstream provider errors
+                // (the bullets say "check your API key / plan / provider
+                // status"). An internal error doesn't get hints even if the
+                // backend ever starts emitting them for some future variant.
+                hints: kind === 'upstream' && Array.isArray(event.hints)
                   ? (event.hints.filter(isUpstreamHint) as StructuredError['hints'])
                   : undefined,
               }

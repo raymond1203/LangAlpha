@@ -592,12 +592,26 @@ async def resolve_llm_config(
         results = await asyncio.gather(*[_resolve_one(m) for m in all_models])
 
         sub_count = len(subsidiary_pairs)
-        for i, (role, _) in enumerate(subsidiary_pairs):
-            client, _source = results[i]
+        for i, (role, sub_name) in enumerate(subsidiary_pairs):
+            client, source = results[i]
             if client:
                 if config is base_config:
                     config = config.model_copy(deep=True)
                 config.subsidiary_llm_clients[role] = client
+                continue
+            # Mirror the fallback-loop warning so silently-dropped subsidiaries
+            # (e.g. user picked a custom compaction model without a BYOK key)
+            # surface in the logs. Main model stays hard-raised at the preflight;
+            # subsidiaries degrade: compaction falls back to the main llm_client,
+            # fetch re-constructs from the name via the factory.
+            if source is not None and source != ModelSource.SYSTEM:
+                logger.warning(
+                    "[CHAT] Subsidiary role '%s' model '%s' is a custom model "
+                    "without a usable BYOK key — falling back to default. "
+                    "Add a key in Settings to enable.",
+                    role,
+                    sub_name,
+                )
 
         # Merge resolved OAuth/BYOK clients with platform fallbacks.
         # For each fallback model: use the pre-resolved client if available,
