@@ -74,8 +74,8 @@ def _make_response(
         resp["count"] = count
     elif isinstance(data, list):
         resp["count"] = len(data)
-    elif isinstance(data, dict):
-        resp["count"] = len(data)
+    elif isinstance(data, dict) and data:
+        resp["count"] = 1
     resp.update(extra)
     return resp
 

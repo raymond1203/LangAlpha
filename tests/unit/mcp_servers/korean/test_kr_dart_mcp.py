@@ -5,10 +5,12 @@ Tests all tools using mocked OpenDartReader responses.
 
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 import pytest
 
 from mcp_servers.korean.kr_dart_mcp_server import (
+    _df_to_records,
     get_dart_company_info,
     get_dart_disclosures,
     get_dart_financials,
@@ -16,6 +18,34 @@ from mcp_servers.korean.kr_dart_mcp_server import (
     get_dart_major_shareholders,
     search_dart_corp,
 )
+
+
+# ============================================================================
+# _df_to_records
+# ============================================================================
+
+
+class TestDfToRecords:
+    def test_nan_converted_to_none(self):
+        df = pd.DataFrame({
+            "name": ["삼성전자", "SK하이닉스"],
+            "value": [100.5, np.nan],
+            "count": [10, np.nan],
+        })
+
+        records = _df_to_records(df)
+
+        assert len(records) == 2
+        assert records[0]["name"] == "삼성전자"
+        assert records[0]["value"] == 100.5
+        assert records[1]["value"] is None
+        assert records[1]["count"] is None
+
+    def test_empty_dataframe(self):
+        assert _df_to_records(pd.DataFrame()) == []
+
+    def test_none_input(self):
+        assert _df_to_records(None) == []
 
 
 # ============================================================================
