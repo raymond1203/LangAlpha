@@ -31,6 +31,7 @@ from src.server.utils.directive_context import (
     build_directive_reminder,
     parse_directive_contexts,
 )
+from src.llms.callbacks import init_cost_tracker  # FORK: Stage A
 from src.llms.llm import get_input_modalities
 from src.server.utils.multimodal_context import (
     build_attachment_metadata,
@@ -194,6 +195,8 @@ async def astream_flash_workflow(
         # =================================================================
 
         token_callback, tool_tracker = init_tracking(thread_id)
+        # FORK: Stage A — 비용/지연 관측 콜백 (Flash 모드 전용 태그)
+        cost_callback = init_cost_tracker(thread_id, default_tag="flash")
 
         # =================================================================
         # Build Flash Agent Graph
@@ -319,6 +322,7 @@ async def astream_flash_workflow(
             effective_model=effective_model,
             is_byok=is_byok,
             recursion_limit=get_flash_recursion_limit(),
+            cost_callback=cost_callback,  # FORK: Stage A
         )
 
         # Create stream handler

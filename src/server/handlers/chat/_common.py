@@ -637,6 +637,7 @@ def build_graph_config(
     recursion_limit: int,
     plan_mode: bool | None = None,
     extra_configurable: dict | None = None,
+    cost_callback=None,  # FORK: Stage A 비용 관측 콜백 (src/llms/callbacks.py)
 ) -> dict:
     """Build the LangGraph ``config`` dict shared by flash and PTC handlers.
 
@@ -688,6 +689,10 @@ def build_graph_config(
     callbacks: list = []
     if token_callback:
         callbacks.append(token_callback)
+
+    # FORK: Stage A — 비용/지연 관측 콜백 (있을 때만)
+    if cost_callback:
+        callbacks.append(cost_callback)
 
     langsmith_tracer = get_filtered_langsmith_tracer()
     if langsmith_tracer:
