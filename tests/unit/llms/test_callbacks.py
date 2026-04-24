@@ -37,6 +37,7 @@ class TestCostTrackingCallback:
     def test_records_basic_call_with_pricing(self, tmp_path, monkeypatch):
         """정상 호출 시 토큰/비용/지연이 기록된다."""
         monkeypatch.setenv("COST_LOG_DIR", str(tmp_path))
+        monkeypatch.setenv("COST_LOG_ENABLED", "true")
         cb = CostTrackingCallback(thread_id="abcd1234", default_tag="ptc")
 
         run_id = uuid4()
@@ -68,6 +69,7 @@ class TestCostTrackingCallback:
     def test_default_tag_when_metadata_missing(self, tmp_path, monkeypatch):
         """metadata 없이 호출돼도 default_tag 가 기록된다."""
         monkeypatch.setenv("COST_LOG_DIR", str(tmp_path))
+        monkeypatch.setenv("COST_LOG_ENABLED", "true")
         cb = CostTrackingCallback(thread_id="t1234", default_tag="flash")
 
         run_id = uuid4()
@@ -87,6 +89,7 @@ class TestCostTrackingCallback:
     def test_missing_pricing_does_not_crash(self, tmp_path, monkeypatch):
         """pricing 못 찾으면 cost=0 + error 로 기록되고 예외 없음."""
         monkeypatch.setenv("COST_LOG_DIR", str(tmp_path))
+        monkeypatch.setenv("COST_LOG_ENABLED", "true")
         cb = CostTrackingCallback(thread_id="x9999", default_tag="ptc")
 
         run_id = uuid4()

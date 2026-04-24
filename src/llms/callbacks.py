@@ -50,8 +50,10 @@ class CostTrackingCallback(BaseCallbackHandler):
 
     기록 채널:
     - 항상: 구조화된 JSON 로그 라인 (logger.info)
-    - ``COST_LOG_ENABLED=true`` (기본값): ``./log/cost/YYYY-MM-DD/HHMM-thread.jsonl``
-      에 append. ``COST_LOG_DIR`` 환경변수로 디렉토리 오버라이드.
+    - ``COST_LOG_ENABLED=true`` (기본값): ``./log/cost/YYYY-MM-DD/HHMM-{last4}.jsonl``
+      에 append. 파일명은 ``result_logger.py`` 와 동일하게 thread_id 의 마지막
+      4자리를 사용 (짧은 윈도우 내 충돌 확률 낮음). ``COST_LOG_DIR`` 환경변수로
+      디렉토리 오버라이드.
     - ``AWS_CLOUDWATCH_METRICS=true`` 시 ``boto3`` 로 custom metric 발행
       (Stage D 에서 실제 연결; 여기서는 stub 만 제공).
 

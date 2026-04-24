@@ -81,7 +81,7 @@ ptc-cli = { path = "libs/ptc-cli", editable = true }
 
 [project.optional-dependencies]
 dev = [
-    "ruff",
+    "ruff>=0.15.11",
     "black>=24.2.0",
     "langgraph-cli[inmem]>=0.2.10",
 ]

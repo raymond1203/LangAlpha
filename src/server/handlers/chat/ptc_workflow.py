@@ -37,6 +37,7 @@ from src.server.utils.directive_context import (
     build_directive_reminder,
     parse_directive_contexts,
 )
+from src.llms.callbacks import init_cost_tracker  # FORK: Stage A
 from src.llms.llm import get_input_modalities
 from src.server.utils.multimodal_context import (
     build_attachment_metadata,
@@ -325,8 +326,6 @@ async def astream_ptc_workflow(
 
         token_callback, tool_tracker = init_tracking(thread_id)
         # FORK: Stage A — 비용/지연 관측 콜백 (PTC 메인 루프 태그)
-        from src.llms.callbacks import init_cost_tracker
-
         cost_callback = init_cost_tracker(thread_id, default_tag="ptc")
 
         _mark_phase("db_setup")
