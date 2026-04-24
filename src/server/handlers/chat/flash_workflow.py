@@ -194,6 +194,10 @@ async def astream_flash_workflow(
         # =================================================================
 
         token_callback, tool_tracker = init_tracking(thread_id)
+        # FORK: Stage A — 비용/지연 관측 콜백 (Flash 모드 전용 태그)
+        from src.llms.callbacks import init_cost_tracker
+
+        cost_callback = init_cost_tracker(thread_id, default_tag="flash")
 
         # =================================================================
         # Build Flash Agent Graph
@@ -319,6 +323,7 @@ async def astream_flash_workflow(
             effective_model=effective_model,
             is_byok=is_byok,
             recursion_limit=get_flash_recursion_limit(),
+            cost_callback=cost_callback,  # FORK: Stage A
         )
 
         # Create stream handler
