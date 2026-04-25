@@ -37,7 +37,7 @@ QueryClientProvider (React Query — 2min staleTime, retry: 1)
 
 **`components/Main/Main.tsx`** handles authenticated routes inside the app shell (Sidebar + Main). All pages are **lazy-loaded** with `React.lazy` and animated via `AnimatePresence` (keyed by top-level path segment):
 
-- `/dashboard` — Dashboard (watchlist, portfolio, news)
+- `/dashboard` — Dashboard (configurable widget gallery: watchlist, portfolio, news, TradingView widgets, mini-chart grid). Layout + per-widget settings stored in user preferences; see `pages/Dashboard/widgets/framework/`.
 - `/chat`, `/chat/:workspaceId`, `/chat/t/:threadId` — ChatAgent
 - `/market` — MarketView (real-time charts)
 - `/automations` — Automations
@@ -59,6 +59,8 @@ Controlled by `VITE_SUPABASE_URL`:
 **File uploads (memo):** Use the same axios instance with `multipart/form-data`. Memo upload accepts PDF, markdown, plain text, CSV, and JSON; the backend extracts text from PDFs, generates metadata asynchronously via an LLM, and streams the original bytes back through `GET /api/v1/memo/user/download?key=...` for in-browser preview. UI lives in `pages/ChatAgent/components/MemoPanel.tsx` + `FilePanelMemo.tsx`, hooks in `pages/ChatAgent/hooks/useMemo.ts`.
 
 **React Query:** Global `QueryClient` in `main.tsx`. Key factory in `lib/queryKeys.ts` — hierarchical keys enabling prefix-based invalidation (e.g., invalidate `queryKeys.user.all` to refresh all user-related data). Shared hooks in `hooks/` (`useUser`, `useWorkspaces`, `useWorkspace`, `usePreferences`, `useUpdatePreferences`, `useNetworkStatus`).
+
+**Dashboard preferences:** `useDashboardPrefs` (in `pages/Dashboard/widgets/framework/`) reads layout + per-widget config from `user.preferences.dashboard`, validates each widget config through a Zod schema (`configSchemas.ts`), and writes back via a guarded writer (`dashboardPrefsWriter.ts`) that survives cross-tab races and cold-cache mounts. Cross-tab updates land via the `usePreferences` query cache; the dashboard re-renders without a network round-trip.
 
 ### API Layer Pattern
 
