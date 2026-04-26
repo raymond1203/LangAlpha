@@ -8,10 +8,17 @@ vi.mock('../../utils/api', () => ({
   getNews: vi.fn(),
   getIndices: vi.fn(),
   INDEX_SYMBOLS: ['GSPC', 'IXIC', 'DJI', 'RUT', 'VIX'],
+  KR_INDEX_SYMBOLS: ['KS11', 'KQ11', 'KS200'],
   fallbackIndex: vi.fn((s: string) => ({
     symbol: s, name: s, price: 0, change: 0, changePercent: 0, isPositive: true, sparklineData: [],
   })),
   normalizeIndexSymbol: vi.fn((s: string) => String(s).replace(/^\^/, '').toUpperCase()),
+  getIndexSetForLocale: vi.fn((locale?: string | null) => {
+    if (locale && locale.toLowerCase().startsWith('ko')) {
+      return { symbols: ['KS11', 'KQ11', 'KS200'], names: { KS11: '코스피', KQ11: '코스닥', KS200: '코스피 200' } };
+    }
+    return { symbols: ['GSPC', 'IXIC', 'DJI', 'RUT', 'VIX'], names: { GSPC: 'S&P 500', IXIC: 'NASDAQ', DJI: 'Dow Jones', RUT: 'Russell 2000', VIX: 'VIX' } };
+  }),
 }));
 
 vi.mock('@/lib/marketUtils', () => ({

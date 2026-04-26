@@ -361,10 +361,18 @@ function IndexMovementCard({ indices = [], loading = false }: IndexMovementCardP
     return <IndexStackWidget indices={indices} />;
   }
 
+  // FORK: locale 별 인덱스 개수 (US=5, KR=3) 에 맞춰 xl 그리드 컬럼 수 동적 결정.
+  // Tailwind 가 dynamic class 를 purge 하므로 정적 매핑만 사용.
+  const xlColsClass =
+    indices.length >= 5 ? 'xl:grid-cols-5'
+      : indices.length === 4 ? 'xl:grid-cols-4'
+        : 'xl:grid-cols-3';
+  const skeletonCount = indices.length || 5;
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+    <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 ${xlColsClass} gap-4`}>
       {loading ? (
-        <IndexSkeleton count={5} />
+        <IndexSkeleton count={skeletonCount} />
       ) : (
         indices.map((index, i) => (
           <IndexCard key={index.symbol} index={index} delay={i} />
