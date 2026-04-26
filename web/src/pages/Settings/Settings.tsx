@@ -13,6 +13,14 @@ import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/queryKeys';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useTranslation } from 'react-i18next';
+// FORK: locale 단일 진실 소스 — i18n.ts 의 SUPPORTED_LOCALES 활용
+import { SUPPORTED_LOCALES, type SupportedLocale } from '@/i18n';
+
+const LOCALE_LABELS: Record<SupportedLocale, string> = {
+  'en-US': 'English (United States)',
+  'ko-KR': '한국어',
+  'zh-CN': '中文（简体）',
+};
 import { useToast } from '@/components/ui/use-toast';
 import { getFlashWorkspace } from '@/pages/ChatAgent/utils/api';
 import ConfirmDialog from '@/pages/Dashboard/components/ConfirmDialog';
@@ -181,8 +189,7 @@ function Settings() {
 
   const locales = [
     { value: '', label: t('settings.selectLocale') },
-    { value: 'en-US', label: 'English (United States)' },
-    { value: 'zh-CN', label: '中文（简体）' },
+    ...SUPPORTED_LOCALES.map((value) => ({ value, label: LOCALE_LABELS[value] })),
   ];
 
   // Sync tab with URL search params
@@ -507,7 +514,8 @@ function Settings() {
 
   const handleLocaleChange = (newLocale: string) => {
     setLocale(newLocale);
-    if (newLocale === 'en-US' || newLocale === 'zh-CN') {
+    // FORK: SUPPORTED_LOCALES 가 단일 진실 소스 — 신규 locale 추가 시 자동 반영
+    if ((SUPPORTED_LOCALES as readonly string[]).includes(newLocale)) {
       i18n.changeLanguage(newLocale);
       localStorage.setItem('locale', newLocale);
     }
