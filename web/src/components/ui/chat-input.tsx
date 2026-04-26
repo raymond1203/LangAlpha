@@ -6,6 +6,16 @@ import {
   Mic, MicOff, Sparkles,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+// FORK: locale 단일 진실 소스 — STT 언어를 SUPPORTED_LOCALES 로부터 derive
+import { SUPPORTED_LOCALES, type SupportedLocale } from '@/i18n';
+
+function pickRecognitionLang(uiLang: string): SupportedLocale {
+  // Match by 2-letter prefix so 'ko'/'ko-KP' → 'ko-KR' 등 유연 매칭
+  const prefix = uiLang.split('-')[0];
+  return (
+    SUPPORTED_LOCALES.find((l) => l.startsWith(prefix + '-')) ?? 'en-US'
+  );
+}
 import { useNavigate } from 'react-router-dom';
 import { TokenUsageRing, type TokenUsageData } from './token-usage-ring';
 import {
@@ -366,8 +376,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
       const recognition = new SpeechRecognitionAPI();
       recognition.continuous = true;
       recognition.interimResults = true;
-      // Derived purely from current UI locale
-      recognition.lang = i18n.language.startsWith('zh') ? 'zh-CN' : 'en-US';
+      // Derived purely from current UI locale (FORK: SUPPORTED_LOCALES 활용)
+      recognition.lang = pickRecognitionLang(i18n.language);
 
       // Capture message BEFORE starting recognition
       const startMessage = messageRef.current.trim();

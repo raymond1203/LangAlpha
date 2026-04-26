@@ -5,7 +5,9 @@ import koKR from './locales/ko-KR.json';
 import zhCN from './locales/zh-CN.json';
 
 // FORK: ko-KR 추가 — 한국 사용자 첫 인상 한국화
-const SUPPORTED_LOCALES = ['en-US', 'ko-KR', 'zh-CN'] as const;
+// 단일 진실 소스 — Settings 드롭다운, STT 분기 등 다운스트림 소비처는 이 상수를 import.
+export const SUPPORTED_LOCALES = ['en-US', 'ko-KR', 'zh-CN'] as const;
+export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 
 function detectLocale(): string {
   // 1. Explicit user choice persisted in localStorage
