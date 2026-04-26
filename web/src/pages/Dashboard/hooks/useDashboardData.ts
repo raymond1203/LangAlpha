@@ -62,7 +62,7 @@ function formatRelativeTime(timestamp: string | number | null | undefined): stri
  * Eliminates race conditions and reduces boilerplate of manual useEffects.
  */
 export function useDashboardData(): DashboardData {
-  // FORK: locale-aware 인덱스 set 선택 (ko-KR → KOSPI/KOSDAQ/KOSPI 200/V-KOSPI, 그 외 → US 5종)
+  // FORK: locale-aware 인덱스 set 선택 (ko-* → KOSPI/KOSDAQ/KOSPI 200, 그 외 → US 5종)
   const { i18n } = useTranslation();
   const indexSet = useMemo(() => getIndexSetForLocale(i18n.language), [i18n.language]);
 

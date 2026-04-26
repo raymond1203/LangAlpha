@@ -146,10 +146,17 @@ function normalizeIndexSymbol(s: string): string {
   return String(s).replace(/^\^/, '').toUpperCase();
 }
 
+/**
+ * 정규화된 심볼의 표시명 도출. US set → KR set → 호출자 fallback (예: snapshot.name) → 심볼 자체 순서로 resolve.
+ */
+function getIndexDisplayName(norm: string, fallback?: string | null): string {
+  return INDEX_NAMES[norm] ?? KR_INDEX_NAMES[norm] ?? fallback ?? norm;
+}
+
 function fallbackIndex(norm: string): IndexData {
   return {
     symbol: norm,
-    name: INDEX_NAMES[norm] ?? KR_INDEX_NAMES[norm] ?? norm,
+    name: getIndexDisplayName(norm),
     price: 0,
     change: 0,
     changePercent: 0,
@@ -197,7 +204,7 @@ export async function getIndex(symbol: string, _opts: Record<string, unknown> = 
 
     const result: IndexData = {
       symbol: norm,
-      name: INDEX_NAMES[norm] ?? KR_INDEX_NAMES[norm] ?? norm,
+      name: getIndexDisplayName(norm),
       price: Math.round(close * 100) / 100,
       change: Math.round(change * 100) / 100,
       changePercent: Math.round(changePercent * 100) / 100,
@@ -250,7 +257,7 @@ export async function getIndices(symbols: string[] = INDEX_SYMBOLS, _opts: Recor
       const changePct = snap.change_percent ?? (snap.previous_close ? ((change / snap.previous_close) * 100) : 0);
       return {
         symbol: norm,
-        name: INDEX_NAMES[norm] ?? KR_INDEX_NAMES[norm] ?? snap.name ?? norm,
+        name: getIndexDisplayName(norm, snap.name),
         price: Math.round(snap.price * 100) / 100,
         change: Math.round(change * 100) / 100,
         changePercent: Math.round(changePct * 100) / 100,
