@@ -200,10 +200,8 @@ class GinlixDataSource:
 
         FORK (#37): ginlix-data 는 US 시장만 다루므로 region='us' 또는 None 만 응답.
         """
-        if region is not None and region != "us":
-            raise NotImplementedError(
-                f"GinlixDataSource market_status only supports region='us', got {region!r}"
-            )
+        from src.data_client.base import require_region
+        require_region(region, "us", "GinlixDataSource.get_market_status")
         return await self.client.get_market_status(user_id=user_id)
 
     @staticmethod

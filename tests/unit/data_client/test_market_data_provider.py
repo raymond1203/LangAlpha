@@ -314,6 +314,45 @@ class TestMarketStatusRegionRouting:
         result2 = await source.get_market_status(region=None)
         assert "market" in result2
 
+    @pytest.mark.asyncio
+    async def test_real_failure_surfaces_after_notimpl_skip(self):
+        """첫 source 가 NotImplementedError 로 skip 되고 두 번째가 generic Exception 으로
+        실패하면 generic Exception 이 raise (last_exc semantics).
+        """
+        class FailingSource:
+            async def get_market_status(self, user_id=None, region=None):
+                raise RuntimeError("upstream fetch boom")
+            async def close(self):
+                pass
+
+        kr_only = _RegionAwareSource("korean", supports={"kr"})
+        provider = MarketDataProvider([
+            ProviderEntry("korean", kr_only, {"kr"}),
+            ProviderEntry("primary", FailingSource(), {"all"}),
+        ])
+        with pytest.raises(RuntimeError, match="upstream fetch boom"):
+            await provider.get_market_status(region="us")
+
+    @pytest.mark.asyncio
+    async def test_notimpl_after_real_failure_surfaces_notimpl(self):
+        """첫 source 가 generic Exception, 두 번째가 NotImplementedError → 마지막
+        last_exc (NotImplementedError) 가 raise. real failure 가 sandbagged 되는 게
+        의도된 동작인지를 명세화.
+        """
+        class FailingSource:
+            async def get_market_status(self, user_id=None, region=None):
+                raise RuntimeError("upstream fetch boom")
+            async def close(self):
+                pass
+
+        skip_src = _RegionAwareSource("yfinance", supports={"us"})
+        provider = MarketDataProvider([
+            ProviderEntry("primary", FailingSource(), {"all"}),
+            ProviderEntry("yfinance", skip_src, {"all"}),
+        ])
+        with pytest.raises(NotImplementedError):
+            await provider.get_market_status(region="kr")
+
 
 # ---------------------------------------------------------------------------
 # FMPDataSource interval guard tests

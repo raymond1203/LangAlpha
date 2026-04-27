@@ -127,10 +127,8 @@ class FMPDataSource:
 
         FORK (#37): NYSE 시간 기반이라 region='us' 또는 None 에만 응답.
         """
-        if region is not None and region != "us":
-            raise NotImplementedError(
-                f"FMPDataSource market_status only supports region='us', got {region!r}"
-            )
+        from src.data_client.base import require_region
+        require_region(region, "us", "FMPDataSource.get_market_status")
         from src.utils.market_hours import current_market_phase
 
         phase = current_market_phase()

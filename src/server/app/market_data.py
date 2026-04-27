@@ -790,5 +790,9 @@ async def get_market_status(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching market status: {e}")
+        # FORK (#37): region 을 로그에 포함 — KR/US 사용자별 실패 attribution.
+        logger.error(
+            f"Error fetching market status (region={effective_region!r}, "
+            f"raw_region={region!r}): {e}"
+        )
         raise HTTPException(status_code=500, detail=str(e))
