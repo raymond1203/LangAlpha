@@ -30,6 +30,8 @@ import { loadPref, savePref } from '../utils/prefs';
 import type { SnapshotData } from '@/types/market';
 import type { BarData } from '../hooks/useMarketDataWS';
 import { useOnClickOutside } from '@/hooks/useOnClickOutside';
+// FORK (#33): KR symbol (.KS / .KQ) 일 때 차트 거래일 도출이 KST 기준이도록 분기
+import { getTimezoneForSymbol } from '@/lib/marketTimezone';
 
 interface ChartDataBar {
   time: number;
@@ -276,8 +278,10 @@ const MarketChart = React.memo(forwardRef<MarketChartHandle, MarketChartProps>((
           gapFillInProgressRef.current = true;
           (async () => {
             try {
-              const fromDate = new Date(lastDataTime * 1000).toISOString().split('T')[0];
-              const toDate = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+              // FORK (#33): from/to 모두 시장 timezone 기준 — UTC 와 섞이면 KST/ET 자정 경계에서 하루 어긋남.
+              const tz = getTimezoneForSymbol(symbol);
+              const fromDate = new Date(lastDataTime * 1000).toLocaleDateString('en-CA', { timeZone: tz });
+              const toDate = new Date().toLocaleDateString('en-CA', { timeZone: tz });
               const sym = symbol;
               const result = await fetchStockData(sym, interval, fromDate, toDate);
               if (symbolRef.current !== sym) return; // symbol changed, discard stale data
@@ -1255,13 +1259,14 @@ const MarketChart = React.memo(forwardRef<MarketChartHandle, MarketChartProps>((
         let fromDate, toDate;
         if (loadDays > 0) {
           const now = new Date();
-          toDate = now.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+          const tz = getTimezoneForSymbol(symbol);
+          toDate = now.toLocaleDateString('en-CA', { timeZone: tz });
           {
             const maxMaPeriod = Math.max(...enabledMaPeriodsRef.current, 0);
             const overheadDays = Math.ceil((maxMaPeriod / (BARS_PER_DAY[interval] || 1)) * 1.5);
             const from = new Date(now);
             from.setDate(from.getDate() - loadDays - overheadDays);
-            fromDate = from.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+            fromDate = from.toLocaleDateString('en-CA', { timeZone: tz });
           }
         }
 
@@ -1324,10 +1329,16 @@ const MarketChart = React.memo(forwardRef<MarketChartHandle, MarketChartProps>((
               if (interval === '1s' && oldestDateRef.current) {
                 const firstBarDate = new Date(oldestDateRef.current * 1000);
                 const firstBarMins = firstBarDate.getUTCHours() * 60 + firstBarDate.getUTCMinutes();
-                const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-                const firstBarDateStr = firstBarDate.toISOString().split('T')[0];
+                // FORK (#33): firstBarDateStr 도 시장 timezone 기준으로 도출 — todayStr 과 일관.
+                const tz = getTimezoneForSymbol(symbol);
+                const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+                const firstBarDateStr = firstBarDate.toLocaleDateString('en-CA', { timeZone: tz });
 
-                // Fill if first bar is from today and starts after 4:30 AM ET (270 mins)
+                // Fill if first bar is from today and starts after 4:30 AM ET (270 mins).
+                // TODO (#33): 270min 은 NYSE 09:30 – 4:30 AM pre-market 기준 (US/ET-specific).
+                //   1s interval 은 현재 supports1sInterval(symbol) 가 US-only 로 게이트해 안전하지만,
+                //   향후 KR 등이 1s 지원되면 getTimezoneForSymbol(symbol) 기반 market-aware
+                //   threshold 로 분기 필요 (예: KST 09:00 시작 → 8:30 KST = ?).
                 if (firstBarDateStr === todayStr && firstBarMins > 270) {
                   try {
                     const gapResult = await fetchStockData(capturedSym, '1s', todayStr, todayStr,
@@ -1449,13 +1460,15 @@ const MarketChart = React.memo(forwardRef<MarketChartHandle, MarketChartProps>((
       if (lastLiveTickTimeRef.current > Date.now() - 5000) return;
       try {
         const now = new Date();
-        const toDate = now.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+        const tz = getTimezoneForSymbol(symbol);
+        const toDate = now.toLocaleDateString('en-CA', { timeZone: tz });
 
-        // Delta-based: fetch only from last known bar's time onward
+        // Delta-based: fetch only from last known bar's time onward.
+        // FORK (#33): lastBar 의 fromDate 도 시장 timezone 기준 — toDate 와 일관.
         const lastBar = allDataRef.current?.[allDataRef.current.length - 1];
         const fromDate = lastBar
-          ? new Date(lastBar.time * 1000).toISOString().split('T')[0]
-          : (() => { const d = new Date(now); d.setDate(d.getDate() - 3); return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); })();
+          ? new Date(lastBar.time * 1000).toLocaleDateString('en-CA', { timeZone: tz })
+          : (() => { const d = new Date(now); d.setDate(d.getDate() - 3); return d.toLocaleDateString('en-CA', { timeZone: tz }); })();
 
         const result = await fetchStockData(symbol, interval, fromDate, toDate);
         if (aborted) return;
