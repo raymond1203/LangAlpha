@@ -25,6 +25,25 @@ class FetchResult:
     truncated: bool = False
 
 
+def require_region(
+    region: str | None,
+    supported: str,
+    source_name: str,
+) -> None:
+    """Raise ``NotImplementedError`` if ``region`` is set and doesn't match ``supported``.
+
+    Centralizes the region-guard pattern used across ``get_market_status`` of
+    Korean / Yfinance / FMP / GinlixData sources. Each source covers exactly
+    one region for market_status; mismatched calls signal MarketDataProvider
+    to fall back to the next candidate. ``source_name`` should be the qualified
+    method name (e.g. ``"KoreanDataSource.get_market_status"``) for clear logs.
+    """
+    if region is not None and region != supported:
+        raise NotImplementedError(
+            f"{source_name} only supports region={supported!r}, got {region!r}"
+        )
+
+
 class MarketDataSource(Protocol):
     """Unified interface for OHLCV price data fetching."""
 
@@ -75,8 +94,13 @@ class MarketDataSource(Protocol):
     async def get_market_status(
         self,
         user_id: str | None = None,
+        region: str | None = None,
     ) -> dict[str, Any]:
-        """Return current market status."""
+        """Return current market status. ``region`` 이 명시되면 source 는 자기가
+        지원하지 않는 region 일 때 ``NotImplementedError`` 를 raise — Provider
+        는 chain 의 다음 candidate 로 fallback. ``region=None`` 은 backward-compat
+        으로 source 의 기본 (자기 default region) status 반환.
+        """
         ...
 
     async def close(self) -> None:

@@ -194,8 +194,14 @@ class GinlixDataSource:
     async def get_market_status(
         self,
         user_id: str | None = None,
+        region: str | None = None,
     ) -> dict[str, Any]:
-        """Fetch current market status from ginlix-data."""
+        """Fetch current market status from ginlix-data.
+
+        FORK (#37): ginlix-data 는 US 시장만 다루므로 region='us' 또는 None 만 응답.
+        """
+        from src.data_client.base import require_region
+        require_region(region, "us", "GinlixDataSource.get_market_status")
         return await self.client.get_market_status(user_id=user_id)
 
     @staticmethod
