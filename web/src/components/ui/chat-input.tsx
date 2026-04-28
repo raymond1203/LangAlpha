@@ -27,6 +27,9 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { supportsXhighEffort } from '@/lib/modelCapabilities';
 import { getSkills, getModelMetadata } from '../../pages/ChatAgent/utils/api';
 import { useToast } from './use-toast';
+import { ChatInputRegistry, ContextBus } from '@/lib/contextBus';
+import type { WidgetContextSnapshot } from '@/pages/Dashboard/widgets/framework/contextSnapshot';
+import { WidgetContextDeck } from '@/pages/Dashboard/widgets/framework/WidgetContextDeck';
 import './chat-input.css';
 
 /* --- TYPES --- */
@@ -62,6 +65,13 @@ interface ModelOptions {
   model: string | null;
   reasoningEffort: string | null;
   fastMode: boolean;
+  /**
+   * Widget context snapshots attached via the deck rail. Forwarded to the
+   * backend as `additional_context` items of `type: "widget"`. Image-bearing
+   * snapshots also produce a sibling `type: "image"` MultimodalContext item;
+   * see `widgetSnapshotsToContexts` in `pages/ChatAgent/utils/fileUpload.ts`.
+   */
+  widgetSnapshots?: WidgetContextSnapshot[];
 }
 
 interface ReadyAttachment {
@@ -74,6 +84,14 @@ interface ReadyAttachment {
 export interface ChatInputHandle {
   getModelOptions: () => ModelOptions;
   addContext: (ctx: { path?: string; snippet?: string; label?: string; lineStart?: number; lineEnd?: number; lineCount?: number; source?: string }) => void;
+  /**
+   * Imperatively add a widget context snapshot to the deck. Local-only —
+   * this does NOT publish to ContextBus. Use this when re-seeding the deck
+   * from `location.state` after a navigate (e.g. dashboard → chat handoff).
+   * Use `ContextBus.attach` when the user clicks "+" on a widget so every
+   * mounted chat input sees it.
+   */
+  addWidgetSnapshot: (snapshot: WidgetContextSnapshot) => void;
   setValue: (text: string) => void;
 }
 
@@ -90,8 +108,8 @@ export interface ChatInputProps {
   onStop?: () => void;
   placeholder?: string;
   files?: string[];
-  mode?: 'fast' | 'deep';
-  onModeChange?: (mode: 'fast' | 'deep') => void;
+  mode?: 'fast' | 'ptc';
+  onModeChange?: (mode: 'fast' | 'ptc') => void;
   workspaces?: Workspace[] | null;
   selectedWorkspaceId?: string | null;
   onWorkspaceChange?: ((wsId: string) => void) | null;
@@ -105,6 +123,7 @@ export interface ChatInputProps {
   initialModel?: string | null;
   threadModels?: string[];
   dropdownDirection?: 'up' | 'down';
+  minRows?: number;
 }
 
 /* --- UTILS --- */
@@ -221,27 +240,100 @@ function areModelsCompatible(modelA: string | null, modelB: string | null, metad
 
 /* --- MAIN COMPONENT --- */
 
-/**
- * ChatInput — unified chat input component used across the entire app.
- *
- * @param {Function}  onSend              - (message, planMode, attachments, slashCommands) => void
- * @param {boolean}   disabled
- * @param {boolean}   isLoading
- * @param {Function}  onStop
- * @param {string}    placeholder
- * @param {string[]}  files               - workspace file paths for @mention autocomplete
- * @param {string}    mode                - 'fast' | 'deep' — undefined = no toggle shown
- * @param {Function}  onModeChange        - (newMode) => void
- * @param {Array}     workspaces          - [{ workspace_id, name }] — null = hidden
- * @param {string}    selectedWorkspaceId
- * @param {Function}  onWorkspaceChange   - (wsId) => void
- * @param {Function}  onCaptureChart      - triggers chart screenshot capture (trading only)
- * @param {string}    chartImage          - base64 data URL of captured chart
- * @param {Function}  onRemoveChartImage
- * @param {string}    prefillMessage
- * @param {Function}  onClearPrefill
- */
 const speechSupported = typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+
+/* --- WIDGET CONTEXT DECK ---
+ *
+ * The chat-input live deck is a thin wrapper around the shared
+ * `WidgetContextDeck` component (in `pages/Dashboard/widgets/framework/`).
+ * The shared component owns card geometry, fanning, outside-click collapse,
+ * and the preview modal; we supply the live-deck-only chrome (eyebrow row
+ * with clear button, per-card remove `×`, fan-hint chevron) via render
+ * slots so the visual + behavioral contract stays identical to the
+ * chat-view inline deck.
+ */
+function ChatInputWidgetDeck({
+  snapshots,
+  fanned,
+  onToggle,
+  onCollapse,
+  onRemove,
+  onClear,
+  boundaryRef,
+}: {
+  snapshots: WidgetContextSnapshot[];
+  fanned: boolean;
+  onToggle: () => void;
+  onCollapse: () => void;
+  onRemove: (widgetId: string) => void;
+  onClear: () => void;
+  /** The chat-input outer container. Clicks within this boundary (textarea,
+   *  send button, attach controls) keep the deck fanned; only clicks fully
+   *  outside the chat input collapse it. */
+  boundaryRef: React.RefObject<HTMLElement | null>;
+}) {
+  const { t } = useTranslation();
+  const cardCount = snapshots.length;
+  return (
+    <WidgetContextDeck
+      snapshots={snapshots}
+      fanned={fanned}
+      onToggleFan={onToggle}
+      onCollapse={onCollapse}
+      boundaryRef={boundaryRef}
+      className="widget-drag-cancel"
+      testId="widget-context-deck"
+      eyebrow={
+        <div className="widget-deck-eyebrow">
+          <span className="widget-deck-eyebrow-left">
+            <span className="widget-deck-dot" />
+            {t('chat.widgetContext.inContext', { count: cardCount, defaultValue: '{{count}} in context' })}
+            {cardCount > 1 && !fanned && (
+              <span className="widget-deck-hint">{t('chat.widgetContext.fanHint', { defaultValue: 'click to fan' })}</span>
+            )}
+          </span>
+          <span className="widget-deck-eyebrow-right">
+            {fanned && cardCount > 1 && (
+              <button
+                type="button"
+                className="widget-deck-show-less"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCollapse();
+                }}
+              >
+                {t('chat.widgetContext.showLess', { defaultValue: 'Show less' })}
+              </button>
+            )}
+            <button
+              type="button"
+              className="widget-deck-clear"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClear();
+              }}
+            >
+              {t('chat.widgetContext.clear', { defaultValue: 'Clear' })}
+            </button>
+          </span>
+        </div>
+      }
+      renderCardSlotEnd={(s) => (
+        <button
+          type="button"
+          className="widget-deck-card-remove"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove(s.widget_id);
+          }}
+          aria-label={t('chat.widgetContext.removeAria', { defaultValue: 'Remove from context' })}
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+    />
+  );
+}
 
 const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput({
   onSend,
@@ -274,6 +366,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
   threadModels: threadModelsProp = [],
   // Dropdown direction: 'up' (default, for bottom-positioned inputs) or 'down' (for mid-page inputs like ThreadGallery)
   dropdownDirection = 'up',
+  // Minimum visible rows for the textarea (default 1 = compact; pass 2 for roomier non-ChatView callsites)
+  minRows = 1,
 }, ref) {
   const { t, i18n } = useTranslation();
   const { toast } = useToast();
@@ -313,6 +407,14 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
 
   // @file mention state
   const [mentionedFiles, setMentionedFiles] = useState<MentionedFile[]>([]);
+
+  // Widget context deck state. Snapshots arrive via ContextBus.attach (when
+  // the user clicks "+" on any widget on the page) or via addWidgetSnapshot
+  // (when re-seeding from location.state after a navigate). Each input
+  // mirrors the same global ContextBus state so two visible inputs always
+  // show the same deck.
+  const [widgetSnapshots, setWidgetSnapshots] = useState<WidgetContextSnapshot[]>([]);
+  const [deckFanned, setDeckFanned] = useState(false);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [autocompleteQuery, setAutocompleteQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -485,6 +587,12 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
       // Focus the textarea
       setTimeout(() => textareaRef.current?.focus(), 0);
     },
+    addWidgetSnapshot(snapshot) {
+      setWidgetSnapshots((prev) => {
+        if (prev.some((s) => s.widget_id === snapshot.widget_id)) return prev;
+        return [...prev, snapshot];
+      });
+    },
     setValue(text) {
       setMessage(text);
       setTimeout(() => textareaRef.current?.focus(), 0);
@@ -501,6 +609,37 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
   const autocompleteRef = useRef<HTMLDivElement>(null);
   const slashMenuRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  // Subscribe to ContextBus so this input mirrors the global widget-context
+  // deck. Multiple chat inputs can be visible simultaneously (hero card +
+  // ConversationWidget): they all subscribe and stay in sync. Detach events
+  // come from another input's deck card "×" — we filter our own state to
+  // match.
+  useEffect(() => {
+    const off = ContextBus.subscribe((event) => {
+      if (event.type === 'attach') {
+        setWidgetSnapshots((prev) => {
+          if (prev.some((s) => s.widget_id === event.snapshot.widget_id)) return prev;
+          return [...prev, event.snapshot];
+        });
+      } else if (event.type === 'detach') {
+        setWidgetSnapshots((prev) => prev.filter((s) => s.widget_id !== event.widgetId));
+      } else if (event.type === 'clear') {
+        setWidgetSnapshots([]);
+      }
+    });
+    return off;
+  }, []);
+
+  // Register this chat input's root element so the global ContextOverflowPill
+  // can probe visibility via IntersectionObserver and only show when zero
+  // chat inputs are in the viewport.
+  useEffect(() => {
+    const el = chatContainerRef.current;
+    if (!el) return;
+    const off = ChatInputRegistry.register(el);
+    return off;
+  }, []);
 
   const hasModeToggle = mode !== undefined && onModeChange !== undefined;
 
@@ -587,7 +726,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
         const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
         if (!isImage && !isPdf) continue;
       }
-      // PTC/deep: accept any file
+      // PTC: accept any file
       if (file.size > MAX_FILE_SIZE) continue;
       validFiles.push(file);
     }
@@ -884,7 +1023,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
   }, []);
 
   // --- Send ---
-  const hasContent = message.trim() || attachedFiles.length > 0 || !!chartImage || mentionedFiles.some((f) => f.snippet);
+  const hasContent = message.trim() || attachedFiles.length > 0 || !!chartImage || mentionedFiles.some((f) => f.snippet) || widgetSnapshots.length > 0;
 
   const handleSend = useCallback(() => {
     if (!hasContent || disabled) return;
@@ -911,18 +1050,30 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
       });
       finalMessage = finalMessage.trimEnd() + '\n' + blocks.join('\n');
     }
-    onSend(finalMessage, planMode, readyAttachments, slashCommands, { model: selectedModel, reasoningEffort, fastMode });
+    onSend(finalMessage, planMode, readyAttachments, slashCommands, {
+      model: selectedModel,
+      reasoningEffort,
+      fastMode,
+      widgetSnapshots: widgetSnapshots.length ? widgetSnapshots : undefined,
+    });
     setMessage('');
     attachedFiles.forEach(f => { if (f.preview) URL.revokeObjectURL(f.preview); });
     setAttachedFiles([]);
     setMentionedFiles([]);
     setSlashCommands([]);
+    // Clear widget deck on send. Other mounted chat inputs hear the same
+    // clear via ContextBus so the deck empties everywhere — single source
+    // of truth.
+    if (widgetSnapshots.length > 0) {
+      ContextBus.clear();
+    }
+    setDeckFanned(false);
     setShowAutocomplete(false);
     setShowSlashMenu(false);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
-  }, [hasContent, disabled, message, planMode, attachedFiles, onSend, mentionedFiles, slashCommands, selectedModel, reasoningEffort, fastMode, t]);
+  }, [hasContent, disabled, message, planMode, attachedFiles, onSend, mentionedFiles, slashCommands, selectedModel, reasoningEffort, fastMode, widgetSnapshots, t]);
 
   // --- Keyboard & Language Detection ---
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -980,15 +1131,32 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
       }
     }
 
-    if (e.key === 'Enter' && !e.shiftKey && !showAutocomplete) {
-      e.preventDefault();
-      handleSend();
+    if (e.key === 'Enter' && !showAutocomplete) {
+      // Cmd/Ctrl+Enter inserts a newline at the cursor (browsers suppress this by default)
+      if (e.metaKey || e.ctrlKey) {
+        e.preventDefault();
+        const ta = textareaRef.current;
+        if (ta) {
+          const start = ta.selectionStart;
+          const end = ta.selectionEnd;
+          const next = message.slice(0, start) + '\n' + message.slice(end);
+          setMessage(next);
+          requestAnimationFrame(() => {
+            ta.setSelectionRange(start + 1, start + 1);
+          });
+        }
+        return;
+      }
+      if (!e.shiftKey) {
+        e.preventDefault();
+        handleSend();
+      }
     }
 
     if (e.key === 'Escape' && showAutocomplete) {
       setShowAutocomplete(false);
     }
-  }, [showSlashMenu, filteredSlashCommands, slashActiveIndex, selectSlashCommand, showAutocomplete, filteredMentionFiles, activeIndex, selectFile, handleSend, isListening]);
+  }, [showSlashMenu, filteredSlashCommands, slashActiveIndex, selectSlashCommand, showAutocomplete, filteredMentionFiles, activeIndex, selectFile, handleSend, isListening, message]);
 
   // Workspace selector helpers
   const selectedWorkspaceName = useMemo(() => {
@@ -997,7 +1165,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
     return ws?.name || 'Workspace';
   }, [workspaces, selectedWorkspaceId]);
 
-  const showWorkspaceSelector = hasModeToggle && mode === 'deep' && workspaces && workspaces.length > 0;
+  const showWorkspaceSelector = hasModeToggle && mode === 'ptc' && workspaces && workspaces.length > 0;
 
   /** Render starred model items — used by both desktop submenu and mobile inline expand */
   const moreModelsItems = useMemo(() => {
@@ -1036,6 +1204,27 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
           </>
         )}
         <div className="flex flex-col px-3 pt-3 pb-2 gap-2">
+
+          {/* Widget context deck — top card visible, others peek behind */}
+          {widgetSnapshots.length > 0 && (
+            <ChatInputWidgetDeck
+              snapshots={widgetSnapshots}
+              fanned={deckFanned}
+              boundaryRef={chatContainerRef}
+              onToggle={() => setDeckFanned((p) => !p)}
+              onCollapse={() => setDeckFanned(false)}
+              onRemove={(widgetId) => {
+                // Local + bus: remove from this input AND publish detach so
+                // every other mounted input drops the same card.
+                setWidgetSnapshots((prev) => prev.filter((s) => s.widget_id !== widgetId));
+                ContextBus.detach(widgetId);
+              }}
+              onClear={() => {
+                ContextBus.clear();
+                setDeckFanned(false);
+              }}
+            />
+          )}
 
           {/* Slash command pills + Mention pills */}
           {(slashCommands.length > 0 || mentionedFiles.length > 0) && (
@@ -1184,9 +1373,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
               }}
               placeholder={isListening ? "" : placeholder}
               className={`w-full bg-transparent border-0 outline-none text-[var(--color-text-primary)] ${isMobile ? 'text-base' : 'text-sm'} placeholder:text-[var(--color-text-tertiary)] resize-none overflow-hidden leading-relaxed block transition-opacity duration-300 ${isListening ? 'opacity-20' : 'opacity-100'}`}
-              rows={1}
+              rows={minRows}
               disabled={disabled}
-              style={{ minHeight: '1.5em' }}
+              style={{ minHeight: `${minRows * 1.5}em` }}
             />
           </div>
 
@@ -1222,7 +1411,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
                 </button>
               )}
 
-              {/* Mode Toggle (fast/deep) */}
+              {/* Mode Toggle (fast/ptc) */}
               {hasModeToggle && (
                 <button
                   className="inline-flex items-center rounded-full border-none cursor-pointer"
@@ -1231,23 +1420,19 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
                     padding: '6px 10px',
                     fontSize: '13px',
                     fontWeight: 500,
-                    background: mode === 'deep' ? 'var(--color-accent-soft)' : 'transparent',
-                    color: mode === 'deep' ? 'var(--color-accent-light)' : 'var(--color-text-muted, #8b8fa3)',
-                    border: mode === 'deep' ? '1px solid var(--color-accent-overlay)' : '1px solid transparent',
+                    background: 'transparent',
+                    color: 'var(--color-text-muted, #8b8fa3)',
+                    border: '1px solid transparent',
                     transition: 'background 0.2s, color 0.2s, border-color 0.2s',
                   }}
-                  onClick={(e) => { e.stopPropagation(); onModeChange(mode === 'fast' ? 'deep' : 'fast'); }}
-                  onMouseEnter={(e) => {
-                    if (mode !== 'deep') e.currentTarget.style.background = 'var(--color-border-muted)';
-                  }}
-                  onMouseLeave={(e) => {
-                    if (mode !== 'deep') e.currentTarget.style.background = 'transparent';
-                  }}
+                  onClick={(e) => { e.stopPropagation(); onModeChange(mode === 'fast' ? 'ptc' : 'fast'); }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-border-muted)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                   type="button"
-                  title={mode === 'fast' ? 'Flash — quick answer using flash model' : 'Deep — full agent with workspace and tools'}
+                  title={mode === 'fast' ? 'Flash — quick answer using flash model' : 'PTC — full agent with workspace and tools'}
                 >
                   {mode === 'fast' ? <Zap className="h-4 w-4" /> : <FileStack className="h-4 w-4" />}
-                  <span>{mode === 'fast' ? 'Flash' : 'Deep'}</span>
+                  <span>{mode === 'fast' ? 'Flash' : 'PTC'}</span>
                 </button>
               )}
 
@@ -1302,8 +1487,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
                 </div>
               )}
 
-              {/* Plan Mode Toggle — shown when no mode toggle (PTC enforced) OR mode === 'deep' */}
-              {(!hasModeToggle || mode === 'deep') && (
+              {/* Plan Mode Toggle — shown when no mode toggle (PTC enforced) OR mode === 'ptc' */}
+              {(!hasModeToggle || mode === 'ptc') && (
                 <button
                   className={`inline-flex items-center rounded-full border-none cursor-pointer${planMode ? ' plan-mode-toggle-active' : ''}`}
                   style={{
@@ -1311,9 +1496,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
                     padding: '6px 10px',
                     fontSize: '13px',
                     fontWeight: 500,
-                    background: planMode ? 'var(--color-accent-soft)' : 'transparent',
-                    color: planMode ? 'var(--color-accent-light)' : 'var(--color-text-muted, #8b8fa3)',
-                    border: planMode ? '1px solid var(--color-accent-overlay)' : '1px solid transparent',
+                    background: planMode ? 'var(--color-border-muted)' : 'transparent',
+                    color: 'var(--color-text-muted, #8b8fa3)',
+                    border: '1px solid transparent',
                     transition: 'background 0.2s, color 0.2s, border-color 0.2s',
                   }}
                   onClick={(e) => { e.stopPropagation(); setPlanMode(!planMode); }}

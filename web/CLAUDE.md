@@ -37,7 +37,7 @@ QueryClientProvider (React Query — 2min staleTime, retry: 1)
 
 **`components/Main/Main.tsx`** handles authenticated routes inside the app shell (Sidebar + Main). All pages are **lazy-loaded** with `React.lazy` and animated via `AnimatePresence` (keyed by top-level path segment):
 
-- `/dashboard` — Dashboard (watchlist, portfolio, news)
+- `/dashboard` — Dashboard (configurable widget gallery: watchlist, portfolio, news, TradingView widgets, mini-chart grid). Layout + per-widget settings stored in user preferences; see `pages/Dashboard/widgets/framework/`.
 - `/chat`, `/chat/:workspaceId`, `/chat/t/:threadId` — ChatAgent
 - `/market` — MarketView (real-time charts)
 - `/automations` — Automations
@@ -58,7 +58,19 @@ Controlled by `VITE_SUPABASE_URL`:
 
 **File uploads (memo):** Use the same axios instance with `multipart/form-data`. Memo upload accepts PDF, markdown, plain text, CSV, and JSON; the backend extracts text from PDFs, generates metadata asynchronously via an LLM, and streams the original bytes back through `GET /api/v1/memo/user/download?key=...` for in-browser preview. UI lives in `pages/ChatAgent/components/MemoPanel.tsx` + `FilePanelMemo.tsx`, hooks in `pages/ChatAgent/hooks/useMemo.ts`.
 
+**Agent artifact path routing:** When a user clicks a tool-call row in the chat (e.g. `read_file('.agents/user/memory/risk-preferences.md')`), the right panel needs to open the right tab — Memory, Memo, Files, or none for skills. The single source of truth is `pages/ChatAgent/utils/agentPaths.ts`:
+
+- `classifyAgentPath(path)` returns a discriminated union (`memory | memo | skill | file`). Normalizes `file://`, `/home/(workspace|daytona)/`, `./`, query/hash, leading `/`, and `__wsref__/<wsid>/<rest>` cross-workspace refs.
+- `computeAgentArtifactRouting(path, opts)` is the pure decision function — what tab to open, which key to pre-select, which workspace to switch into.
+- `topicFromMemoryKey(key)` turns a memory filename into a display topic.
+
+`ChatView.handleOpenAgentArtifactFromChat` is the only chat-side caller. It clears all sibling target props before setting one, hosts an aria-live region for tool-call status, and hands routing decisions off to `computeAgentArtifactRouting`. `RightPanel` accepts `targetMemoryKey/Tier`, `targetMemoKey`, and `targetFile/Directory` with snap-back precedence (memory > memo > file). `MemoryPanel` and `MemoPanel` mirror those targets into selected state with an `isFetching` gate (so cache-refetch races don't false-trigger a not-found banner). `useMemory` exposes `isFetching` for that gate.
+
+Add new agent-artifact path types here, not in panel components — every new location duplicates the normalization rules.
+
 **React Query:** Global `QueryClient` in `main.tsx`. Key factory in `lib/queryKeys.ts` — hierarchical keys enabling prefix-based invalidation (e.g., invalidate `queryKeys.user.all` to refresh all user-related data). Shared hooks in `hooks/` (`useUser`, `useWorkspaces`, `useWorkspace`, `usePreferences`, `useUpdatePreferences`, `useNetworkStatus`).
+
+**Dashboard preferences:** `useDashboardPrefs` (in `pages/Dashboard/widgets/framework/`) reads layout + per-widget config from `user.preferences.dashboard`, validates each widget config through a Zod schema (`configSchemas.ts`), and writes back via a guarded writer (`dashboardPrefsWriter.ts`) that survives cross-tab races and cold-cache mounts. Cross-tab updates land via the `usePreferences` query cache; the dashboard re-renders without a network round-trip.
 
 ### API Layer Pattern
 
@@ -86,7 +98,7 @@ The ChatAgent page has side-by-side panels (ChatView + FilePanel). Their headers
 - **Path alias:** `@` → `src/` (configured in both `vite.config.js` and `vitest.config.js`)
 - **Tests:** Co-located in `__tests__/` subdirectories next to the code they test. Vitest + jsdom + Testing Library + `@testing-library/jest-dom`. Global setup mocks `matchMedia`, `IntersectionObserver`, `ResizeObserver` (`src/test/setup.ts`).
 - **UI primitives:** `components/ui/` has Radix-based primitives (dialog, toast, button, card, etc.) using `class-variance-authority` for variant props.
-- **i18n:** `i18next` + `react-i18next`. Setup in `src/i18n.ts`.
+- **i18n:** `i18next` + `react-i18next`. Setup in `src/i18n.ts` (cross-tab locale sync via `storage` event). Locale-aware number/date formatting via `createFormatter` / `createDateFormatter` in `src/lib/format.ts` — components MUST also call `useTranslation()` so they re-render on locale switch.
 - **WebSocket:** Real-time market data via `pages/MarketView/contexts/MarketDataWSContext.tsx`.
 
 ### Env Variables

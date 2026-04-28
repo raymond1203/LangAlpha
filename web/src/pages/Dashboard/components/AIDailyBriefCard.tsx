@@ -1,9 +1,12 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Sparkles, ArrowRight, Newspaper, Clock, ChevronDown, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import TopicBadge from './TopicBadge';
 import { getTodayInsights, getInsightDetail, generatePersonalizedInsight } from '../utils/api';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import i18n from '@/i18n';
+import { RowAttachButton } from './RowAttachButton';
 
 interface InsightTopic {
   text: string;
@@ -22,21 +25,33 @@ interface Insight {
 
 interface AIDailyBriefCardProps {
   onReadFull?: (marketInsightId: string) => void;
+  /** Widget instance id — when provided, per-row paperclip attach buttons render. */
+  instanceId?: string;
 }
 
 interface TypeConfigEntry {
-  label: string;
+  labelKey: string;
   accent: string;
 }
 
 // Module-level cache (survives navigation, clears on page refresh)
 let insightsCache: Insight[] | null = null;
 
+/**
+ * Read the latest insight brief data from the module cache. Used by the
+ * InsightBriefWidget's `useWidgetContextExport` snapshot serializer so the
+ * agent gets the actual headline + summary + topics, not just the widget label.
+ * Returns null if the brief hasn't loaded yet.
+ */
+export function getCachedInsights(): Insight[] | null {
+  return insightsCache;
+}
+
 const TYPE_CONFIG: Record<string, TypeConfigEntry> = {
-  pre_market: { label: 'Pre-Market', accent: 'var(--color-profit)' },
-  market_update: { label: 'Market Update', accent: 'var(--color-accent-primary)' },
-  post_market: { label: 'Post-Market', accent: '#a78bfa' },
-  personalized: { label: 'Personalized', accent: '#f59e0b' },
+  pre_market: { labelKey: 'dashboard.brief.typeLabel.preMarket', accent: 'var(--color-profit)' },
+  market_update: { labelKey: 'dashboard.brief.typeLabel.marketUpdate', accent: 'var(--color-accent-primary)' },
+  post_market: { labelKey: 'dashboard.brief.typeLabel.postMarket', accent: '#a78bfa' },
+  personalized: { labelKey: 'dashboard.brief.typeLabel.personalized', accent: '#f59e0b' },
 };
 
 function formatRelativeTime(timestamp: string | undefined): string {
@@ -45,19 +60,19 @@ function formatRelativeTime(timestamp: string | undefined): string {
   const then = new Date(timestamp);
   const diffMs = now.getTime() - then.getTime();
   const diffMin = Math.floor(diffMs / 60000);
-  if (diffMin < 1) return 'just now';
-  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffMin < 1) return i18n.t('dashboard.widgets.common.relativeNow');
+  if (diffMin < 60) return i18n.t('dashboard.widgets.common.relativePast', { when: `${diffMin}m` });
   const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
+  if (diffHr < 24) return i18n.t('dashboard.widgets.common.relativePast', { when: `${diffHr}h` });
   const diffDay = Math.floor(diffHr / 24);
-  return `${diffDay}d ago`;
+  return i18n.t('dashboard.widgets.common.relativePast', { when: `${diffDay}d` });
 }
 
 function formatTime(timestamp: string | undefined): string {
   if (!timestamp) return '';
   try {
     const d = new Date(timestamp);
-    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    return d.toLocaleTimeString(i18n.language, { hour: 'numeric', minute: '2-digit' });
   } catch {
     return '';
   }
@@ -65,6 +80,7 @@ function formatTime(timestamp: string | undefined): string {
 
 /** On mobile: show tags in a single row, overflow hidden with "+N more". Desktop: wrap freely. */
 function MobileTopicRow({ topics }: { topics: InsightTopic[] }) {
+  const { t } = useTranslation();
   const isMobile = useIsMobile();
   const rowRef = useRef<HTMLDivElement>(null);
   const [visibleCount, setVisibleCount] = useState(topics.length);
@@ -116,14 +132,15 @@ function MobileTopicRow({ topics }: { topics: InsightTopic[] }) {
           className="px-1.5 py-0.5 rounded text-[10px] font-medium"
           style={{ color: 'var(--color-text-tertiary)', backgroundColor: 'var(--color-bg-tag)', border: '1px solid var(--color-bg-tag)' }}
         >
-          +{overflow} more
+          {t('dashboard.brief.overflowMore', { count: overflow })}
         </span>
       )}
     </div>
   );
 }
 
-function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
+function AIDailyBriefCard({ onReadFull, instanceId }: AIDailyBriefCardProps) {
+  const { t } = useTranslation();
   const [insights, setInsights] = useState<Insight[]>(insightsCache || []);
   const [loading, setLoading] = useState(!insightsCache);
   const [expanded, setExpanded] = useState(false);
@@ -191,7 +208,7 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
             }
             if (detail.status === 'failed') {
               if (mountedRef.current) {
-                setGenerateError('Brief generation failed. Please try again.');
+                setGenerateError(t('dashboard.brief.errors.generationFailed'));
               }
               return;
             }
@@ -201,7 +218,7 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
         }
         // Poll exhausted without completion
         if (mountedRef.current) {
-          setGenerateError('Generation timed out. Please try again later.');
+          setGenerateError(t('dashboard.brief.errors.timeout'));
         }
       };
       await poll();
@@ -211,18 +228,17 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
         ? ((err as Record<string, unknown>).response as Record<string, unknown>)?.status
         : undefined;
       if (status === 409) {
-        setGenerateError('Brief is already being generated. Try again in a moment.');
+        setGenerateError(t('dashboard.brief.errors.alreadyGenerating'));
       } else if (status === 429) {
-        setGenerateError('Credit limit reached. Upgrade to generate more briefs.');
+        setGenerateError(t('dashboard.brief.errors.creditLimit'));
       } else {
-        setGenerateError('Failed to generate brief. Please try again.');
+        setGenerateError(t('dashboard.brief.errors.generic'));
       }
     } finally {
       setGenerating(false);
     }
-  }, [generating, onReadFull]);
+  }, [generating, onReadFull, t]);
 
-  // Loading skeleton
   if (loading) {
     return (
       <div
@@ -250,7 +266,6 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
     );
   }
 
-  // No data state
   if (!latest) {
     return (
       <div
@@ -263,7 +278,7 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
       >
         <div className="text-center">
           <Newspaper size={40} className="mx-auto mb-3 opacity-30" style={{ color: 'var(--color-accent-primary)' }} />
-          <p style={{ color: 'var(--color-text-secondary)' }}>Generating first insight...</p>
+          <p style={{ color: 'var(--color-text-secondary)' }}>{t('dashboard.brief.generatingFirst')}</p>
         </div>
       </div>
     );
@@ -304,7 +319,6 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
         </>
       )}
 
-      {/* Main card */}
       <motion.div
         layout
         initial={{ opacity: 0, y: 20 }}
@@ -319,14 +333,12 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
         }}
         onClick={handleCardClick}
       >
-        {/* Decorative brain icon */}
         <div className="absolute top-0 right-0 p-6 opacity-20 group-hover:opacity-40 transition-opacity pointer-events-none hidden sm:block">
           <Newspaper size={120} style={{ color: 'var(--color-accent-primary)' }} />
         </div>
 
         <div className="relative z-10 p-4 sm:p-8 flex flex-col gap-8 items-start">
           <div className="flex-1">
-            {/* Badge + updated */}
             <div className="flex items-center gap-2 mb-4">
               <div
                 className="px-3 py-1 rounded-full border flex items-center gap-2 text-xs font-semibold uppercase tracking-wider"
@@ -337,7 +349,7 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
                 }}
               >
                 <Sparkles size={12} />
-                {isPersonalized ? 'Personalized Brief' : 'AI Generated Insight'}
+                {isPersonalized ? t('dashboard.brief.personalizedBrief') : t('dashboard.brief.eyebrow')}
               </div>
               {isPersonalized && (
                 <span
@@ -347,17 +359,16 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
                     backgroundColor: `color-mix(in srgb, ${latestType.accent} 15%, transparent)`,
                   }}
                 >
-                  Based on your watchlist & portfolio
+                  {t('dashboard.brief.basedOnWatchlistPortfolio')}
                 </span>
               )}
               {updatedAgo && (
                 <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                  Updated {updatedAgo}
+                  {t('dashboard.brief.updatedWhen', { when: updatedAgo })}
                 </span>
               )}
             </div>
 
-            {/* Headline */}
             <h2
               className="text-xl sm:text-3xl font-bold mb-4 leading-tight"
               style={{ color: 'var(--color-text-primary)' }}
@@ -365,7 +376,6 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
               {latest.headline}
             </h2>
 
-            {/* Summary */}
             <p
               className="mb-6 leading-relaxed line-clamp-3 sm:line-clamp-none"
               style={{ color: 'var(--color-text-secondary)' }}
@@ -373,7 +383,6 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
               {latest.summary}
             </p>
 
-            {/* Topic badges */}
             <MobileTopicRow topics={topics} />
 
             {/* Mobile: full-width CTA + stack indicator */}
@@ -389,13 +398,13 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
                   color: 'var(--color-btn-primary-text, #fff)',
                 }}
               >
-                Read Full Brief
+                {t('dashboard.brief.readFullBrief')}
                 <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
               </button>
               <button
                 onClick={handleGeneratePersonalized}
                 disabled={generating}
-                title="Generate a personalized market brief based on your watchlist and portfolio holdings"
+                title={t('dashboard.brief.generateTooltip')}
                 className="group/btn flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg text-sm font-semibold transition-colors border"
                 style={{
                   borderColor: 'var(--color-border-default)',
@@ -404,7 +413,7 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
                 }}
               >
                 {generating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                {generating ? 'Generating...' : 'Generate Personalized Brief'}
+                {generating ? t('dashboard.brief.generating') : t('dashboard.brief.generatePersonalized')}
               </button>
               {generateError && (
                 <p className="text-xs mt-1" style={{ color: 'var(--color-loss, #ef4444)' }}>{generateError}</p>
@@ -419,7 +428,7 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
                   style={{ color: 'var(--color-text-tertiary)' }}
                 >
                   <Clock size={12} />
-                  {older.length} earlier
+                  {t('dashboard.brief.earlierCount', { count: older.length })}
                   <ChevronDown
                     size={14}
                     className="transition-transform"
@@ -436,7 +445,7 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
               <button
                 onClick={handleGeneratePersonalized}
                 disabled={generating}
-                title="Generate a personalized market brief based on your watchlist and portfolio holdings"
+                title={t('dashboard.brief.generateTooltip')}
                 className="group/btn flex items-center gap-2 px-5 py-3 rounded-xl font-semibold transition-colors border"
                 style={{
                   borderColor: 'var(--color-border-default)',
@@ -447,7 +456,7 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
                 onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
               >
                 {generating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                {generating ? 'Generating...' : 'Generate Personalized Brief'}
+                {generating ? t('dashboard.brief.generating') : t('dashboard.brief.generatePersonalized')}
               </button>
               <button
                 onClick={(e) => {
@@ -462,7 +471,7 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
                 onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.9')}
                 onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
               >
-                Read Full Brief
+                {t('dashboard.brief.readFullBrief')}
                 <ArrowRight size={16} className="group-hover/btn:translate-x-1 transition-transform" />
               </button>
             </div>
@@ -470,7 +479,6 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
               <p className="text-xs text-right" style={{ color: 'var(--color-loss, #ef4444)' }}>{generateError}</p>
             )}
 
-            {/* Stack indicator */}
             {older.length > 0 && (
               <button
                 onClick={(e) => {
@@ -483,7 +491,7 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
                 onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--color-text-tertiary)')}
               >
                 <Clock size={12} />
-                {older.length} earlier today
+                {t('dashboard.brief.earlierToday', { count: older.length })}
                 <ChevronDown
                   size={14}
                   className="transition-transform"
@@ -513,7 +521,7 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
                     className="text-[10px] font-semibold uppercase tracking-wider"
                     style={{ color: 'var(--color-text-tertiary)' }}
                   >
-                    Earlier Insights
+                    {t('dashboard.brief.earlierInsights')}
                   </span>
                 </div>
 
@@ -521,55 +529,51 @@ function AIDailyBriefCard({ onReadFull }: AIDailyBriefCardProps) {
                   {older.map((item) => {
                     const cfg = TYPE_CONFIG[item.type] || TYPE_CONFIG.market_update;
                     return (
-                      <button
-                        key={item.market_insight_id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onReadFull?.(item.market_insight_id);
-                        }}
-                        className="w-full flex items-center gap-4 px-4 py-3 rounded-xl text-left transition-colors group/item"
-                        style={{ color: 'var(--color-text-secondary)' }}
-                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-bg-hover)')}
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                      >
-                        {/* Time */}
-                        <span
-                          className="text-xs font-medium shrink-0 w-16 text-right tabular-nums"
-                          style={{ color: 'var(--color-text-tertiary)' }}
-                        >
-                          {formatTime(item.completed_at)}
-                        </span>
-
-                        {/* Timeline dot */}
-                        <span
-                          className="w-2 h-2 rounded-full shrink-0"
-                          style={{ backgroundColor: cfg.accent }}
-                        />
-
-                        {/* Type badge */}
-                        <span
-                          className="text-[10px] font-semibold uppercase tracking-wider shrink-0 px-2 py-0.5 rounded"
-                          style={{
-                            color: cfg.accent,
-                            backgroundColor: `color-mix(in srgb, ${cfg.accent} 15%, transparent)`,
+                      <div key={item.market_insight_id} className="row-attach-host relative">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onReadFull?.(item.market_insight_id);
                           }}
+                          className="w-full flex items-center gap-4 px-4 py-3 rounded-xl text-left transition-colors group/item"
+                          style={{ color: 'var(--color-text-secondary)' }}
+                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-bg-hover)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                         >
-                          {cfg.label}
-                        </span>
+                          <span
+                            className="text-xs font-medium shrink-0 w-16 text-right tabular-nums"
+                            style={{ color: 'var(--color-text-tertiary)' }}
+                          >
+                            {formatTime(item.completed_at)}
+                          </span>
 
-                        {/* Headline */}
-                        <span
-                          className="text-sm truncate flex-1 group-hover/item:text-[var(--color-text-primary)] transition-colors"
-                        >
-                          {item.headline}
-                        </span>
+                          <span
+                            className="w-2 h-2 rounded-full shrink-0"
+                            style={{ backgroundColor: cfg.accent }}
+                          />
 
-                        <ArrowRight
-                          size={14}
-                          className="shrink-0 opacity-0 group-hover/item:opacity-60 transition-opacity"
-                          style={{ color: 'var(--color-text-tertiary)' }}
-                        />
-                      </button>
+                          <span
+                            className="text-[10px] font-semibold uppercase tracking-wider shrink-0 px-2 py-0.5 rounded"
+                            style={{
+                              color: cfg.accent,
+                              backgroundColor: `color-mix(in srgb, ${cfg.accent} 15%, transparent)`,
+                            }}
+                          >
+                            {t(cfg.labelKey)}
+                          </span>
+
+                          <span
+                            className="text-sm truncate flex-1 group-hover/item:text-[var(--color-text-primary)] transition-colors"
+                          >
+                            {item.headline}
+                          </span>
+                        </button>
+                        {instanceId && (
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 z-10">
+                            <RowAttachButton instanceId={instanceId} rowId={item.market_insight_id} />
+                          </span>
+                        )}
+                      </div>
                     );
                   })}
                 </div>

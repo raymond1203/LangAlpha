@@ -14,6 +14,9 @@ import {
 interface ListResult {
   entries: MemoryEntry[];
   loading: boolean;
+  /** True while a background refetch is in flight (e.g. after invalidation).
+   *  Distinct from `loading`, which is only true on the very first fetch. */
+  isFetching: boolean;
   error: string | null;
   refresh: () => void;
 }
@@ -23,7 +26,7 @@ export function useUserMemory(enabled: boolean = true): ListResult {
   const queryClient = useQueryClient();
   const { user } = useUser();
   const userId = user?.user_id ?? '';
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, isFetching, error } = useQuery({
     queryKey: queryKeys.memory.user(userId),
     queryFn: listUserMemory,
     enabled: enabled && !!userId,
@@ -38,6 +41,7 @@ export function useUserMemory(enabled: boolean = true): ListResult {
   return {
     entries: data?.entries ?? [],
     loading: isLoading,
+    isFetching,
     error: error ? (error as Error).message || 'Failed to load memory' : null,
     refresh,
   };
@@ -49,7 +53,7 @@ export function useWorkspaceMemory(
   enabled: boolean = true,
 ): ListResult {
   const queryClient = useQueryClient();
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, isFetching, error } = useQuery({
     queryKey: queryKeys.memory.workspace(workspaceId ?? ''),
     queryFn: () => listWorkspaceMemory(workspaceId!),
     enabled: enabled && !!workspaceId,
@@ -64,6 +68,7 @@ export function useWorkspaceMemory(
   return {
     entries: data?.entries ?? [],
     loading: isLoading,
+    isFetching,
     error: error ? (error as Error).message || 'Failed to load memory' : null,
     refresh,
   };

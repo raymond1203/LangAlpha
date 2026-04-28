@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bot, User, FileText, ImageIcon, Pencil, RefreshCw, RotateCcw, Copy, Check, Info, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { type WidgetContextPreviewShape } from '@/pages/Dashboard/widgets/framework/WidgetContextPreview';
+import { WidgetContextDeck } from '@/pages/Dashboard/widgets/framework/WidgetContextDeck';
 import { useIsMobile } from '@/hooks/useIsMobile';
 
 import ThumbDownModal from './ThumbDownModal';
@@ -167,6 +169,35 @@ interface AttachmentCardProps {
   attachment: AttachmentData;
 }
 
+/** Local alias for the preview shape — keeps inline-deck internals decoupled from the import path. */
+type WidgetChipShape = WidgetContextPreviewShape;
+
+/**
+ * Static read-only deck rendered below the user message bubble. Reuses the
+ * shared `WidgetContextDeck` — no eyebrow, no remove buttons, just the
+ * stacked cards with click-to-fan / click-to-preview semantics. Width is
+ * pinned at 320px since the user-message column has a `max-w-[80%]`
+ * constraint that would otherwise collapse absolute-positioned cards.
+ */
+function InlineWidgetDeck({ snapshots }: { snapshots: WidgetChipShape[] }) {
+  const [fanned, setFanned] = useState(false);
+  return (
+    <WidgetContextDeck
+      snapshots={snapshots}
+      fanned={fanned}
+      onToggleFan={() => setFanned((p) => !p)}
+      onCollapse={() => setFanned(false)}
+      compactCardGrid
+      style={{
+        width: 320,
+        borderBottom: 'none',
+        marginBottom: 0,
+        paddingBottom: 0,
+      }}
+    />
+  );
+}
+
 /**
  * AttachmentCard -- 96x96 preview card matching FilePreviewCard styling.
  * Handles both live attachments (with preview/dataUrl) and history
@@ -322,15 +353,6 @@ interface MessageListProps {
   flashContext?: { threadId: string; workspaceId: string } | null;
 }
 
-/**
- * MessageList Component
- *
- * Displays the chat message history with support for:
- * - Empty state when no messages exist
- * - User and assistant message bubbles
- * - Streaming indicators
- * - Error state styling
- */
 function MessageList({ messages, isLoading, isLoadingHistory, hideAvatar, compactToolCalls, isSubagentView, readOnly, allowFiles, onOpenSubagentTask, onOpenFile, onOpenDir, onToolCallDetailClick, onApprovePlan, onRejectPlan, onPlanDetailClick, onAnswerQuestion, onSkipQuestion, onApproveCreateWorkspace, onRejectCreateWorkspace, onApproveStartQuestion, onRejectStartQuestion, onApprovePTCAgent, onRejectPTCAgent, onApproveSecretaryAction, onRejectSecretaryAction, onEditMessage, onRegenerate, onRetry, onThumbUp, onThumbDown, getFeedbackForMessage, onReportWithAgent, onWidgetSendPrompt, flashContext }: MessageListProps): React.ReactElement | null {
   const isMobile = useIsMobile();
 
@@ -468,11 +490,6 @@ interface MessageBubbleProps {
 }
 
 /**
- * MessageBubble Component
- *
- * Renders a single message bubble with appropriate styling
- * based on role (user/assistant) and state (streaming/error)
- *
  * Wrapped with React.memo — safe because updateMessage() in messageHelpers.ts
  * returns the same object reference for unchanged messages.
  */
@@ -486,6 +503,8 @@ const MessageBubble = memo(function MessageBubble({ message, isLoading, hideAvat
   const isPendingDelivery = isUser && ((message.isPending as boolean) || (message.steering as boolean));
   const attachments = message.attachments as AttachmentData[] | undefined;
   const hasAttachments = isUser && attachments && attachments.length > 0;
+  const widgetSnapshots = message.widgetSnapshots as WidgetChipShape[] | undefined;
+  const hasWidgetSnapshots = isUser && widgetSnapshots && widgetSnapshots.length > 0;
 
   // Edit mode state
   const [isEditing, setIsEditing] = useState(false);
@@ -770,6 +789,13 @@ const MessageBubble = memo(function MessageBubble({ message, isLoading, hideAvat
               <AttachmentCard key={idx} attachment={att} />
             ))}
           </div>
+        )}
+
+        {/* Widget context deck -- stacked chip cards below the bubble,
+            mirroring the chat-input deck visuals. Read-only: chips are
+            scoped to the message that attached them. */}
+        {hasWidgetSnapshots && (
+          <InlineWidgetDeck snapshots={widgetSnapshots!} />
         )}
         </>
         )}
@@ -1242,7 +1268,11 @@ const MessageContentSegments = memo(function MessageContentSegments({ segments, 
               toolCallId: seg.toolCallId,
               ...proc,
               _recentlyCompleted: true,
-              _liveState: 'completing',
+              // Failure flips the completing-window state to 'failed' so
+              // ActivityBlock renders the gray ✕ badge variant. Older failed
+              // calls drop to 'completed' below and merge into the accordion
+              // alongside successful ones.
+              _liveState: (proc.isFailed as boolean) ? 'failed' : 'completing',
             });
             const expiry = createdAt! + MIN_LIVE_EXPOSURE_MS;
             if (computedNextExpiry === null || expiry < computedNextExpiry) {
