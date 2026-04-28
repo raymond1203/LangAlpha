@@ -45,20 +45,20 @@ router = APIRouter(
 )
 
 
-# FORK (#33): /overview, /analyst-data 가 native source 가 없는 시장의 ticker
-# 를 받았을 때 graceful "미지원" 응답으로 처리. 향후 .HK / .T 등 추가 시 본 set
-# 에 추가하면 모든 endpoint 가 일관되게 동작. fundamentals 가 native 로 채워진
-# 시장 (예: KR via #42 pykrx + DART) 은 set 에서 제외.
-_UNSUPPORTED_FUNDAMENTALS_SUFFIXES: tuple[str, ...] = (".KS", ".KQ")
+# FORK (#33): /analyst-data 가 native source 가 없는 시장의 ticker 를 받았을 때
+# graceful "미지원" 응답으로 처리. 향후 .HK / .T 등 추가 시 본 set 에 추가.
+# (KR /overview 는 #42 Stage A+B 에서 KoreanFundamentalsSource 가 채움 — 별도 분기.)
+_UNSUPPORTED_ANALYST_SUFFIXES: tuple[str, ...] = (".KS", ".KQ")
 
 
-def is_unsupported_market(symbol: str) -> bool:
-    """Return True if symbol's market lacks a native fundamentals source.
+def is_unsupported_analyst_market(symbol: str) -> bool:
+    """Return True if symbol's market lacks a native analyst-rating source."""
+    return symbol.strip().upper().endswith(_UNSUPPORTED_ANALYST_SUFFIXES)
 
-    Symbol is normalized to upper-case before suffix check, matching the
-    handler's own normalization (``symbol.strip().upper()``).
-    """
-    return symbol.strip().upper().endswith(_UNSUPPORTED_FUNDAMENTALS_SUFFIXES)
+
+def _is_kr_symbol(symbol: str) -> bool:
+    """Return True if symbol is a KR (.KS / .KQ) ticker — for /overview routing."""
+    return symbol.strip().upper().endswith((".KS", ".KQ"))
 
 
 def _convert_data_points(raw_data: list) -> list[IntradayDataPoint]:
@@ -494,15 +494,50 @@ async def get_company_overview(symbol: str, user_id: CurrentUserId) -> CompanyOv
 
     symbol_upper = symbol.strip().upper()
 
-    # FORK (#33): native fundamentals source 가 없는 시장은 graceful 미지원 응답.
-    # message 는 영어 fallback — frontend 가 i18n 키 (marketView.fundamentalsUnsupported)
-    # 로 사용자 locale 에 맞게 표시.
-    if is_unsupported_market(symbol_upper):
-        return CompanyOverviewResponse(
-            symbol=symbol_upper,
-            unsupported=True,
-            message="Fundamentals are not yet supported for this market.",
-        )
+    # FORK (#42 Stage A+B): KR ticker 는 KoreanFundamentalsSource 로 quote + performance
+    # 채움. quarterlyFundamentals / cashFlow / revenueByProduct 등은 본 stage 에서
+    # 미채움 (DART 통합 별도 PR). frontend 는 채워진 부분만 렌더, 나머지는 빈 상태.
+    if _is_kr_symbol(symbol_upper):
+        from src.utils.cache.redis_cache import get_cache_client
+        from src.data_client.korean.fundamentals_source import KoreanFundamentalsSource
+
+        cache = get_cache_client()
+        cache_key = f"overview:{symbol_upper}"
+        cached = await cache.get(cache_key)
+        if cached is not None:
+            return CompanyOverviewResponse(**cached)
+
+        try:
+            kr_source = KoreanFundamentalsSource()
+            artifact = await kr_source.get_overview(symbol_upper)
+            if artifact.get("_partial"):
+                # quote 도출 실패 — graceful unsupported 와 동일 처리.
+                return CompanyOverviewResponse(
+                    symbol=symbol_upper,
+                    unsupported=True,
+                    message="KR market data temporarily unavailable.",
+                )
+            response = CompanyOverviewResponse(
+                symbol=artifact["symbol"],
+                name=artifact.get("name"),
+                quote=artifact.get("quote"),
+                performance=artifact.get("performance"),
+                analystRatings=artifact.get("analystRatings"),
+                quarterlyFundamentals=artifact.get("quarterlyFundamentals"),
+                earningsSurprises=artifact.get("earningsSurprises"),
+                cashFlow=artifact.get("cashFlow"),
+                revenueByProduct=artifact.get("revenueByProduct"),
+                revenueByGeo=artifact.get("revenueByGeo"),
+            )
+            await cache.set(cache_key, response.model_dump(), ttl=300)
+            return response
+        except Exception as e:
+            logger.error(f"KoreanFundamentalsSource failed for {symbol_upper}: {e}")
+            return CompanyOverviewResponse(
+                symbol=symbol_upper,
+                unsupported=True,
+                message="KR market data temporarily unavailable.",
+            )
 
     try:
         from src.utils.cache.redis_cache import get_cache_client
@@ -563,7 +598,7 @@ async def get_analyst_data(
     symbol_upper = symbol.strip().upper()
 
     # FORK (#33): native analyst rating source 가 없는 시장은 graceful 미지원 응답.
-    if is_unsupported_market(symbol_upper):
+    if is_unsupported_analyst_market(symbol_upper):
         return AnalystDataResponse(
             symbol=symbol_upper,
             grades=[],
