@@ -185,6 +185,16 @@ def _hanging_extractor(_content: bytes) -> str:
     return "should never get here"
 
 
+def _exiting_extractor(_content: bytes) -> str:
+    # ``os._exit`` bypasses Python cleanup — _subprocess_entry's finally never
+    # runs, so the child closes its Pipe end only via process death (the OS
+    # closing the fd). Exercises the EOF-from-dead-child path the parent
+    # surfaces as RuntimeError.
+    import os
+    os._exit(1)
+    return "unreachable"
+
+
 class TestSubprocessRunner:
     def test_returns_extractor_result(self):
         result = _run_in_subprocess_blocking(_ok_extractor, b"hello", timeout=10.0)
@@ -215,3 +225,10 @@ class TestSubprocessRunner:
         # Next call should succeed cleanly with a fresh subprocess.
         result = _run_in_subprocess_blocking(_ok_extractor, b"hi", timeout=10.0)
         assert result == "got 2 bytes"
+
+    def test_subprocess_dies_without_sending_raises_runtime_error(self):
+        """``os._exit`` skips _subprocess_entry's finally; parent sees EOF."""
+        with pytest.raises(RuntimeError) as exc:
+            _run_in_subprocess_blocking(_exiting_extractor, b"x", timeout=10.0)
+        msg = str(exc.value).lower()
+        assert "subprocess" in msg and "without sending" in msg

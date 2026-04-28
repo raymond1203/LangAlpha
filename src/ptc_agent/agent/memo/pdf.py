@@ -165,17 +165,19 @@ def _run_in_subprocess_blocking(
     means the wrapping thread always returns instead of leaking.
     """
     parent_conn, child_conn = _MP_CTX.Pipe(duplex=False)
-    proc = _MP_CTX.Process(
-        target=_subprocess_entry,
-        args=(extractor, content, child_conn),
-        daemon=True,
-    )
-    proc.start()
-    # Close the child end in the parent: ensures recv() raises EOFError
-    # promptly if the worker dies without sending anything (segfault, OOM
-    # kill) instead of blocking until the next send.
-    child_conn.close()
+    proc: mp.Process | None = None
     try:
+        proc = _MP_CTX.Process(
+            target=_subprocess_entry,
+            args=(extractor, content, child_conn),
+            daemon=True,
+        )
+        proc.start()
+        # Close the child end in the parent: ensures recv() raises EOFError
+        # promptly if the worker dies without sending anything (segfault, OOM
+        # kill) instead of blocking until the next send.
+        child_conn.close()
+
         if not parent_conn.poll(timeout):
             _terminate(proc)
             raise asyncio.TimeoutError(
@@ -187,14 +189,26 @@ def _run_in_subprocess_blocking(
             raise RuntimeError(
                 "PDF extractor subprocess died without sending a result"
             ) from exc
-        proc.join()
+        # Bounded join: the worker has sent its result and should exit
+        # immediately, but its atexit/gc cleanup can occasionally drag.
+        # Don't pin the parent on it — the finally will _terminate() if it
+        # is still alive past the grace window.
+        proc.join(timeout=_PROC_KILL_GRACE_S)
         if kind == "ok":
             return payload
         # Subprocess raised — re-raise the (pickled) exception in the parent.
         raise payload
     finally:
         parent_conn.close()
-        _terminate(proc)
+        # Defensive: if proc.start() raised before our in-band close above ran,
+        # the child end would otherwise leak. Closing an already-closed
+        # Connection is a no-op.
+        try:
+            child_conn.close()
+        except Exception:
+            pass
+        if proc is not None:
+            _terminate(proc)
 
 
 async def _run_extractor(
