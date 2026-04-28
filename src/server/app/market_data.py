@@ -45,20 +45,27 @@ router = APIRouter(
 )
 
 
-# FORK (#33): /overview, /analyst-data 가 native source 가 없는 시장의 ticker
-# 를 받았을 때 graceful "미지원" 응답으로 처리. 향후 .HK / .T 등 추가 시 본 set
-# 에 추가하면 모든 endpoint 가 일관되게 동작. fundamentals 가 native 로 채워진
-# 시장 (예: KR via #42 pykrx + DART) 은 set 에서 제외.
-_UNSUPPORTED_FUNDAMENTALS_SUFFIXES: tuple[str, ...] = (".KS", ".KQ")
+# FORK (#33 / #42): KR ticker (.KS / .KQ) 단일 진리. 향후 시장 분기 (예: .HK)
+# 추가 시 본 tuple 만 갱신 — is_unsupported_analyst_market / _is_kr_symbol 둘 다 참조.
+KR_SUFFIXES: tuple[str, ...] = (".KS", ".KQ")
 
 
-def is_unsupported_market(symbol: str) -> bool:
-    """Return True if symbol's market lacks a native fundamentals source.
+def is_unsupported_analyst_market(symbol: str) -> bool:
+    """Return True if symbol's market lacks a native analyst-rating source.
 
-    Symbol is normalized to upper-case before suffix check, matching the
-    handler's own normalization (``symbol.strip().upper()``).
+    현재 KR (.KS / .KQ) 만 unsupported — analyst rating 의 native KR source 가 없음.
     """
-    return symbol.strip().upper().endswith(_UNSUPPORTED_FUNDAMENTALS_SUFFIXES)
+    return symbol.strip().upper().endswith(KR_SUFFIXES)
+
+
+def _is_kr_symbol(symbol: str) -> bool:
+    """Return True if symbol is a KR (.KS / .KQ) ticker — for /overview routing."""
+    return symbol.strip().upper().endswith(KR_SUFFIXES)
+
+
+# FORK (#42): source 일시 outage 시 _partial fallback 응답을 짧게 캐시 — 매 요청
+# 마다 yf 재호출 방지. 성공 캐시 (5분) 보다 짧아 outage 회복 시 빠르게 정상화.
+_NEGATIVE_CACHE_TTL_SECONDS = 60
 
 
 def _convert_data_points(raw_data: list) -> list[IntradayDataPoint]:
@@ -494,15 +501,65 @@ async def get_company_overview(symbol: str, user_id: CurrentUserId) -> CompanyOv
 
     symbol_upper = symbol.strip().upper()
 
-    # FORK (#33): native fundamentals source 가 없는 시장은 graceful 미지원 응답.
-    # message 는 영어 fallback — frontend 가 i18n 키 (marketView.fundamentalsUnsupported)
-    # 로 사용자 locale 에 맞게 표시.
-    if is_unsupported_market(symbol_upper):
-        return CompanyOverviewResponse(
-            symbol=symbol_upper,
-            unsupported=True,
-            message="Fundamentals are not yet supported for this market.",
-        )
+    # FORK (#42 Stage A+B): KR ticker 는 KoreanFundamentalsSource 로 quote + performance
+    # 채움. quarterlyFundamentals / cashFlow / revenueByProduct 등은 본 stage 에서
+    # 미채움 (DART 통합 별도 PR). frontend 는 채워진 부분만 렌더, 나머지는 빈 상태.
+    if _is_kr_symbol(symbol_upper):
+        from src.utils.cache.redis_cache import get_cache_client
+        from src.data_client.korean.fundamentals_source import KoreanFundamentalsSource
+
+        cache = get_cache_client()
+        cache_key = f"overview:{symbol_upper}"
+        cached = await cache.get(cache_key)
+        if cached is not None:
+            return CompanyOverviewResponse(**cached)
+
+        try:
+            kr_source = KoreanFundamentalsSource()
+            artifact = await kr_source.get_overview(symbol_upper)
+            if artifact.get("_partial"):
+                # quote 도출 실패 — graceful unsupported. 짧은 negative cache 로
+                # source outage 시 burst 보호 (60s, 성공 5분보다 짧음).
+                partial_response = CompanyOverviewResponse(
+                    symbol=symbol_upper,
+                    unsupported=True,
+                    message="KR market data temporarily unavailable.",
+                )
+                await cache.set(
+                    cache_key,
+                    partial_response.model_dump(),
+                    ttl=_NEGATIVE_CACHE_TTL_SECONDS,
+                )
+                return partial_response
+            response = CompanyOverviewResponse(
+                symbol=artifact["symbol"],
+                name=artifact.get("name"),
+                quote=artifact.get("quote"),
+                performance=artifact.get("performance"),
+                analystRatings=artifact.get("analystRatings"),
+                quarterlyFundamentals=artifact.get("quarterlyFundamentals"),
+                earningsSurprises=artifact.get("earningsSurprises"),
+                cashFlow=artifact.get("cashFlow"),
+                revenueByProduct=artifact.get("revenueByProduct"),
+                revenueByGeo=artifact.get("revenueByGeo"),
+            )
+            await cache.set(cache_key, response.model_dump(), ttl=300)
+            return response
+        except Exception as e:
+            logger.error(f"KoreanFundamentalsSource failed for {symbol_upper}: {e}")
+            # FORK (#42): exception 분기도 _partial 와 동일하게 negative cache (60s)
+            # 로 burst 보호 — yf/pykrx outage 시 매 요청마다 외부 source 재호출 방지.
+            error_response = CompanyOverviewResponse(
+                symbol=symbol_upper,
+                unsupported=True,
+                message="KR market data temporarily unavailable.",
+            )
+            await cache.set(
+                cache_key,
+                error_response.model_dump(),
+                ttl=_NEGATIVE_CACHE_TTL_SECONDS,
+            )
+            return error_response
 
     try:
         from src.utils.cache.redis_cache import get_cache_client
@@ -563,7 +620,7 @@ async def get_analyst_data(
     symbol_upper = symbol.strip().upper()
 
     # FORK (#33): native analyst rating source 가 없는 시장은 graceful 미지원 응답.
-    if is_unsupported_market(symbol_upper):
+    if is_unsupported_analyst_market(symbol_upper):
         return AnalystDataResponse(
             symbol=symbol_upper,
             grades=[],
